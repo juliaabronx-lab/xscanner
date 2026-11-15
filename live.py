@@ -253,6 +253,7 @@ def restore_last_push(xfeed_path):
         try: cands.append(("remote", _get(PUSH_URL + ("&" if "?" in PUSH_URL else "?") + f"t={int(time.time())}", timeout=20)))
         except Exception as e: status["x"]["restore_error"] = f"remote copy: {type(e).__name__}"[:120]
     cands = [(src, d) for src, d in cands if isinstance(d, dict) and d.get("pushed_at")]
+    status["x"]["copies_seen"] = {src: d["pushed_at"] for src, d in cands}   # raw.githubusercontent may lag a push by ~5 min
     if not cands:
         status["x"]["restored_from"] = None; return
     src, best = max(cands, key=lambda c: (c[1]["pushed_at"], c[0] == "remote"))   # tie -> remote
