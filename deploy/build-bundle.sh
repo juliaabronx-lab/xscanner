@@ -18,3 +18,11 @@ done
 cp /workspace/paper/ledger.json "$OUT/deploy/data/ledger.json" 2>/dev/null || echo "warn: missing ledger"
 date -Iseconds > "$OUT/deploy/data/SNAPSHOT_TIME"
 cp -p "$SRC"/deploy/{build-bundle.sh,push-snapshot.sh,github-create-and-push.sh} "$OUT/deploy/"   # deploy scripts
+# GitHub Actions keep-awake ping (pushing it needs a token with the `workflow` scope)
+# Copied only when the gh token has the `workflow` scope (GitHub rejects the push otherwise). Once the file is in
+# the repo, later bundles without it are still fine: build-bundle never deletes .github/, so it stays committed.
+if gh auth status 2>&1 | grep -q "'workflow'"; then
+  mkdir -p "$OUT/.github/workflows" && cp -p "$SRC"/deploy/github-workflows/*.yml "$OUT/.github/workflows/"
+else
+  echo "note: gh token lacks the 'workflow' scope; keep-awake workflow not included (run: gh auth refresh -h github.com -s workflow)"
+fi

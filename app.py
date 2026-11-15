@@ -404,6 +404,40 @@ def _start_live():
 @app.get("/api/live")
 def live_status():
     return live.public_status()
+
+
+# ---- X push ingest (agent box -> hosted site). Disabled (404) unless INGEST_TOKEN is set in the host env.
+INGEST_MAX_BYTES = 2 * 1024 * 1024
+
+
+@app.post("/api/ingest/x", include_in_schema=False)
+async def ingest_x(request: Request):
+    import hmac
+    want = os.environ.get("INGEST_TOKEN", "").strip()
+    if not want or not live.ENABLED:
+        raise HTTPException(404, "Not Found")
+    got = request.headers.get("x-ingest-token", "")
+    if not hmac.compare_digest(got.encode(), want.encode()):
+        raise HTTPException(401, "bad ingest token")
+    try:
+        if int(request.headers.get("content-length") or 0) > INGEST_MAX_BYTES:
+            raise HTTPException(413, "payload over 2 MB")
+    except ValueError:
+        raise HTTPException(400, "bad content-length")
+    body = b""
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > INGEST_MAX_BYTES:
+            raise HTTPException(413, "payload over 2 MB")
+    try:
+        payload = json.loads(body)
+    except Exception:
+        raise HTTPException(400, "body must be JSON")
+    try:
+        res = live.ingest_x(payload, XFEED)
+    except ValueError as e:
+        raise HTTPException(422, str(e)[:300])
+    return {"ok": True, **res, "rescan": "started"}
 XTOPICS = ("memecoins", "politics", "tech")
 _xcache = {"mtime": None, "data": None}
 

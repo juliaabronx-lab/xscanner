@@ -26,9 +26,12 @@ status = {"enabled": ENABLED, "interval_s": INTERVAL, "running": False, "scans_o
           "last_scan_at": None, "last_scan_epoch": None, "last_attempt_at": None, "last_error": None,
           "last_duration_s": None, "next_scan_epoch": None, "seeds": {}, "source_errors": {},
           "snapshot_time": None, "x": {"live": False, "reason": "X_BEARER_TOKEN not set; showing stored X posts",
-                                       "last_fetch_at": None, "last_error": None}}
+                                       "last_fetch_at": None, "last_error": None,
+                                       "last_ingest_at": None, "last_ingest": None}}
 _gecko_backoff_until = 0.0
 _started = False
+_kick = threading.Event()   # set by an X ingest to start the next scan right away
+_ingest_lock = threading.Lock()
 
 
 def _now():
@@ -208,7 +211,7 @@ def _loop(xfeed_path, queries_path):
         if os.environ.get("X_BEARER_TOKEN") and time.time() - last_x >= X_INTERVAL:
             last_x = time.time(); x_once(xfeed_path, queries_path)
         status["next_scan_epoch"] = int(time.time() + INTERVAL)
-        time.sleep(INTERVAL)
+        _kick.wait(INTERVAL); _kick.clear()
 
 
 def start(xfeed_path, queries_path):
@@ -225,3 +228,90 @@ def public_status():
         s["age_s"] = int(time.time() - s["last_scan_epoch"])
     s["now_epoch"] = int(time.time())
     return s
+
+
+# ---------------------------------------------------------------- pushed X data (POST /api/ingest/x)
+_ID = __import__("re").compile(r"^[0-9]{1,25}$")
+
+
+def _as_map(v, what):
+    """posts/users may come as {id: obj} (x_raw.json) or [obj, ...] (X API 'data' / 'includes.users')."""
+    if v is None: return {}
+    if isinstance(v, dict): items = list(v.values())
+    elif isinstance(v, list): items = v
+    else: raise ValueError(f"{what} must be an object or a list")
+    out = {}
+    for o in items:
+        if not isinstance(o, dict): raise ValueError(f"every {what[:-1]} must be an object")
+        i = str(o.get("id") or "")
+        if not _ID.match(i): raise ValueError(f"{what[:-1]} with bad id {i[:30]!r}")
+        out[i] = o
+    return out
+
+
+def _clean_post(p):
+    if not isinstance(p.get("text", ""), str): raise ValueError(f"post {p.get('id')}: text must be a string")
+    keep = ("id", "author_id", "created_at", "text", "public_metrics", "entities", "url", "conversation_id",
+            "in_reply_to_user_id", "lang", "note_tweet", "referenced_tweets", "_label")
+    q = {k: p[k] for k in keep if k in p}
+    q["id"] = str(q["id"]); q["text"] = (q.get("text") or "")[:4000]
+    q.setdefault("_label", "push")
+    return q
+
+
+def _clean_user(u):
+    keep = ("id", "username", "name", "public_metrics", "created_at", "verified")
+    q = {k: u[k] for k in keep if k in u}; q["id"] = str(q["id"])
+    return q
+
+
+def ingest_x(payload, xfeed_path):
+    """Validate pushed X data, write work/x_raw.json (used by the next scan) and merge the X Live feed.
+    payload = {"x_raw": {posts, users, counts?, trends?}, "feed": [{"topic", "response": <X API search response>}]?,
+               "mode": "replace"|"merge"}. Without "feed", x_raw posts are shown in the memecoins feed."""
+    import xfeed_ingest as xi
+    if not isinstance(payload, dict): raise ValueError("payload must be a JSON object")
+    raw_in = payload.get("x_raw") if isinstance(payload.get("x_raw"), dict) else payload
+    posts = {i: _clean_post(p) for i, p in _as_map(raw_in.get("posts"), "posts").items()}
+    users = {i: _clean_user(u) for i, u in _as_map(raw_in.get("users"), "users").items()}
+    counts = raw_in.get("counts") or {}
+    trends = raw_in.get("trends") or []
+    if not isinstance(counts, dict) or not all(isinstance(v, list) for v in counts.values()): raise ValueError("counts must map key -> list of buckets")
+    if not isinstance(trends, list) or not all(isinstance(t, str) for t in trends): raise ValueError("trends must be a list of strings")
+    feed_in = payload.get("feed") or []
+    if not isinstance(feed_in, list): raise ValueError("feed must be a list of {topic, response}")
+    if not posts and not feed_in: raise ValueError("no posts in payload")
+    if len(posts) > 3000 or len(users) > 5000: raise ValueError("too many posts/users")
+    mode = payload.get("mode", "replace")
+    with _ingest_lock:
+        rawp = os.path.join(WORK, "x_raw.json")
+        if mode == "merge":
+            try: old = json.load(open(rawp))
+            except Exception: old = {}
+            posts = {**(old.get("posts") or {}), **posts}; users = {**(old.get("users") or {}), **users}
+            counts = {**(old.get("counts") or {}), **counts}; trends = list(dict.fromkeys((old.get("trends") or []) + trends))
+        now = time.time()
+        if posts:
+            _atomic_write(rawp, {"created": now, "posts": posts, "users": users, "counts": counts, "trends": trends[:200],
+                                 "searches": [{"label": "push", "t": now}]})
+        fetched = xi.now_iso(); new = []
+        for f in feed_in:
+            if not isinstance(f, dict) or f.get("topic") not in xi.TOPICS or not isinstance(f.get("response"), dict):
+                raise ValueError(f"feed items need topic in {xi.TOPICS} and a response object")
+            new += xi.normalise_api(f["response"], f["topic"], fetched)
+        if not feed_in and posts:   # no separate feed: show the scan posts as the memecoins feed
+            new = xi.normalise_api({"data": list(posts.values()), "includes": {"users": list(users.values())}}, "memecoins", fetched)
+        feed = xi.load_feed(xfeed_path)
+        _, per = xi.merge(feed, new, 300, 48)
+        feed["updated_at"] = fetched
+        touched = {p["topic"] for p in new}
+        for t in xi.TOPICS:
+            info = feed["topics"].setdefault(t, {})
+            if t in touched: info["last_ingest"] = fetched
+            info.update(count=per.get(t, 0), newest=next((p.get("created_at") for p in feed["posts"] if p.get("topic") == t), None))
+        _atomic_write(xfeed_path, feed)
+    summary = {"posts": len(posts), "users": len(users), "counts": len(counts), "trends": len(trends),
+               "feed_posts_merged": len(new), "feed_counts": per, "mode": mode}
+    status["x"].update(last_ingest_at=_now(), last_ingest=summary, reason="X posts pushed from the agent box")
+    _kick.set()   # rescan now with the fresh posts
+    return summary
