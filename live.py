@@ -250,12 +250,12 @@ def restore_last_push(xfeed_path):
         try: cands.append(("bundled", json.load(open(pth))))
         except Exception: pass
     if PUSH_URL:
-        try: cands.append(("remote", _get(PUSH_URL, timeout=20)))
+        try: cands.append(("remote", _get(PUSH_URL + ("&" if "?" in PUSH_URL else "?") + f"t={int(time.time())}", timeout=20)))
         except Exception as e: status["x"]["restore_error"] = f"remote copy: {type(e).__name__}"[:120]
     cands = [(src, d) for src, d in cands if isinstance(d, dict) and d.get("pushed_at")]
     if not cands:
         status["x"]["restored_from"] = None; return
-    src, best = max(cands, key=lambda c: c[1]["pushed_at"])
+    src, best = max(cands, key=lambda c: (c[1]["pushed_at"], c[0] == "remote"))   # tie -> remote
     cur = xi.load_feed(xfeed_path).get("updated_at") or ""
     if best["pushed_at"] <= cur:   # both ISO UTC 'Z' strings
         status["x"]["restored_from"] = f"none (bundled feed {cur} is newer than last push {best['pushed_at']})"; return
