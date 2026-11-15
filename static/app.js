@@ -27,9 +27,11 @@ async function loadSummary(){
   const s=await api('/api/summary');
   const src=s.sources||{}; const bad=Object.entries(src).filter(([k,m])=>m.error).map(([k,m])=>`${k}: ${m.error}`);
   banner(bad.length?`Data issue — ${esc(bad.join(' · '))}. Showing whatever is available.`:'', bad.length?'':'');
-  $('#stats').innerHTML=[['Last scan',s.generated||'never'],['Coins in report',s.coin_count],['Worth a look (≥65)',s.tiers?.look],['Watch (50–64)',s.tiers?.watch],
-    ['X posts / paid',`${s.x_posts??'—'} / ${s.x_shill_posts??'—'}`],['Coins checked / deep',`${s.coins_checked??'—'} / ${s.deep_checked??'—'}`],['Verdict',s.verdict||'—']]
-    .map(([a,b])=>`<div class="stat"><span>${a}</span><b style="${String(b).length>18?'font-size:14px':''}">${esc(b??'—')}</b></div>`).join('');
+  const ver=s.verdict||'—';
+  const vcls=/buy-worthy/i.test(ver)?'grn':/bad data|error|caution/i.test(ver)?'red':'amb';
+  const chips=[['Coins in report',s.coin_count],['Worth a look',s.tiers?.look],['Watch',s.tiers?.watch],
+    ['X posts / paid',`${s.x_posts??'—'} / ${s.x_shill_posts??'—'}`],['Checked / deep',`${s.coins_checked??'—'} / ${s.deep_checked??'—'}`]];
+  $('#stats').innerHTML=`<div class="statstrip-track"><span class="verdict-pill ${vcls}" title="${esc(ver)}">${esc(ver)}</span>${chips.map(([a,b])=>`<div class="schip"><span>${a}</span><b>${esc(b??'—')}</b></div>`).join('')}</div>`;
 }
 
 async function loadFeed(){
