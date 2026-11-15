@@ -26,3 +26,5 @@ if gh auth status 2>&1 | grep -q "'workflow'"; then
 else
   echo "note: gh token lacks the 'workflow' scope; keep-awake workflow not included (run: gh auth refresh -h github.com -s workflow)"
 fi
+# last successful X push (public posts + paper ledger, no token): the live server restores it on startup if newer
+[ -f "$SRC/data/push/last_push.json" ] && cp -p "$SRC/data/push/last_push.json" "$OUT/deploy/data/last_push.json" || true

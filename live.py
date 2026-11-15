@@ -236,8 +236,39 @@ def x_once(xfeed_path, queries_path):
         status["x"].update(last_error=msg[:300].replace(tok, "***"))
 
 
+PUSH_COPIES = [os.environ.get("LIVE_PUSH_BUNDLED", "deploy/data/last_push.json")]
+PUSH_URL = os.environ.get("LIVE_PUSH_URL", "")   # optional remote copy (e.g. raw GitHub URL) that survives sleep/wake
+
+
+def restore_last_push(xfeed_path):
+    """On startup (/tmp is wiped by every deploy and wake on Render free) re-apply the newest pushed X data,
+    but only if it is newer than the X feed the bundle ships with. Sources: the copy bundled at deploy time,
+    plus PUSH_URL if set. Never fatal."""
+    import xfeed_ingest as xi
+    cands = []
+    for pth in PUSH_COPIES:
+        try: cands.append(("bundled", json.load(open(pth))))
+        except Exception: pass
+    if PUSH_URL:
+        try: cands.append(("remote", _get(PUSH_URL, timeout=20)))
+        except Exception as e: status["x"]["restore_error"] = f"remote copy: {type(e).__name__}"[:120]
+    cands = [(src, d) for src, d in cands if isinstance(d, dict) and d.get("pushed_at")]
+    if not cands:
+        status["x"]["restored_from"] = None; return
+    src, best = max(cands, key=lambda c: c[1]["pushed_at"])
+    cur = xi.load_feed(xfeed_path).get("updated_at") or ""
+    if best["pushed_at"] <= cur:   # both ISO UTC 'Z' strings
+        status["x"]["restored_from"] = f"none (bundled feed {cur} is newer than last push {best['pushed_at']})"; return
+    try:
+        ingest_x(best, xfeed_path, fetched=best["pushed_at"])
+        status["x"].update(restored_from=src, restored_push_at=best["pushed_at"])
+    except Exception as e:
+        status["x"]["restore_error"] = f"{type(e).__name__}: {e}"[:200]
+
+
 def _loop(xfeed_path, queries_path):
     last_x = 0.0
+    restore_last_push(xfeed_path); _kick.clear()
     while True:
         scan_once()
         if os.environ.get("X_BEARER_TOKEN") and time.time() - last_x >= X_INTERVAL:
@@ -297,7 +328,7 @@ def _clean_user(u):
     return q
 
 
-def ingest_x(payload, xfeed_path):
+def ingest_x(payload, xfeed_path, fetched=None):
     """Validate pushed X data, write work/x_raw.json (used by the next scan) and merge the X Live feed.
     payload = {"x_raw": {posts, users, counts?, trends?}, "feed": [{"topic", "response": <X API search response>}]?,
                "mode": "replace"|"merge"}. Without "feed", x_raw posts are shown in the memecoins feed."""
@@ -326,7 +357,7 @@ def ingest_x(payload, xfeed_path):
         if posts:
             _atomic_write(rawp, {"created": now, "posts": posts, "users": users, "counts": counts, "trends": trends[:200],
                                  "searches": [{"label": "push", "t": now}]})
-        fetched = xi.now_iso(); new = []
+        fetched = fetched or xi.now_iso(); new = []
         for f in feed_in:
             if not isinstance(f, dict) or f.get("topic") not in xi.TOPICS or not isinstance(f.get("response"), dict):
                 raise ValueError(f"feed items need topic in {xi.TOPICS} and a response object")
