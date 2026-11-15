@@ -30,11 +30,11 @@ function mountChart(c){
   const el=document.getElementById('chNative');
   if(!window.LightweightCharts){chMsg('Chart library failed to load. Showing the DexScreener chart instead.');setMode('dex');return}
   const LC=window.LightweightCharts;
-  CH.chart=LC.createChart(el,{width:el.clientWidth,height:300,layout:{background:{type:'solid',color:'#12151d'},textColor:'#8a91a6',fontSize:11},
-    grid:{vertLines:{color:'#1b2030'},horzLines:{color:'#1b2030'}},rightPriceScale:{borderColor:'#232838'},
-    timeScale:{borderColor:'#232838',timeVisible:true,secondsVisible:false},crosshair:{mode:0},
+  CH.chart=LC.createChart(el,{width:el.clientWidth,height:300,layout:{background:{type:'solid',color:'#0a0a0a'},textColor:'#7d8187',fontFamily:'Geist, system-ui, sans-serif',fontSize:11},
+    grid:{vertLines:{color:'#1f2228'},horzLines:{color:'#1f2228'}},rightPriceScale:{borderColor:'#1f2228'},
+    timeScale:{borderColor:'#1f2228',timeVisible:true,secondsVisible:false},crosshair:{mode:0},
     localization:{priceFormatter:fmtAxis,timeFormatter:t=>new Date(t*1000).toLocaleString('en-GB',{timeZone:'Asia/Kuala_Lumpur',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}});
-  CH.cs=CH.chart.addCandlestickSeries({upColor:'#2ee59d',downColor:'#ff5c7a',borderVisible:false,wickUpColor:'#2ee59d',wickDownColor:'#ff5c7a',
+  CH.cs=CH.chart.addCandlestickSeries({upColor:'#00c703',downColor:'#e66565',borderVisible:false,wickUpColor:'#00c703',wickDownColor:'#e66565',
     priceFormat:{type:'custom',formatter:fmtAxis,minMove:1e-12}});
   CH.vs=CH.chart.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},lastValueVisible:false,priceLineVisible:false});
   CH.chart.priceScale('vol').applyOptions({scaleMargins:{top:0.8,bottom:0},visible:false});
@@ -44,12 +44,24 @@ function mountChart(c){
   CH.timer=setInterval(()=>{if(!document.hidden&&CH.mode==='native')load(false)},15000);
 }
 function unmountChart(){clearInterval(CH.timer);CH.timer=null;CH.ro?.disconnect();CH.ro=null;try{CH.chart?.remove()}catch(e){}CH.chart=CH.cs=CH.vs=null;CH.coin=null;CH.lastPx=null;CH.seq++}
+// Browser-side fallback: GeckoTerminal allows CORS, so when the server's shared IP is rate-limited
+// the visitor's own browser fetches the candles directly (their own free quota). Market data only.
+const GT_TF={'1m':['minute',1],'5m':['minute',5],'15m':['minute',15],'1h':['hour',1],'4h':['hour',4],'1d':['day',1]};
+async function directGT(c,tf){
+  const [p,a]=GT_TF[tf]||GT_TF['5m'];
+  const u=`https://api.geckoterminal.com/api/v2/networks/solana/pools/${encodeURIComponent(c.pool)}/ohlcv/${p}?aggregate=${a}&limit=300&currency=usd`+(c.mint?`&token=${encodeURIComponent(c.mint)}`:'');
+  const r=await fetch(u,{headers:{Accept:'application/json;version=20230302'}});if(!r.ok)return null;
+  const d=await r.json();const rows=(((d||{}).data||{}).attributes||{}).ohlcv_list||[];const m={};
+  for(const x of rows)if(Array.isArray(x)&&x.length>=6&&x[4]!=null)m[x[0]]={t:+x[0],o:x[1],h:x[2],l:x[3],c:x[4],v:x[5]};
+  return {candles:Object.values(m).sort((a,b)=>a.t-b.t),source:'geckoterminal-direct'};
+}
 async function load(showLoading){
   const c=CH.coin;if(!c||!c.pool||!CH.cs)return;const seq=++CH.seq,tf=CH.tf;
   if(showLoading&&!CH.lastT)chMsg('<span class="spin"></span> Loading chart…');
   let j,r;
   try{r=await fetch(`/api/ohlcv/${encodeURIComponent(c.pool)}?tf=${tf}&token=${encodeURIComponent(c.mint||'')}`);j=await r.json().catch(()=>({}))}
   catch(e){if(seq===CH.seq&&!CH.lastT)chMsg('Could not reach the server for chart data. Retrying in 15s.');return}
+  if(r&&!r.ok&&[429,502,503].includes(r.status)){try{const d=await directGT(c,tf);if(d){j=d;r={ok:true,status:200}}}catch(e){}}
   if(seq!==CH.seq||!CH.cs)return;
   if(!r.ok){
     if(CH.lastT){document.getElementById('chUpd').textContent=' · '+(j.detail||'refresh failed')+' — keeping last data';return}
@@ -60,7 +72,7 @@ async function load(showLoading){
   if(!cd.length){chMsg(`No trades in this timeframe yet. Try a longer timeframe or <a href="#" onclick="setMode('dex');return false">the DexScreener chart</a>.`);CH.cs.setData([]);CH.vs.setData([]);return}
   chMsg('');
   CH.cs.setData(cd.map(k=>({time:k.t,open:k.o,high:k.h,low:k.l,close:k.c})));
-  CH.vs.setData(cd.map(k=>({time:k.t,value:k.v,color:k.c>=k.o?'#2ee59d55':'#ff5c7a55'})));
+  CH.vs.setData(cd.map(k=>({time:k.t,value:k.v,color:k.c>=k.o?'#00c70355':'#e6656555'})));
   if(CH.fit){CH.chart.timeScale().fitContent();CH.fit=false}
   CH.lastT=cd[cd.length-1].t;
   const last=cd[cd.length-1].c,first=cd[0].o,chg=first?((last-first)/first*100):null;

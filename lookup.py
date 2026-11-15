@@ -62,17 +62,27 @@ def cached(mint):
 
 
 def _ds_pairs(S, mint):
+    """Pairs where `mint` is the base token. Tries both DexScreener endpoints; filters before deciding,
+    so a response holding only quote-side pairs (or an upstream error) still falls through to the second one.
+    Returns (pairs, upstream_error)."""
+    def keep(ps):
+        return [p for p in ps if isinstance(p, dict) and p.get("chainId") == "solana" and (p.get("baseToken") or {}).get("address") == mint]
+    errs = []
     r = S.get(f"https://api.dexscreener.com/tokens/v1/solana/{mint}", tries=2)
-    pairs = r if isinstance(r, list) else []
+    if isinstance(r, dict) and "_error" in r: errs.append(r["_error"])
+    pairs = keep(r if isinstance(r, list) else [])
     if not pairs:
         r = S.get(f"https://api.dexscreener.com/latest/dex/tokens/{mint}", tries=2)
-        pairs = (r.get("pairs") or []) if isinstance(r, dict) else []
-    return [p for p in pairs if p.get("chainId") == "solana" and (p.get("baseToken") or {}).get("address") == mint]
+        if isinstance(r, dict) and "_error" in r: errs.append(r["_error"])
+        pairs = keep((r.get("pairs") or []) if isinstance(r, dict) else [])
+    return pairs, (errs[0] if len(errs) == 2 else None)
 
 
 def live_scan(mint):
     S = load_scan_module()
-    pairs = _ds_pairs(S, mint)
+    pairs, ds_err = _ds_pairs(S, mint)
+    if not pairs and ds_err:
+        raise LookupError_(503, "DexScreener didn't answer just now (busy or rate-limited). Try again in a minute.")
     if not pairs:
         rc_probe = S.get(f"https://api.rugcheck.xyz/v1/tokens/{mint}/report/summary", timeout=10, tries=1)
         if isinstance(rc_probe, dict) and "_error" not in rc_probe and rc_probe.get("score_normalised") is not None:
