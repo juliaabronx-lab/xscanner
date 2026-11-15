@@ -96,6 +96,22 @@ def risk_axes(c):
             "dump": round(dump, 2), "rug": round(rug, 2), "thin_liq": round(thin, 2)}
 
 
+DATA_SCORE_CAP = 35   # coins with impossible/missing core data can never reach "watch" (50)
+
+
+def data_issues(c):
+    """Sanity-check DexScreener/RugCheck core numbers. Returns a list of human-readable problems."""
+    mcap, liq, vol = num(c.get("mcap")), num(c.get("liq")), num(c.get("vol24"))
+    out = []
+    if mcap is None or mcap <= 0: out.append("missing market cap")
+    elif mcap > 1e11: out.append(f"implausible market cap (${mcap/1e12:.1f}T)" if mcap >= 1e12 else "implausible market cap")
+    if liq is None or liq <= 0: out.append("missing liquidity")
+    elif liq < 100: out.append("liquidity near zero")
+    elif mcap and mcap > 0 and liq > 1.5 * mcap: out.append("liquidity far above market cap")
+    if vol is None or vol <= 0: out.append("no 24h volume")
+    return out
+
+
 def tier(score):
     s = num(score, 0) or 0
     return "look" if s >= 65 else "watch" if s >= 50 else "skip"
@@ -122,6 +138,15 @@ def normalise_report_coin(c, dash):
     d = dash.get(c.get("mint")) or {}
     out["status"] = d.get("status")
     if d.get("paidAccts"): out["paid_accounts"] = d["paidAccts"]
+    issues = data_issues(out)
+    out["data_issues"] = issues
+    if issues:   # flag + penalize: keep the raw score for reference, cap the shown one below "watch"
+        out["score_raw"] = out["score"]
+        sc = num(out["score"], 0) or 0
+        if sc > DATA_SCORE_CAP: out["score"] = DATA_SCORE_CAP
+        out["tier"] = tier(out["score"])
+        out["flags"] = ["DATA: " + "; ".join(issues)] + list(flags)
+        if out["status"] in (None, "buy", "watch"): out["status"] = "bad data"
     return out
 
 
@@ -156,11 +181,12 @@ def build_state():
         if m not in seen:
             seen.add(m); coins.append(normalise_dash_coin(d))
     coins.sort(key=lambda c: -(num(c.get("score"), 0) or 0))
+    buy = [c["symbol"] for c in coins if c["tier"] == "look" and c.get("pump") and c.get("status") != "blocked" and not c.get("data_issues")]
     summary = {
         "generated": report.get("generated_myt") or dashd.get("scanTime"),
         "elapsed_s": report.get("elapsed_s"), "x_posts": report.get("x_posts"), "x_shill_posts": report.get("x_shill_posts"),
         "coins_checked": report.get("coins_checked"), "deep_checked": report.get("deep_checked"),
-        "verdict": dashd.get("verdict"), "blacklisted_seen": report.get("blacklisted_seen") or [],
+        "verdict": (f"Buy-worthy: {', '.join(buy[:3])}" if buy else "Nothing worth buying right now") if (report or dashd) else None, "blacklisted_seen": report.get("blacklisted_seen") or [],
         "themes": [{"word": t[0], "tickers": t[1]} if isinstance(t, (list, tuple)) else t for t in (report.get("themes") or [])],
     }
     return coins, summary, dashd, {"report": rmeta, "dashboard_data": dmeta}
@@ -252,7 +278,7 @@ def paper():
         "n_trades": len(trades), "best": max(trades, key=lambda t: num(t.get("pnl_rm"), 0) or 0) if trades else None,
         "worst": min(trades, key=lambda t: num(t.get("pnl_rm"), 0) or 0) if trades else None,
         "rules": L.get("rules_v2") or L.get("rules"), "fees": L.get("cost_note"),
-        "started": L.get("started"), "ends": L.get("ends"), "last_run": L.get("last_run"), "last_run_note": L.get("last_run_note"),
+        "started": L.get("started"), "ends": L.get("ends"), "last_run": L.get("last_run"), "data_as_of": L.get("data_as_of") or meta.get("mtime"), "last_run_note": L.get("last_run_note"),
         "candidates_seen": (L.get("candidates_seen") or [])[-60:][::-1], "sources": {"ledger": meta},
     }
 
@@ -394,6 +420,7 @@ XFEED = os.environ.get("XFEED_PATH", os.path.join(HERE, "data", "x_feed.json"))
 XQUERIES = os.path.join(HERE, "data", "xfeed_queries.json")
 if live.ENABLED:  # hosted live mode: serve data the server-side loop keeps refreshing (snapshot until first scan)
     SCANNER, XFEED = live.prepare(SCANNER, XFEED)
+    LEDGER = live.prepare_ledger(LEDGER)
 
 
 @app.on_event("startup")

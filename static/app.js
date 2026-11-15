@@ -1,14 +1,17 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const usd=v=>v==null?'—':'$'+(Math.abs(v)>=1e6?(v/1e6).toFixed(2)+'M':Math.abs(v)>=1e3?(v/1e3).toFixed(1)+'K':(+v).toFixed(0));
-const pct=v=>v==null?'—':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${(+v).toFixed(1)}%</span>`;
+const usd=v=>{if(v==null||v===''||!isFinite(+v))return'—';v=+v;const a=Math.abs(v);
+  for(const[d,u]of[[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e3,'K']])if(a>=d)return'$'+(v/d).toFixed(a/d>=100?0:a/d>=10?1:2)+u;
+  return a>=1||a===0?'$'+v.toFixed(0):(typeof fmtPx==='function'?fmtPx(v):'$'+v.toPrecision(2))};
+const pct=v=>v==null||v===''||!isFinite(+v)?'—':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${(+v).toFixed(1)}%</span>`;
 const rm=v=>v==null?'—':`<span class="${v>=0?'up':'dn'}">RM${(+v).toFixed(2)}</span>`;
 const tierCls=s=>s>=65?'t-look':s>=50?'t-watch':'t-skip';
 const AXES={paid_shill:'Paid shill',copycat:'Copycat',bundle:'Bundle',dump:'Dump/fade',rug:'Rug risk',thin_liq:'Thin liq'};
 const imgUrl=(m,sym)=>'/api/img/'+encodeURIComponent(m)+(sym?'?s='+encodeURIComponent(sym):'');
 const tokImg=(m,sym,cls='timg')=>m?`<img class="${cls}" src="${imgUrl(m,sym)}" alt="" loading="lazy" decoding="async" onerror="this.style.visibility='hidden'">`:'';
 const shortCa=m=>m?m.slice(0,4)+'…'+m.slice(-4):'';
-const ageTxt=h=>h==null?'—':h<1?Math.max(1,Math.round(h*60))+'m':h<48?(+h).toFixed(h<10?1:0)+'h':Math.round(h/24)+'d';
+const ageTxt=h=>{if(h==null||!isFinite(+h))return'—';h=+h;if(h<1)return Math.max(1,Math.round(h*60))+'m';if(h<48)return h.toFixed(h<10?1:0)+'h';
+  const d=h/24;if(d<60)return Math.round(d)+'d';if(d<730)return Math.round(d/30.4)+'mo';return (d/365).toFixed(1)+'y'};
 let layout=localStorage.getItem('xs_layout')||'grid';
 let sort={k:'score',desc:true}, view='feed', riskData=null, publicReadonly=false;
 const feedPrev={};
@@ -18,7 +21,7 @@ function skelCards(n=12){
 }
 async function api(p,o){const r=await fetch(p,o);const j=await r.json().catch(()=>({}));if(!r.ok&&r.status!==409)throw new Error(j.detail||r.status);return j}
 function banner(msg,cls=''){const b=$('#banner');if(!msg){b.className='banner hidden';return}b.className='banner '+cls;b.innerHTML=msg;if(window.XS&&cls==='err')XS.err()}
-function flagCls(f){f=f.toLowerCase();return /dump|rug|blacklist|copycat|bundle:|fading|mint|freeze|paid shill|phish/.test(f)?'red':/thin|weak|no momentum|cooling|boost|capped|copycats/.test(f)?'amb':''}
+function flagCls(f){f=f.toLowerCase();return /^data:|dump|rug|blacklist|copycat|bundle:|fading|mint|freeze|paid shill|phish/.test(f)?'red':/thin|weak|no momentum|cooling|boost|capped|copycats/.test(f)?'amb':''}
 
 async function loadSummary(){
   const s=await api('/api/summary');
@@ -45,7 +48,7 @@ async function loadFeed(){
     <td class="sym">${tokImg(c.mint,c.symbol,'tava')}<b>$${esc(c.symbol)}</b> ${c.pump?'<span class="pill pur">pump</span>':''}<small>${esc(c.name)}</small></td>
     <td><span class="pill ${c.tier==='look'?'grn':c.tier==='watch'?'amb':'red'}">${c.status||c.tier}</span></td>
     <td>${usd(c.mcap)}</td><td>${usd(c.liq)}</td><td>${usd(c.vol24)}</td><td>${pct(c.pc1)}</td><td>${pct(c.pc24)}</td>
-    <td>${c.age_h!=null?(+c.age_h).toFixed(1)+'h':'—'}</td>
+    <td>${ageTxt(c.age_h)}</td>
     <td>${c.paid_share!=null?`<span class="${c.paid_shilled?'dn':''}">${Math.round(c.paid_share*100)}%</span>`:'—'}</td>
     <td>${(c.flags||[]).slice(0,3).map(f=>`<span class="pill ${flagCls(f)}" title="${esc(f)}">${esc(f.length>28?f.slice(0,28)+'…':f)}</span>`).join('')}${c.flags.length>3?`<span class="pill">+${c.flags.length-3}</span>`:''}</td></tr>`).join('')
     :`<tr><td colspan="11" class="muted" style="padding:30px;text-align:center">No coins match (or report.json is missing/empty).</td></tr>`;
@@ -127,7 +130,7 @@ async function openCoin(mint,pre){
    ${part('X narrative',p.x,40)}${part('Market',p.market,35)}${part('Safety',p.safety,25)}
    <div class="kv"><div><span>MCap</span>${usd(c.mcap)}</div><div><span>Liquidity</span>${usd(c.liq)}</div><div><span>Vol 24h</span>${usd(c.vol24)}</div>
    <div><span>5m / 1h / 24h</span>${pct(c.pc5)} ${pct(c.pc1)} ${pct(c.pc24)}</div><div><span>Buys/sells 5m</span>${c.buys5??'—'} / ${c.sells5??'—'}</div><div><span>Buys/sells 1h</span>${c.buys1h??'—'} / ${c.sells1h??'—'}</div>
-   <div><span>Age</span>${c.age_h??'—'}h</div><div><span>Fees est (SOL)</span>${c.fees_est??'—'}</div><div><span>Boosts · copycats</span>${c.boosts??0} · ${c.copycats??0}</div></div>
+   <div><span>Age</span>${ageTxt(c.age_h)}</div><div><span>Fees est (SOL)</span>${c.fees_est??'—'}</div><div><span>Boosts · copycats</span>${c.boosts??0} · ${c.copycats??0}</div></div>
    <h3>Risk radar</h3>${radarSVG(c.risk,240)}
    <h3>Flags</h3><div class="flaglist">${(c.flags||[]).map(f=>`<div><span class="pill ${flagCls(f)}">●</span>${esc(f)}</div>`).join('')||'<div class="muted">none</div>'}</div>
    <h3 style="margin-top:14px">X</h3><div class="kv"><div><span>Mentions</span>${x.mentions??'—'}</div><div><span>Organic / paid accts</span>${x.organic_authors??'—'} / ${x.shill_authors??'—'}</div><div><span>Paid share</span>${x.shill_share!=null?Math.round(x.shill_share*100)+'%':'—'}</div>

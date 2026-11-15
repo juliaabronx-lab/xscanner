@@ -25,7 +25,7 @@ WORK, SERVE = os.path.join(LIVE_DIR, "work"), os.path.join(LIVE_DIR, "serve")
 status = {"enabled": ENABLED, "interval_s": INTERVAL, "running": False, "scans_ok": 0, "scans_failed": 0,
           "last_scan_at": None, "last_scan_epoch": None, "last_attempt_at": None, "last_error": None,
           "last_duration_s": None, "next_scan_epoch": None, "seeds": {}, "source_errors": {},
-          "snapshot_time": None, "x": {"live": False, "reason": "X_BEARER_TOKEN not set; showing stored X posts",
+          "snapshot_time": None, "bundle_snapshot_time": None, "ledger_as_of": None, "x": {"live": False, "reason": "X_BEARER_TOKEN not set; showing stored X posts",
                                        "last_fetch_at": None, "last_error": None,
                                        "last_ingest_at": None, "last_ingest": None}}
 _gecko_backoff_until = 0.0
@@ -56,6 +56,27 @@ def _atomic_write(path, data):
     os.replace(tmp, path)
 
 
+LEDGER = os.path.join(LIVE_DIR, "ledger.json")
+
+
+def prepare_ledger(path):
+    """Serve the paper ledger from the live dir so pushes (and each scan's as-of stamp) can update it."""
+    os.makedirs(LIVE_DIR, exist_ok=True)
+    if os.path.exists(path) and not os.path.exists(LEDGER): shutil.copy2(path, LEDGER)
+    return LEDGER
+
+
+def _touch_ledger():
+    # The paper trades themselves are made on the agent box (pushed via /api/ingest/x "ledger");
+    # each live scan stamps the time the served data was last refreshed.
+    try:
+        L = json.load(open(LEDGER))
+        if isinstance(L, dict):
+            L["data_as_of"] = _now(); _atomic_write(LEDGER, L); status["ledger_as_of"] = L["data_as_of"]
+    except Exception:
+        pass
+
+
 def prepare(snapshot_dir, xfeed_path):
     """Create work/serve dirs seeded from the bundled snapshot. Returns (serve_dir, xfeed_path_to_serve)."""
     os.makedirs(WORK, exist_ok=True); os.makedirs(SERVE, exist_ok=True)
@@ -66,7 +87,7 @@ def prepare(snapshot_dir, xfeed_path):
         src, dst = os.path.join(snapshot_dir, f), os.path.join(SERVE, f)
         if os.path.exists(src) and not os.path.exists(dst): shutil.copy2(src, dst)
     try:
-        status["snapshot_time"] = open(os.path.join(snapshot_dir, "SNAPSHOT_TIME")).read().strip()
+        status["snapshot_time"] = status["bundle_snapshot_time"] = open(os.path.join(snapshot_dir, "SNAPSHOT_TIME")).read().strip()
     except Exception:
         pass
     xf = os.path.join(LIVE_DIR, "x_feed.json")
@@ -165,7 +186,8 @@ def scan_once():
             src = os.path.join(WORK, f)
             if os.path.exists(src):
                 tmp = os.path.join(SERVE, f + ".tmp"); shutil.copy2(src, tmp); os.replace(tmp, os.path.join(SERVE, f))
-        status.update(scans_ok=status["scans_ok"] + 1, last_scan_at=_now(), last_scan_epoch=int(time.time()), last_error=None)
+        _touch_ledger()
+        status.update(snapshot_time=_now(), scans_ok=status["scans_ok"] + 1, last_scan_at=_now(), last_scan_epoch=int(time.time()), last_error=None)
     except Exception as e:
         status.update(scans_failed=status["scans_failed"] + 1, last_error=f"{type(e).__name__}: {e}"[:400])
     finally:
@@ -301,17 +323,29 @@ def ingest_x(payload, xfeed_path):
             new += xi.normalise_api(f["response"], f["topic"], fetched)
         if not feed_in and posts:   # no separate feed: show the scan posts as the memecoins feed
             new = xi.normalise_api({"data": list(posts.values()), "includes": {"users": list(users.values())}}, "memecoins", fetched)
+        received = len(new)
+        uniq = {(p["topic"], p["id"]): p for p in new}
+        touched = {t for t, _ in uniq}
         feed = xi.load_feed(xfeed_path)
-        _, per = xi.merge(feed, new, 300, 48)
+        if mode == "replace":   # fresh push: drop every older post of the topics it covers (e.g. the bundled Nov 14 posts)
+            feed["posts"] = [p for p in feed["posts"] if p.get("topic") not in touched]
+        _, per = xi.merge(feed, list(uniq.values()), 300, 48)
         feed["updated_at"] = fetched
-        touched = {p["topic"] for p in new}
         for t in xi.TOPICS:
             info = feed["topics"].setdefault(t, {})
             if t in touched: info["last_ingest"] = fetched
             info.update(count=per.get(t, 0), newest=next((p.get("created_at") for p in feed["posts"] if p.get("topic") == t), None))
         _atomic_write(xfeed_path, feed)
-    summary = {"posts": len(posts), "users": len(users), "counts": len(counts), "trends": len(trends),
-               "feed_posts_merged": len(new), "feed_counts": per, "mode": mode}
+        led = payload.get("ledger")
+        if led is not None:
+            if not isinstance(led, dict) or not isinstance(led.get("closed_trades", []), list):
+                raise ValueError("ledger must be an object with a closed_trades list")
+            led = {**led, "data_as_of": _now(), "pushed_at": _now()}
+            _atomic_write(LEDGER, led); status["ledger_as_of"] = led["data_as_of"]
+    new_by_topic = {t: sum(1 for k in uniq if k[0] == t) for t in sorted(touched)}
+    summary = {"posts": len(posts), "users": len(users), "counts": len(counts), "trends": len(trends), "mode": mode,
+               "feed_posts_received": received, "feed_posts_unique": len(uniq), "feed_new_by_topic": new_by_topic,
+               "feed_counts": {t: per.get(t, 0) for t in xi.TOPICS}, "ledger": led is not None}
     status["x"].update(last_ingest_at=_now(), last_ingest=summary, reason="X posts pushed from the agent box")
     _kick.set()   # rescan now with the fresh posts
     return summary

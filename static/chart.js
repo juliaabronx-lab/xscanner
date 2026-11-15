@@ -2,9 +2,14 @@
 // drawn with TradingView lightweight-charts; DexScreener embed as a toggle / fallback. Market data only.
 const CH={tf:localStorage.getItem('chartTf')||'15m',mode:'native',coin:null,chart:null,cs:null,vs:null,timer:null,ro:null,seq:0,lastT:null,fit:true};
 const TFS=['1m','5m','15m','1h','4h','1d'];
-const fmtPx=v=>{if(v==null||!isFinite(v))return'—';const a=Math.abs(v);if(a===0)return'$0';if(a>=1)return'$'+v.toLocaleString(undefined,{maximumFractionDigits:4});
-  if(a>=0.0001)return'$'+v.toPrecision(4);const z=Math.floor(-Math.log10(a));const sig=(a*Math.pow(10,z+3)).toFixed(0);return`$0.0<sub>${z-1}</sub>${sig}`};
-const fmtAxis=v=>{const a=Math.abs(v);if(a>=1)return v.toFixed(4);if(a<1e-12)return'0';return v.toPrecision(3)};
+// tiny prices: subscript-zero notation, e.g. 0.0000234 -> $0.0₄234 (4 zeros after the point), plain text (no HTML)
+const SUBS='₀₁₂₃₄₅₆₇₈₉';
+const tinyNum=a=>{const z=-Math.floor(Math.log10(a))-1;let sig=Math.round(a*Math.pow(10,z+3));let zz=z;if(sig>=10000){sig=Math.round(sig/10);zz--}
+  return zz<=3?a.toFixed(zz+3+1).replace(/0+$/,''):'0.0'+String(zz).split('').map(d=>SUBS[d]).join('')+String(sig).replace(/0+$/,'')};
+const fmtNum=v=>{if(v==null||!isFinite(v))return'—';const a=Math.abs(v);if(a===0)return'0';if(a>=1)return v.toLocaleString('en-US',{maximumFractionDigits:a>=1000?2:4});
+  if(a>=0.01)return String(parseFloat(v.toPrecision(4)));return (v<0?'-':'')+tinyNum(a)};
+const fmtPx=v=>{const t=fmtNum(v);return t==='—'?t:'$'+t};
+const fmtAxis=v=>v<0?'':fmtNum(v);   // price can't be negative: hide ticks below 0
 function chartBlockHTML(){
   return `<div class="chartcard"><div class="chhead">
     <div class="chpx"><b id="chPrice">—</b> <span id="chChg"></span><small id="chUpd" class="muted"></small></div>
@@ -35,7 +40,8 @@ function mountChart(c){
     timeScale:{borderColor:'#1f2228',timeVisible:true,secondsVisible:false},crosshair:{mode:0},
     localization:{priceFormatter:fmtAxis,timeFormatter:t=>new Date(t*1000).toLocaleString('en-GB',{timeZone:'Asia/Kuala_Lumpur',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}});
   CH.cs=CH.chart.addCandlestickSeries({upColor:'#00c703',downColor:'#e66565',borderVisible:false,wickUpColor:'#00c703',wickDownColor:'#e66565',
-    priceFormat:{type:'custom',formatter:fmtAxis,minMove:1e-12}});
+    priceFormat:{type:'custom',formatter:fmtAxis,minMove:1e-12},
+    autoscaleInfoProvider:orig=>{const r=orig();if(r&&r.priceRange&&r.priceRange.minValue<0)r.priceRange.minValue=0;return r}});
   CH.vs=CH.chart.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},lastValueVisible:false,priceLineVisible:false});
   CH.chart.priceScale('vol').applyOptions({scaleMargins:{top:0.8,bottom:0},visible:false});
   CH.cs.priceScale().applyOptions({scaleMargins:{top:0.08,bottom:0.24}});
