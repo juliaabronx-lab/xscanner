@@ -6,7 +6,7 @@ set -euo pipefail
 SRC=/workspace/platform
 OUT=${OUT:-/workspace/xscanner-deploy}
 mkdir -p "$OUT/static/vendor" "$OUT/data/img" "$OUT/deploy/data"
-cp -p "$SRC"/{app.py,live.py,lookup.py,chart.py,images.py,xfeed_ingest.py,render.yaml} "$OUT/"
+cp -p "$SRC"/{app.py,live.py,scan_runner.py,lookup.py,chart.py,images.py,xfeed_ingest.py,render.yaml} "$OUT/"
 rm -rf "$OUT/static" && mkdir -p "$OUT/static"
 cp -rp "$SRC"/static/. "$OUT/static/"   # whole front end (html/js/css/fonts/vendor); no secrets live in static/
 cp -p "$SRC"/data/{x_feed.json,xfeed_queries.json,img_cache.json} "$OUT/data/"

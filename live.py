@@ -109,7 +109,7 @@ def _seeds_dexscreener():
         d = _get("https://api.dexscreener.com/latest/dex/search?q=" + urllib.parse.quote(q))
         for p in d.get("pairs") or []:
             if p.get("chainId") == "solana":
-                a = (p.get("baseToken") or {}).get("address") or ""
+                a = (p.get("baseToken") or {}).get("address") or ""  # noqa
                 if a.endswith("pump"): out.append(a)
     return out
 
@@ -137,12 +137,18 @@ def scan_once():
         for f in ("report.json", "dashboard_data.json"):
             try: os.remove(os.path.join(WORK, f))
             except FileNotFoundError: pass
-        p = subprocess.run([sys.executable, os.path.join(WORK, "scan.py"), "--allow-non-pump", "--top", "15"],
+        runner = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scan_runner.py")
+        p = subprocess.run([sys.executable, runner, WORK, "--allow-non-pump", "--top", "15"],
                            cwd=WORK, capture_output=True, text=True, timeout=SCAN_TIMEOUT)
         rep = os.path.join(WORK, "report.json")
         if p.returncode != 0 or not os.path.exists(rep):
             raise RuntimeError(f"scan.py exit {p.returncode}: {(p.stderr or p.stdout)[-300:]}")
-        json.load(open(rep))  # validate before publishing
+        try: status["http"] = json.load(open(os.path.join(WORK, "http_stats.json")))
+        except Exception: pass
+        r = json.load(open(rep))  # validate before publishing; never replace good data with an empty scan
+        if not r.get("top") or not r.get("coins_checked"):
+            raise RuntimeError(f"scan came back empty (upstream APIs rate-limited: {status.get('http')}); kept previous data")
+        status["last_counts"] = {"coins_checked": r.get("coins_checked"), "deep_checked": r.get("deep_checked"), "top": len(r["top"])}
         for f in ("dashboard_data.json", "report.json"):
             src = os.path.join(WORK, f)
             if os.path.exists(src):
