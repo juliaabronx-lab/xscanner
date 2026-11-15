@@ -2,15 +2,18 @@
 
 Resolution order per mint (first hit wins):
   1. DexScreener token pairs API  -> pairs[].info.imageUrl   (batched: up to 30 mints per call)
-  2. pump.fun frontend API        -> image_uri               (often Cloudflare-blocked; tried quietly)
-  3. On-chain metadata URI (via RugCheck tokenMeta.uri) -> JSON .image
-  4. RugCheck fileMeta.image
-  5. generated letter avatar (SVG)
+  2. GeckoTerminal tokens/multi   -> data.attributes.image_url (batched: up to 30 mints per call)
+  3. pump.fun frontend API        -> image_uri               (often Cloudflare-blocked; tried quietly)
+  4. On-chain metadata URI (via RugCheck tokenMeta.uri) -> JSON .image
+  5. RugCheck fileMeta.image
+  6. generated letter avatar (SVG)
 The image-URL map is persisted in data/img_cache.json; the downloaded bytes are re-encoded to a
 256px WebP under data/img/<mint>.webp and served from GET /api/img/{mint} with long cache headers.
 Both servers (8787/8788) share the files; writes are atomic. Upstream calls are budgeted.
+Failed lookups are negative-cached only when every source answered with no image (not on 429/errors);
+NEG_TTL is 30 minutes. Placeholder URLs such as missing.png are ignored.
 """
-import hashlib, io, ipaddress, json, os, re, socket, threading, time, urllib.parse, urllib.request
+import hashlib, io, ipaddress, json, os, re, socket, threading, time, urllib.error, urllib.parse, urllib.request
 from collections import deque
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -19,11 +22,12 @@ CACHE_PATH = os.path.join(DATA, "img_cache.json")
 IMG_DIR = os.path.join(DATA, "img")
 B58_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 UA = "Mozilla/5.0 (X11; Linux x86_64) xScanner/1.0"
-NEG_TTL = 6 * 3600          # retry a mint with no image after 6h
-META_N, META_WIN = 20, 60   # metadata (DexScreener/pump/RugCheck) calls per minute per process
+NEG_TTL = 30 * 60           # retry a mint with no image after 30 min
+META_N, META_WIN = 20, 60   # metadata (DexScreener/GT/pump/RugCheck) calls per minute per process
 DL_N = 40                   # image downloads per minute per process
 MAX_BYTES = 4 * 1024 * 1024
 SIZE = 256
+GT_BACKOFF_S = 600          # skip GeckoTerminal for 10 min after a 429
 
 os.makedirs(IMG_DIR, exist_ok=True)
 _lock = threading.RLock()
@@ -137,56 +141,122 @@ def _json(url, timeout=8):
     return json.loads(data.decode("utf-8", "replace"))
 
 
+def _ok_img(u):
+    """Return a usable image URL, or None for empty / placeholder missing.png links."""
+    if not isinstance(u, str) or not u.strip(): return None
+    u = u.strip()
+    if "missing.png" in u.lower(): return None
+    return u
+
+
+def _unpack_hint(hint):
+    """hint is a dict (treated as a complete lookup) or (map, complete)."""
+    if isinstance(hint, tuple):
+        return hint[0] or {}, bool(hint[1])
+    return hint or {}, True
+
+
 # ---------------------------------------------------------------- resolvers
 def ds_batch(mints):
-    """DexScreener tokens/v1 accepts up to 30 comma-separated addresses: one call for a whole feed page."""
-    out = {}
+    """DexScreener tokens/v1 accepts up to 30 comma-separated addresses: one call for a whole feed page.
+
+    Returns (map, complete). complete is False if a chunk 429'd or errored (do not negative-cache).
+    """
+    out, complete = {}, True
     for i in range(0, len(mints), 30):
         chunk = mints[i:i + 30]
         try: pairs = _json("https://api.dexscreener.com/tokens/v1/solana/" + ",".join(chunk))
         except RuntimeError: raise
-        except Exception: continue
+        except Exception:
+            complete = False
+            continue
         for p in pairs if isinstance(pairs, list) else []:
             m = (p.get("baseToken") or {}).get("address")
-            img = (p.get("info") or {}).get("imageUrl")
+            img = _ok_img((p.get("info") or {}).get("imageUrl"))
             if m in chunk and img and m not in out: out[m] = img
             if m in chunk: out.setdefault(m + ":sym", (p.get("baseToken") or {}).get("symbol"))
-    return out
+    return out, complete
 
 
 _pump_off = [0.0]
+_gt_backoff = [0.0]
+
+
+def gt_batch(mints):
+    """GeckoTerminal tokens/multi accepts up to 30 comma-separated addresses.
+
+    Returns (map, complete). A 429 sets a 10-minute backoff and complete=False (try again later).
+    """
+    out, complete = {}, True
+    if not mints: return out, True
+    if time.time() < _gt_backoff[0]:
+        return out, False
+    for i in range(0, len(mints), 30):
+        chunk = mints[i:i + 30]
+        try:
+            d = _json("https://api.geckoterminal.com/api/v2/networks/solana/tokens/multi/" + ",".join(chunk))
+        except RuntimeError: raise
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                _gt_backoff[0] = time.time() + GT_BACKOFF_S
+            complete = False
+            continue
+        except Exception:
+            complete = False
+            continue
+        for item in (d.get("data") if isinstance(d, dict) else None) or []:
+            if not isinstance(item, dict): continue
+            attrs = item.get("attributes") or {}
+            m = attrs.get("address")
+            if not m and isinstance(item.get("id"), str) and item["id"].startswith("solana_"):
+                m = item["id"][7:]
+            img = _ok_img(attrs.get("image_url"))
+            if m in chunk and img and m not in out: out[m] = img
+            if m in chunk and attrs.get("symbol"): out.setdefault(m + ":sym", attrs.get("symbol"))
+    return out, complete
 
 
 def _pump(mint):
-    if time.time() < _pump_off[0]: return None
+    if time.time() < _pump_off[0]: raise OSError("pump backoff")
     try:
         d = _json(f"https://frontend-api-v3.pump.fun/coins/{mint}", timeout=6)
-        return d.get("image_uri") if isinstance(d, dict) else None
+        return _ok_img(d.get("image_uri") if isinstance(d, dict) else None)
     except RuntimeError: raise
     except Exception:
-        _pump_off[0] = time.time() + 1800; return None
+        _pump_off[0] = time.time() + 1800
+        raise
 
 
 def _rugcheck(mint):
-    """-> (metadata-uri image, fileMeta.image, symbol)"""
+    """-> (metadata-uri image, fileMeta.image, symbol). Raises OSError if the report/URI could not be read."""
     try: d = _json(f"https://api.rugcheck.xyz/v1/tokens/{mint}/report", timeout=12)
     except RuntimeError: raise
-    except Exception: return None, None, None
+    except Exception as e:
+        raise OSError("rugcheck") from e
     fm = d.get("fileMeta") or {}
     tm = d.get("tokenMeta") or {}
-    meta_img = None
+    meta_img, uri_failed = None, False
     uri = _safe_url(tm.get("uri"))
     if uri:
+        got = False
         try:
             for alt in _alts(uri)[:3]:
-                if not _budget(_meta_q, META_N): break
+                if not _budget(_meta_q, META_N): raise RuntimeError("budget")
                 try:
                     j = json.loads(_get(alt, timeout=10, limit=512 * 1024)[0].decode("utf-8", "replace"))
-                    meta_img = j.get("image") if isinstance(j, dict) else None
+                    meta_img = _ok_img(j.get("image") if isinstance(j, dict) else None)
+                    got = True
                     break
+                except RuntimeError: raise
                 except Exception: continue
-        except Exception: pass
-    return meta_img, fm.get("image"), tm.get("symbol") or fm.get("symbol")
+        except RuntimeError: raise
+        except Exception:
+            uri_failed = True
+        if not got: uri_failed = True
+    fi = _ok_img(fm.get("image"))
+    if uri_failed and not fi and not meta_img:
+        raise OSError("rugcheck metadata")
+    return meta_img, fi, tm.get("symbol") or fm.get("symbol")
 
 
 def _download(url):
@@ -230,7 +300,7 @@ def _store(mint, url, src, sym=None):
     return True
 
 
-def resolve(mint, sym=None, ds_hint=None):
+def resolve(mint, sym=None, ds_hint=None, gt_hint=None):
     """Ensure a real image for mint if one exists. Returns entry dict or None. Raises RuntimeError on budget."""
     if has_file(mint): return entry(mint) or {"src": "file"}
     e = entry(mint)
@@ -238,38 +308,70 @@ def resolve(mint, sym=None, ds_hint=None):
     with _inflight_lock: lk = _inflight.setdefault(mint, threading.Lock())
     with lk:
         if has_file(mint): return entry(mint)
-        cands = []
-        ds = ds_hint if ds_hint is not None else ds_batch([mint])
-        if ds.get(mint): cands.append((ds[mint], "dexscreener"))
-        sym = sym or ds.get(mint + ":sym")
-        tried_rc = False
-        for step in ("ds", "pump", "rc"):
-            if step == "pump" and mint.endswith("pump"):
-                u = _pump(mint)
-                if u: cands.append((u, "pumpfun"))
-            if step == "rc":
-                tried_rc = True
-                mi, fi, s2 = _rugcheck(mint); sym = sym or s2
-                if mi: cands.append((mi, "metadata_uri"))
-                if fi and fi != mi: cands.append((fi, "rugcheck"))
+        cands, incomplete, dl_fail = [], False, False
+        for step in ("ds", "gt", "pump", "rc"):
+            if step == "ds":
+                try:
+                    ds, ok = _unpack_hint(ds_hint) if ds_hint is not None else ds_batch([mint])
+                    if not ok: incomplete = True
+                    if _ok_img((ds or {}).get(mint)): cands.append((ds[mint], "dexscreener"))
+                    sym = sym or (ds or {}).get(mint + ":sym")
+                except RuntimeError: raise
+                except Exception: incomplete = True
+            elif step == "gt":
+                try:
+                    gt, ok = _unpack_hint(gt_hint) if gt_hint is not None else gt_batch([mint])
+                    if not ok: incomplete = True
+                    if _ok_img((gt or {}).get(mint)): cands.append((gt[mint], "geckoterminal"))
+                    sym = sym or (gt or {}).get(mint + ":sym")
+                except RuntimeError: raise
+                except Exception: incomplete = True
+            elif step == "pump" and mint.endswith("pump"):
+                try:
+                    u = _pump(mint)
+                    if u: cands.append((u, "pumpfun"))
+                except RuntimeError: raise
+                except Exception: incomplete = True
+            elif step == "rc":
+                try:
+                    mi, fi, s2 = _rugcheck(mint); sym = sym or s2
+                    if mi: cands.append((mi, "metadata_uri"))
+                    if fi and fi != mi: cands.append((fi, "rugcheck"))
+                except RuntimeError: raise
+                except Exception: incomplete = True
             while cands:
                 u, src = cands.pop(0)
-                if _store(mint, u, src, sym): return entry(mint)
-        _save_entry(mint, {"url": None, "src": "fallback", "sym": sym, "ts": int(time.time())})
+                try:
+                    if _store(mint, u, src, sym): return entry(mint)
+                    dl_fail = True
+                except RuntimeError: raise
+                except Exception: dl_fail = True
+        if not incomplete and not dl_fail:
+            _save_entry(mint, {"url": None, "src": "fallback", "sym": sym, "ts": int(time.time())})
         return None
 
 
-def warm(coins):
-    """Background warm-up for a list of {'mint','symbol'} (feed). One batched DexScreener call."""
+def warm(coins, gt_hint=None):
+    """Background warm-up for a list of {'mint','symbol'} (feed). Batched DexScreener + GeckoTerminal calls."""
     todo = [c for c in coins if valid_mint(c.get("mint")) and not has_file(c["mint"])
             and not ((entry(c["mint"]) or {}).get("src") == "fallback" and time.time() - (entry(c["mint"]) or {}).get("ts", 0) < NEG_TTL)]
     if not todo: return
     if not _warm_lock.acquire(blocking=False): return
     def run():
         try:
-            ds = ds_batch([c["mint"] for c in todo])
+            mints = [c["mint"] for c in todo]
+            try: ds, ds_ok = ds_batch(mints)
+            except Exception: ds, ds_ok = {}, False
+            gt, gt_ok = _unpack_hint(gt_hint) if gt_hint is not None else ({}, True)
+            need = [m for m in mints if m not in gt]
+            if need:
+                try:
+                    got, ok = gt_batch(need)
+                    gt.update(got); gt_ok = gt_ok and ok
+                except Exception:
+                    gt_ok = False
             for c in todo:
-                try: resolve(c["mint"], c.get("symbol"), ds_hint=ds)
+                try: resolve(c["mint"], c.get("symbol"), ds_hint=(ds, ds_ok), gt_hint=(gt, gt_ok))
                 except RuntimeError: time.sleep(3)
                 except Exception: pass
         finally: _warm_lock.release()

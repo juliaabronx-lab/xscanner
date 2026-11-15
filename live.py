@@ -198,6 +198,11 @@ def scan_once():
         _touch_ledger()
         status["published_epoch"] = time.time()
         status.update(snapshot_time=_now(), scans_ok=status["scans_ok"] + 1, last_scan_at=_now(), last_scan_epoch=int(time.time()), last_error=None)
+        try:
+            import images as im
+            im.warm([{"mint": c.get("mint"), "symbol": c.get("symbol")} for c in (r.get("top") or []) if c.get("mint")])
+        except Exception:
+            pass
     except Exception as e:
         status.update(scans_failed=status["scans_failed"] + 1, last_error=f"{type(e).__name__}: {e}"[:400])
     finally:

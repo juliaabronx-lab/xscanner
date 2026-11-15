@@ -350,7 +350,7 @@ def token_img(mint: str, request: Request, s: str = ""):
         if request.headers.get("if-none-match") == etag:
             return Response(status_code=304, headers=hdr)
         return FileResponse(path, media_type="image/webp", headers=hdr)
-    return Response(im.avatar_svg(mint, s), media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=3600"})
+    return Response(im.avatar_svg(mint, s), media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=300"})
 
 
 @app.get("/api/img-stats")
