@@ -1,0 +1,96 @@
+{
+ "version": 1,
+ "created": "2026-11-14T16:00+08:00",
+ "notes": [
+  "Run each query with the X public read tool search_posts_all (namespace 'x'); save each raw result as data/raw/<topic>_<n>.txt, then: python3 xfeed_ingest.py data/raw/<topic>_*.txt",
+  "X search has no engagement filter: min_likes/min_retweets are stripped by the tool, so ranking/filtering by likes and followers happens in the UI.",
+  "9 reads per full refresh. Limits: 30/min, 1000/day shared with other X use. Hourly refresh = ~216/day; every 30 min = ~432/day.",
+  "start_time: use (now - 12h); for incremental runs you may use since_id = newest id per query instead (only one of start_time/since_id)."
+ ],
+ "defaults": {
+  "tool": "x.search_posts_all",
+  "max_results": 25,
+  "start_time": "<now minus 12h, UTC ISO, e.g. 2026-11-13T20:00:00Z>",
+  "post.fields": [
+   "created_at",
+   "public_metrics",
+   "author_id",
+   "lang",
+   "entities"
+  ],
+  "expansions": [
+   "author_id"
+  ],
+  "user.fields": [
+   "username",
+   "name",
+   "public_metrics",
+   "verified"
+  ]
+ },
+ "queries": [
+  {
+   "topic": "memecoins",
+   "n": 1,
+   "sort_order": "recency",
+   "query": "(pump.fun OR \"solana memecoin\" OR \"CA:\") solana -is:retweet -is:reply",
+   "raw_file": "data/raw/memecoins_1.txt"
+  },
+  {
+   "topic": "memecoins",
+   "n": 2,
+   "sort_order": "recency",
+   "query": "(pump.fun OR pumpfun OR \"solana memecoin\" OR \"sol memecoin\") -is:retweet -is:reply is:verified",
+   "raw_file": "data/raw/memecoins_2.txt"
+  },
+  {
+   "topic": "memecoins",
+   "n": 3,
+   "sort_order": "relevancy",
+   "query": "(memecoin OR \"meme coin\" OR pump.fun) solana -is:retweet -is:reply lang:en",
+   "raw_file": "data/raw/memecoins_3.txt"
+  },
+  {
+   "topic": "politics",
+   "n": 1,
+   "sort_order": "recency",
+   "query": "(politics OR election OR congress OR senate OR \"white house\" OR parliament) -is:retweet -is:reply lang:en is:verified",
+   "raw_file": "data/raw/politics_1.txt"
+  },
+  {
+   "topic": "politics",
+   "n": 2,
+   "sort_order": "relevancy",
+   "query": "(breaking OR politics) (president OR government OR minister OR election OR tariff) -is:retweet -is:reply lang:en",
+   "raw_file": "data/raw/politics_2.txt"
+  },
+  {
+   "topic": "politics",
+   "n": 3,
+   "sort_order": "recency",
+   "query": "(trump OR biden OR congress OR senate OR geopolitics OR \"prime minister\") -is:retweet -is:reply lang:en is:verified",
+   "raw_file": "data/raw/politics_3.txt"
+  },
+  {
+   "topic": "tech",
+   "n": 1,
+   "sort_order": "recency",
+   "query": "(AI OR OpenAI OR Nvidia OR LLM OR \"artificial intelligence\" OR Anthropic OR xAI) -is:retweet -is:reply lang:en is:verified",
+   "raw_file": "data/raw/tech_1.txt"
+  },
+  {
+   "topic": "tech",
+   "n": 2,
+   "sort_order": "relevancy",
+   "query": "(tech OR startup OR AI) (launch OR funding OR \"Series A\" OR announces OR released) -is:retweet -is:reply lang:en",
+   "raw_file": "data/raw/tech_2.txt"
+  },
+  {
+   "topic": "tech",
+   "n": 3,
+   "sort_order": "recency",
+   "query": "(Apple OR Google OR Microsoft OR Tesla OR SpaceX OR Meta OR Amazon) (AI OR chip OR launch OR product) -is:retweet -is:reply lang:en is:verified",
+   "raw_file": "data/raw/tech_3.txt"
+  }
+ ]
+}

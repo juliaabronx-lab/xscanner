@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>xScanner · Solana memecoin CA scanner</title>
+<meta name="description" content="xScanner: free Solana / pump.fun memecoin scanner. Paste any token CA to check score, liquidity, rug risk, copycats, paid X shills and a live chart. Analysis only, no trading.">
+<meta property="og:title" content="xScanner · Solana memecoin CA scanner">
+<meta property="og:description" content="Paste a Solana token CA to scan rug risk, paid shills, copycats and a live chart. Free, read-only.">
+<link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+<link rel="apple-touch-icon" href="/static/logo.svg">
+<link rel="stylesheet" href="/static/style.css?v=fx1">
+<script>try{var _fx=JSON.parse(localStorage.getItem('xs_fx_v1')||'{}');if(_fx.motion===false||(matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches))document.documentElement.classList.add('fx-off')}catch(e){}</script>
+</head><body>
+<header class="top">
+  <div class="brand"><img class="logo" src="/static/logo.svg" alt="xScanner logo" width="34" height="34"><div><h1>x<span class="accent">Scanner</span></h1><small>Solana · pump.fun · analysis &amp; paper trades only</small></div></div>
+  <nav id="tabs">
+    <button data-v="feed" class="on">Coin feed</button>
+    <button data-v="narr">Narratives</button>
+    <button data-v="risk">Risk radar</button>
+    <button data-v="paper">Paper P&amp;L</button>
+    <button data-v="xfeed" id="xNav">X Live <span id="xNavBadge" class="nbadge hidden"></span></button>
+  </nav>
+  <div class="actions">
+    <div class="fxtog" role="group" aria-label="Motion and haptics">
+      <button type="button" id="fxMotion" class="on" aria-pressed="true" title="Smooth motion">Motion</button>
+      <button type="button" id="fxHap" class="on" aria-pressed="true" title="Haptic taps">Haptics</button>
+    </div>
+    <span id="scanInfo" class="muted"></span>
+    <button id="scanBtn" class="primary">▶ Run scan</button>
+  </div>
+</header>
+<form id="searchForm" class="search" autocomplete="off">
+  <span class="sicon">⌕</span>
+  <input id="searchIn" type="text" spellcheck="false" placeholder="Paste a Solana token CA (mint address) to scan…  e.g. 9cmX…pump" aria-label="Token contract address">
+  <button id="pasteBtn" type="button" class="ghost" title="Paste from clipboard">Paste</button>
+  <button id="searchBtn" type="submit" class="primary">Scan CA</button>
+</form>
+<div id="searchMsg" class="searchmsg hidden"></div>
+<div id="banner" class="banner hidden"></div>
+<section id="stats" class="stats"></section>
+
+<main>
+  <section id="v-feed" class="view">
+    <div class="filters">
+      <label>Min score <input type="range" id="fScore" min="0" max="100" value="0"><b id="fScoreV">0</b></label>
+      <label>Min liquidity $ <input type="number" id="fLiq" min="0" step="1000" value="0"></label>
+      <label class="chk"><input type="checkbox" id="fPump"> pump.fun only</label>
+      <label class="chk"><input type="checkbox" id="fPaid"> hide paid-shilled</label>
+      <label>Sort <select id="fSort"><option value="score">Score</option><option value="mcap">Market cap</option><option value="liq">Liquidity</option><option value="vol24">Volume 24h</option><option value="pc1">1h %</option><option value="pc24">24h %</option><option value="age_h">Age</option></select></label>
+      <span id="feedCount" class="muted"></span>
+      <div class="vtoggle" role="group" aria-label="Feed layout"><button data-l="grid" class="on" title="Card grid">▦ Cards</button><button data-l="table" title="Table">☰ Table</button></div>
+    </div>
+    <div id="cardGrid" class="tgrid"></div>
+    <div class="tablewrap hidden" id="tableWrap"><table id="feed"><thead><tr>
+      <th data-s="score">Score</th><th data-s="symbol">Coin</th><th data-s="tier">Tier</th><th data-s="mcap">MCap</th>
+      <th data-s="liq">Liq</th><th data-s="vol24">Vol 24h</th><th data-s="pc1">1h %</th><th data-s="pc24">24h %</th>
+      <th data-s="age_h">Age</th><th data-s="paid_share">Paid X</th><th>Flags</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section id="v-narr" class="view hidden">
+    <div class="grid2"><div class="card"><h3>Hot themes</h3><div id="themes"></div></div>
+    <div class="card"><h3>Blocked / blacklisted seen</h3><div id="blocked"></div></div></div>
+    <div id="narrCards" class="cards"></div>
+  </section>
+
+  <section id="v-risk" class="view hidden">
+    <div class="grid2">
+      <div class="card"><h3>Radar · <select id="radarSel"></select></h3><div id="radar"></div><div id="radarFlags" class="flaglist"></div></div>
+      <div class="card"><h3>Flag counts (coins at ≥ 50% on axis)</h3><div id="flagBars"></div></div>
+    </div>
+    <div class="card"><h3>Risk heatmap</h3><div class="tablewrap"><table id="heat"></table></div></div>
+  </section>
+
+  <section id="v-paper" class="view hidden">
+    <div id="paperKpis" class="stats inner"></div>
+    <div class="grid2"><div class="card"><h3>Cumulative realised P&amp;L (RM)</h3><div id="curve"></div></div>
+    <div class="card"><h3>Rules</h3><p id="rules" class="muted"></p><h3>Last run</h3><p id="lastRun" class="muted"></p></div></div>
+    <div class="card"><h3>Closed paper trades</h3><div class="tablewrap"><table id="trades"></table></div></div>
+    <div class="card"><h3>Candidate decisions (latest 60)</h3><div class="tablewrap"><table id="cands"></table></div></div>
+  </section>
+
+  <section id="v-xfeed" class="view hidden">
+    <div class="xtop">
+      <div id="xTopics" class="xtopics">
+        <button data-t="memecoins" class="on">🪙 Memecoins <span class="cnt"></span><span class="nbadge hidden"></span></button>
+        <button data-t="politics">🏛 Politics <span class="cnt"></span><span class="nbadge hidden"></span></button>
+        <button data-t="tech">🤖 Tech <span class="cnt"></span><span class="nbadge hidden"></span></button>
+      </div>
+      <div class="xctl">
+        <input id="xQ" type="search" placeholder="Filter keyword, $ticker, @handle, CA…" aria-label="Keyword filter">
+        <select id="xSort" title="Sort"><option value="latest">Latest</option><option value="top">Top (likes+reposts)</option></select>
+        <select id="xMinF" title="Minimum followers"><option value="0">Any followers</option><option value="1000">1K+ followers</option><option value="10000">10K+</option><option value="100000">100K+</option></select>
+        <label class="chk xcaonly"><input type="checkbox" id="xCaOnly"> CA posts only</label>
+        <select id="xEvery" title="Auto-refresh"><option value="15">⟳ 15s</option><option value="30">⟳ 30s</option><option value="0">⟳ off</option></select>
+        <span id="xLive" class="xlive"><i></i><span id="xStatus">loading…</span></span>
+      </div>
+    </div>
+    <button id="xNew" class="xnew hidden"></button>
+    <div id="xCards" class="xcards"></div>
+    <p class="muted xnote">Posts come from xScanner's X searches (public posts, newest first, up to 300 per topic). The page re-checks every few seconds; the feed itself grows each time a search refresh runs. Text is shown as posted: shill posts and CA calls are not endorsements. Analysis only, no trading or posting.</p>
+  </section>
+</main>
+
+<aside id="drawer" class="drawer"><button id="dClose" class="x">✕</button><div id="dBody"></div></aside>
+<div id="scrim" class="scrim"></div>
+<footer>Read-only. No wallet keys, signing, trading or posting. Score ≥65 worth a look · 50–64 watch · &lt;50 skip. Juliaa gives the final yes.</footer>
+<script src="/static/vendor/lightweight-charts.js?v=4.2.3"></script>
+<script>window.LightweightCharts||document.write('<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"><\/script>')</script>
+<script>window.__h0=location.hash</script>
+<script src="/static/motion.js?v=fx1"></script>
+<script src="/static/chart.js?v=fx1"></script>
+<script src="/static/app.js?v=fx1"></script>
+<script src="/static/xfeed.js?v=fx1"></script>
+</body></html>

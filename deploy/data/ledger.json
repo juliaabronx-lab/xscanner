@@ -1,0 +1,544 @@
+{
+ "started": "2026-11-07T16:23:00+08:00",
+ "ends": "2026-11-10T16:30:00+08:00",
+ "start_rm": 100,
+ "cash_rm": 50.46,
+ "usdc_profit_rm": 16.44,
+ "trade_size_rm": 20,
+ "fee_pct_per_swap": 2.0,
+ "rules": "1 position at a time; sell 100% at +25%; if peak >= +15% and falls to +10% sell; stop -15%; RM20 per trade (changed by Juliaa 7 Nov 9:01 PM); no trade if cash < RM20",
+ "open_position": null,
+ "closed_trades": [
+  {
+   "symbol": "STONKA",
+   "mint": "76inp9q4HxQUsGxEvxMhhjtx9DipbMrqssLQEcWABJnp",
+   "pool": "AwznmJrv3TKmVdJh4eLLSArRkSrpJ8jkX7uAnQcCBDa3",
+   "dex": "raydium",
+   "entry_time": "2026-11-07T17:14:00+08:00",
+   "entry_price_usd": 0.0001016,
+   "size_rm": 80,
+   "entry_cost_rm": 1.7,
+   "peak_gain_pct": 15.26,
+   "source": "filter coins 5:12 PM scan; 5-min breakout 4:15 PM on 7.2x vol; RugCheck 37 (low liq, missing metadata); mint/freeze off",
+   "note": "entered at current price after signal (delay modelled); chased after +39% in 1h",
+   "last_price_usd": 0.0001171,
+   "last_check": "2026-11-07T17:29:00+08:00",
+   "exit_time": "2026-11-07T17:39:00+08:00",
+   "exit_price_usd": 7.232e-05,
+   "exit_reason": "stop-loss -15% (seen at -28.8%, gapped through)",
+   "gain_pct": -28.82,
+   "exit_impact_pct": 0.17,
+   "exit_value_rm": 55.61,
+   "pnl_rm": -26.09
+  },
+  {
+   "symbol": "baton",
+   "mint": "Hg5Ja55T5wESq4vyFoiVCMeHXtGyVA69X2UHq8hgpump",
+   "pool": "Cb7ZRgPLhji3Th7htXyKEqbXvNjPpeTvckXuWakBUhXu",
+   "dex": "pumpswap",
+   "entry_time": "2026-11-07T21:23:00+08:00",
+   "entry_price_usd": 0.005637,
+   "size_rm": 20,
+   "entry_cost_rm": 0.5,
+   "peak_gain_pct": 7.54,
+   "source": "Juliaa pick 9:17 PM (her picks count as passed)",
+   "last_price_usd": 0.004682,
+   "last_check": "2026-11-08T15:32:22+08:00",
+   "exit_time": "2026-11-08T15:32:22+08:00",
+   "exit_price_usd": 0.004682,
+   "exit_reason": "stop-loss -15% (seen at -16.94%)",
+   "gain_pct": -16.94,
+   "exit_impact_pct": 0.02,
+   "exit_value_rm": 16.18,
+   "pnl_rm": -4.32,
+   "note": "DexScreener main pool 0.004682 used for fill; GeckoTerminal pool 0.004821, GT token 0.004740, other DexScreener pairs ~0.00474-0.00483. Peak 7.54% so no trail."
+  },
+  {
+   "symbol": "PIRATE",
+   "mint": "6mXFCoZ515w37YfmwXGJMPfQfiK5tr9WkihW3oN9pump",
+   "pool": "CKuwAXUbnxmeCNurN5VvyC7kLz42JnQtyh2nyFJ8Kv1X",
+   "dex": "pumpswap",
+   "entry_time": "2026-11-08T15:32:22+08:00",
+   "entry_price_usd": 7.703e-05,
+   "size_rm": 20,
+   "entry_cost_rm": 0.5,
+   "peak_gain_pct": 68.25,
+   "source": "Juliaa pick 9:20 PM (her picks count as passed); queued behind baton",
+   "last_price_usd": 0.0001296,
+   "last_check": "2026-11-08T16:56:03+08:00",
+   "exit_time": "2026-11-08T16:56:03+08:00",
+   "exit_price_usd": 0.0001296,
+   "exit_reason": "take-profit +25% (seen at +68.25%)",
+   "gain_pct": 68.25,
+   "exit_impact_pct": 0.05,
+   "exit_value_rm": 32.86,
+   "pnl_rm": 12.36,
+   "note": "DexScreener main pool 0.0001296 used for fill; GT pool 0.0001284 (+66.69%). Earlier DS pair prints this run 0.0001259 (+63.44%) then 0.0001271; later confirmed DS 0.0001296 used (rising, not stale). Peak 68.25% (was 14.4% last mark)."
+  },
+  {
+   "symbol": "Dacity",
+   "mint": "nxPqZ4F7ux8Vph5NFu25rEP6Kx9Gr1U6Fmj36Rjpump",
+   "pool": "G2UuRbmVDzDFP4qyoBJrSKBXSi7d6V4bPP9tHPs36y4b",
+   "dex": "pumpswap",
+   "entry_time": "2026-11-08T16:56:03+08:00",
+   "entry_price_usd": 0.007695,
+   "size_rm": 20,
+   "entry_cost_rm": 0.5,
+   "peak_gain_pct": 25.89993502274206,
+   "source": "Juliaa pick 9:21 PM (her picks count as passed); queued behind PIRATE",
+   "last_price_usd": 0.009688,
+   "last_check": "2026-11-10T15:54:00+08:00",
+   "exit_time": "2026-11-10T15:53:29+08:00",
+   "exit_price_usd": 0.009688,
+   "exit_reason": "take-profit +25% (seen at +25.9%)",
+   "gain_pct": 25.9,
+   "exit_value_rm": 24.58,
+   "pnl_rm": 4.08
+  },
+  {
+   "symbol": "CASHTAG",
+   "mint": "BoRsyzgtFw56gHqWgqb7wL45bMr9vQMF564j1Gvtcash",
+   "pool": "2t1QqxZK2eooiTbibDfv6BVLxepnA7MErc24SRkkBabo",
+   "dex": "pumpswap",
+   "entry_time": "2026-11-11T16:57:00+08:00",
+   "entry_price_usd": 0.0002545,
+   "size_rm": 40,
+   "net_invested_rm": 39.1,
+   "entry_cost_rm": 0.9,
+   "peak_gain_pct": 0.0,
+   "source": "Juliaa said yes buy RM40 (4:56 PM)",
+   "last_price_usd": 0.0001393,
+   "last_check": "2026-11-11T17:05:55+08:00",
+   "exit_time": "2026-11-11T17:05:55+08:00",
+   "exit_price_usd": 0.0001393,
+   "exit_reason": "stop-loss -10% (seen at -45.27%)",
+   "gain_pct": -45.27,
+   "exit_value_rm": 20.87,
+   "pnl_rm": -19.13,
+   "note": "DexScreener pair solana/2t1QqxZK2eooiTbibDfv6BVLxepnA7MErc24SRkkBabo priceUsd 0.0001393; full position sold (half_sold was false). Gross mark on net_invested RM39.10; sell fee 2% + RM0.10."
+  }
+ ],
+ "candidates_seen": [
+  {
+   "time": "2026-11-07T16:41:00+08:00",
+   "ticker": "FLOAT",
+   "mint": "Bv1a7cEj5aRnJQhMw4kRQqAFesMSd5LwcDnUzq52BMmr",
+   "source": "pumpfun-called/latest.json (scan 16:40)",
+   "decision": "skipped",
+   "reason": "Unverified required checks: bundled/sniped supply (absence of risk label is not verification); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T16:41:00+08:00",
+   "ticker": "Anakin",
+   "mint": "ExxzYBTt3jwU5MUxuw2F4toYbTLdFwThSjyaCn6Xpump",
+   "source": "pumpfun-called/latest.json (scan 16:40)",
+   "decision": "skipped",
+   "reason": "hundreds of linked/insider wallets; Unverified required checks: bundled/sniped supply (absence of risk label is not verification); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T16:41:00+08:00",
+   "ticker": "GEO",
+   "mint": "EKLoy5h6ynFdYoMxTyiDmoforXeLUtFNYJaFjgoHpump",
+   "source": "pumpfun-called/latest.json (scan 16:40)",
+   "decision": "skipped",
+   "reason": "age threshold failed; same ticker has higher liquidity pool; young-pair volume >=4x market cap; top-10 holders >60% (raw RugCheck holders, may include pools); Unverified required checks: liquidity, bundled/sniped supply (absence of risk label is not verification), entry signal (insufficient/unavailable contiguous closed candles); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T16:41:00+08:00",
+   "ticker": "GEO",
+   "mint": "2aGPy5apcr5ZsGxJdDBtufMRmaWTJ93HWsQTqVWipump",
+   "source": "pumpfun-called/latest.json (scan 16:40)",
+   "decision": "skipped",
+   "reason": "age threshold failed; same ticker has higher liquidity pool; Unverified required checks: liquidity, bundled/sniped supply (absence of risk label is not verification), entry signal (insufficient/unavailable contiguous closed candles); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T16:41:00+08:00",
+   "ticker": "GEO",
+   "mint": "BU7rUVKaQq5NFDyANoetU1ZQfL5E6f6nE4DGgcSTpump",
+   "source": "pumpfun-called/latest.json (scan 16:40)",
+   "decision": "skipped",
+   "reason": "age threshold failed; liquidity threshold failed; trades threshold failed; same ticker has higher liquidity pool; top-10 holders >60% (raw RugCheck holders, may include pools); Unverified required checks: bundled/sniped supply (absence of risk label is not verification), entry signal (insufficient/unavailable contiguous closed candles); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T16:47:00+08:00",
+   "ticker": "GEO",
+   "mint": "EKLoy5h6ynFdYoMxTyiDmoforXeLUtFNYJaFjgoHpump",
+   "source": "pumpfun-called/latest.json (scan 16:46)",
+   "decision": "skipped",
+   "reason": "re-check: still REJECT; age threshold failed; same ticker has higher liquidity pool; young-pair volume >=4x market cap; top-10 holders >60% (raw RugCheck holders, may include pools); Unverified required checks: liquidity, bundled/sniped supply (absence of risk label is not verification), entry signal (insufficient/unavailable contiguous closed candles); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T16:47:00+08:00",
+   "ticker": "FLOAT",
+   "mint": "Bv1a7cEj5aRnJQhMw4kRQqAFesMSd5LwcDnUzq52BMmr",
+   "source": "pumpfun-called/latest.json (scan 16:46)",
+   "decision": "skipped",
+   "reason": "re-check: still REJECT; Unverified required checks: bundled/sniped supply (absence of risk label is not verification); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T16:47:00+08:00",
+   "ticker": "Anakin",
+   "mint": "ExxzYBTt3jwU5MUxuw2F4toYbTLdFwThSjyaCn6Xpump",
+   "source": "pumpfun-called/latest.json (scan 16:46)",
+   "decision": "skipped",
+   "reason": "re-check: still REJECT; hundreds of linked/insider wallets; Unverified required checks: bundled/sniped supply (absence of risk label is not verification); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T16:47:00+08:00",
+   "ticker": "GEO",
+   "mint": "2aGPy5apcr5ZsGxJdDBtufMRmaWTJ93HWsQTqVWipump",
+   "source": "pumpfun-called/latest.json (scan 16:46)",
+   "decision": "skipped",
+   "reason": "re-check: still REJECT; age threshold failed; same ticker has higher liquidity pool; Unverified required checks: liquidity, bundled/sniped supply (absence of risk label is not verification), entry signal (insufficient/unavailable contiguous closed candles); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T16:47:00+08:00",
+   "ticker": "GEO",
+   "mint": "BU7rUVKaQq5NFDyANoetU1ZQfL5E6f6nE4DGgcSTpump",
+   "source": "pumpfun-called/latest.json (scan 16:46)",
+   "decision": "skipped",
+   "reason": "re-check: still REJECT; age threshold failed; liquidity threshold failed; trades threshold failed; same ticker has higher liquidity pool; top-10 holders >60% (raw RugCheck holders, may include pools); Unverified required checks: bundled/sniped supply (absence of risk label is not verification), entry signal (insufficient/unavailable contiguous closed candles); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T16:56:00+08:00",
+   "ticker": "FLOAT",
+   "mint": "Bv1a7cEj5aRnJQhMw4kRQqAFesMSd5LwcDnUzq52BMmr",
+   "source": "pumpfun-called/latest.json (scan 16:51)",
+   "decision": "skipped",
+   "reason": "re-check: still REJECT; Unverified required checks: bundled/sniped supply (absence of risk label is not verification); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T16:56:00+08:00",
+   "ticker": "Anakin",
+   "mint": "ExxzYBTt3jwU5MUxuw2F4toYbTLdFwThSjyaCn6Xpump",
+   "source": "pumpfun-called/latest.json (scan 16:51)",
+   "decision": "skipped",
+   "reason": "re-check: still REJECT; hundreds of linked/insider wallets; Unverified required checks: bundled/sniped supply (absence of risk label is not verification); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T16:56:00+08:00",
+   "ticker": "GEO",
+   "mint": "EKLoy5h6ynFdYoMxTyiDmoforXeLUtFNYJaFjgoHpump",
+   "source": "pumpfun-called/latest.json (scan 16:51)",
+   "decision": "skipped",
+   "reason": "re-check: still REJECT; age threshold failed; same ticker has higher liquidity pool; young-pair volume >=4x market cap; top-10 holders >60% (raw RugCheck holders, may include pools); Unverified required checks: liquidity, bundled/sniped supply (absence of risk label is not verification), entry signal (insufficient/unavailable contiguous closed candles)"
+  },
+  {
+   "time": "2026-11-07T16:56:00+08:00",
+   "ticker": "GEO",
+   "mint": "2aGPy5apcr5ZsGxJdDBtufMRmaWTJ93HWsQTqVWipump",
+   "source": "pumpfun-called/latest.json (scan 16:51)",
+   "decision": "skipped",
+   "reason": "re-check: still REJECT; age threshold failed; liquidity threshold failed; same ticker has higher liquidity pool; Unverified required checks: bundled/sniped supply (absence of risk label is not verification), entry signal (insufficient/unavailable contiguous closed candles)"
+  },
+  {
+   "time": "2026-11-07T16:56:00+08:00",
+   "ticker": "GEO",
+   "mint": "BU7rUVKaQq5NFDyANoetU1ZQfL5E6f6nE4DGgcSTpump",
+   "source": "pumpfun-called/latest.json (scan 16:51)",
+   "decision": "skipped",
+   "reason": "re-check: still REJECT; age threshold failed; liquidity threshold failed; trades threshold failed; same ticker has higher liquidity pool; top-10 holders >60% (raw RugCheck holders, may include pools); Unverified required checks: bundled/sniped supply (absence of risk label is not verification), entry signal (insufficient/unavailable contiguous closed candles)"
+  },
+  {
+   "time": "2026-11-07T17:07:00+08:00",
+   "ticker": "GEO",
+   "mint": "5kdrBdhRK68bAa6vJoSZ8cHEDLDoHG92c3bgoGZXpump",
+   "source": "pumpfun-called/latest.json (scan 17:03)",
+   "decision": "skipped",
+   "reason": "still REJECT; age threshold failed; trades threshold failed; same ticker has higher liquidity pool; top-10 holders >60% (raw RugCheck holders, may include pools); Unverified required checks: liquidity, bundled/sniped supply (absence of risk label is not verification), entry signal (insufficient/unavailable contiguous closed candles); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T17:07:00+08:00",
+   "ticker": "SpudCell",
+   "mint": "FZPXToHYcXPHC5n7yBAJhtkiYZGLBoCmN2A1vyxEpump",
+   "source": "pumpfun-called/latest.json (scan 17:03)",
+   "decision": "skipped",
+   "reason": "still REJECT; age threshold failed; same ticker has higher liquidity pool; young-pair volume >=4x market cap; top-10 holders >60% (raw RugCheck holders, may include pools); Unverified required checks: liquidity, bundled/sniped supply (absence of risk label is not verification), entry signal (insufficient/unavailable contiguous closed candles); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T17:07:00+08:00",
+   "ticker": "FLOAT",
+   "mint": "Bv1a7cEj5aRnJQhMw4kRQqAFesMSd5LwcDnUzq52BMmr",
+   "source": "pumpfun-called/latest.json (scan 17:03)",
+   "decision": "skipped",
+   "reason": "still REJECT; Unverified required checks: bundled/sniped supply (absence of risk label is not verification); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T17:07:00+08:00",
+   "ticker": "Anakin",
+   "mint": "ExxzYBTt3jwU5MUxuw2F4toYbTLdFwThSjyaCn6Xpump",
+   "source": "pumpfun-called/latest.json (scan 17:03)",
+   "decision": "skipped",
+   "reason": "still REJECT; hundreds of linked/insider wallets; Unverified required checks: bundled/sniped supply (absence of risk label is not verification); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T17:07:00+08:00",
+   "ticker": "GEO",
+   "mint": "EKLoy5h6ynFdYoMxTyiDmoforXeLUtFNYJaFjgoHpump",
+   "source": "pumpfun-called/latest.json (scan 17:03)",
+   "decision": "skipped",
+   "reason": "still REJECT; age threshold failed; same ticker has higher liquidity pool; young-pair volume >=4x market cap; top-10 holders >60% (raw RugCheck holders, may include pools); Unverified required checks: liquidity, bundled/sniped supply (absence of risk label is not verification), entry signal (insufficient/unavailable contiguous closed candles); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T17:07:00+08:00",
+   "ticker": "GEO",
+   "mint": "2aGPy5apcr5ZsGxJdDBtufMRmaWTJ93HWsQTqVWipump",
+   "source": "pumpfun-called/latest.json (scan 17:03)",
+   "decision": "skipped",
+   "reason": "still REJECT; age threshold failed; liquidity threshold failed; same ticker has higher liquidity pool; Unverified required checks: bundled/sniped supply (absence of risk label is not verification), entry signal (insufficient/unavailable contiguous closed candles); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T17:07:00+08:00",
+   "ticker": "GEO",
+   "mint": "BU7rUVKaQq5NFDyANoetU1ZQfL5E6f6nE4DGgcSTpump",
+   "source": "pumpfun-called/latest.json (scan 17:03)",
+   "decision": "skipped",
+   "reason": "still REJECT; age threshold failed; liquidity threshold failed; trades threshold failed; same ticker has higher liquidity pool; top-10 holders >60% (raw RugCheck holders, may include pools); Unverified required checks: bundled/sniped supply (absence of risk label is not verification), entry signal (insufficient/unavailable contiguous closed candles); no entry breakout signal"
+  },
+  {
+   "time": "2026-11-07T17:14:00+08:00",
+   "symbol": "NETWORK",
+   "mint": "8THZ69JP2ErZuHVj4G5rcwkFfsQafp5mQsaoQReApump",
+   "decision": "skip",
+   "reason": "RugCheck danger: large amount of LP unlocked; signal 4h stale; price flat"
+  },
+  {
+   "time": "2026-11-07T17:14:00+08:00",
+   "symbol": "STONKA",
+   "decision": "paper buy",
+   "reason": "passes filters + breakout; flags not disqualifying"
+  },
+  {
+   "time": "2026-11-07T17:39:00+08:00",
+   "ticker": "-",
+   "decision": "no scan",
+   "reason": "cash RM73.91 below RM80 trade size; no new trades possible under rules"
+  },
+  {
+   "time": "2026-11-07T21:07:00+08:00",
+   "ticker": "COGE",
+   "mint": "8UQdy5sHMVWUWSHeA5B3ZuuAVNumjSLPXdf19MXcpump",
+   "source": "GeckoTerminal Solana trending pump.fun/PumpSwap pools + latest.json 21:00",
+   "decision": "skipped",
+   "reason": "no breakout: 1h close 0.00842 below 24h high 0.0245, vol 0.47x"
+  },
+  {
+   "time": "2026-11-07T21:07:00+08:00",
+   "ticker": "HODL",
+   "mint": "DKtofLM6bhb54GQy5YFSWQjQmGiZqAkjzkQJ1LTopump",
+   "source": "GeckoTerminal Solana trending pump.fun/PumpSwap pools + latest.json 21:00",
+   "decision": "skipped",
+   "reason": "no breakout: 5m close below recent high, vol 0.38x"
+  },
+  {
+   "time": "2026-11-07T21:07:00+08:00",
+   "ticker": "Alice",
+   "mint": "BdouwEr3mwXkT6S6EmHNCjn9oEtykRKCKiUSTRF9pump",
+   "source": "GeckoTerminal Solana trending pump.fun/PumpSwap pools + latest.json 21:00",
+   "decision": "skipped",
+   "reason": "no breakout (vol 0.59x); NVDAx quote pool"
+  },
+  {
+   "time": "2026-11-07T21:07:00+08:00",
+   "ticker": "Diamond",
+   "mint": "5VCEFq1aATjga39QtDunYjJqYBx67w8V8TXwHrqopump",
+   "source": "GeckoTerminal Solana trending pump.fun/PumpSwap pools + latest.json 21:00",
+   "decision": "skipped",
+   "reason": "no breakout, down ~83% from 24h high"
+  },
+  {
+   "time": "2026-11-07T21:07:00+08:00",
+   "ticker": "WEALTH",
+   "mint": "8Mi9E1V2bdPeAaRkR5yxUsAvpzP6UBUEEUrYmgKNpump",
+   "source": "GeckoTerminal Solana trending pump.fun/PumpSwap pools + latest.json 21:00",
+   "decision": "skipped",
+   "reason": "1h close above 24h high but vol only 1.47x (<2x)"
+  },
+  {
+   "time": "2026-11-07T21:07:00+08:00",
+   "ticker": "Rocco",
+   "mint": "HZbiEpF2oM658EpjNRRqxharz5L9Ddm8akpSH2R5pump",
+   "source": "GeckoTerminal Solana trending pump.fun/PumpSwap pools + latest.json 21:00",
+   "decision": "skipped",
+   "reason": "no breakout, vol 0.3x"
+  },
+  {
+   "time": "2026-11-07T21:07:00+08:00",
+   "ticker": "NIO",
+   "mint": "7SL2VnfYsChvog5oQY9Nmtqu1wceaMiQzWoqoLQpump",
+   "source": "GeckoTerminal Solana trending pump.fun/PumpSwap pools + latest.json 21:00",
+   "decision": "skipped",
+   "reason": "no breakout, vol 0.16x"
+  },
+  {
+   "time": "2026-11-07T21:07:00+08:00",
+   "ticker": "SLINGFOLIO",
+   "mint": "GoqdpMVvqawNUvdfTmqXvvoSaDRrqDQexzG7wzf2pump",
+   "source": "GeckoTerminal Solana trending pump.fun/PumpSwap pools + latest.json 21:00",
+   "decision": "skipped",
+   "reason": "no breakout, vol 0.6x"
+  },
+  {
+   "time": "2026-11-07T21:07:00+08:00",
+   "ticker": "RM",
+   "mint": "EW1b9rcLAJe634mgxb5r4bVYxDoGU37o7YazBzjTpump",
+   "source": "GeckoTerminal Solana trending pump.fun/PumpSwap pools + latest.json 21:00",
+   "decision": "skipped",
+   "reason": "no breakout, down ~89%"
+  },
+  {
+   "time": "2026-11-07T21:07:00+08:00",
+   "ticker": "GabeHorn",
+   "mint": "3QcYNgx6tNRK8V8n1rS3xD2bjMkbFeEpg3qEGY7npump",
+   "source": "GeckoTerminal Solana trending pump.fun/PumpSwap pools + latest.json 21:00",
+   "decision": "skipped",
+   "reason": "no breakout, vol 0.03x"
+  },
+  {
+   "time": "2026-11-07T21:07:00+08:00",
+   "ticker": "duge",
+   "mint": "iW4XP2BWd3iqf1LMZvpsKidb49wVAh3S8SfNUsDpump",
+   "source": "GeckoTerminal Solana trending pump.fun/PumpSwap pools + latest.json 21:00",
+   "decision": "skipped",
+   "reason": "no breakout: 5m close below recent high, vol 1.32x"
+  },
+  {
+   "time": "2026-11-07T21:07:00+08:00",
+   "ticker": "inu",
+   "mint": "Bid8i1ocWssjRmKh2kcUfHxD1K6Sk7E5pV2PSVdepump",
+   "source": "GeckoTerminal Solana trending pump.fun/PumpSwap pools + latest.json 21:00",
+   "decision": "skipped",
+   "reason": "no breakout, vol 0.38x"
+  },
+  {
+   "time": "2026-11-07T21:07:00+08:00",
+   "ticker": "HATCH",
+   "mint": "46r5vJSK4vZWvU4roBXoQYoBZE8d4nmN3b6wRa6Gpump",
+   "source": "GeckoTerminal Solana trending pump.fun/PumpSwap pools + latest.json 21:00",
+   "decision": "skipped",
+   "reason": "no breakout, vol 0.76x"
+  },
+  {
+   "time": "2026-11-07T21:07:00+08:00",
+   "ticker": "ANSEM/SI276/GATO/swordcat/OTC/baton/CATE/fone/JEANPHIL",
+   "mint": "-",
+   "source": "GeckoTerminal Solana trending pump.fun/PumpSwap pools + latest.json 21:00",
+   "decision": "skipped",
+   "reason": "older than 20 days"
+  },
+  {
+   "time": "2026-11-07T21:07:00+08:00",
+   "ticker": "pumpfun-called latest.json (8 coins)",
+   "mint": "-",
+   "source": "GeckoTerminal Solana trending pump.fun/PumpSwap pools + latest.json 21:00",
+   "decision": "skipped",
+   "reason": "all REJECT by scanner (FLOAT not pump.fun; Anakin insiders; GEO copies/top10>60%; SpudCell, Cat top10>60%)"
+  },
+  {
+   "time": "2026-11-07T21:20:00+08:00",
+   "ticker": "baton",
+   "mint": "Hg5Ja55T5wESq4vyFoiVCMeHXtGyVA69X2UHq8hgpump",
+   "source": "Juliaa",
+   "decision": "skipped",
+   "reason": "sent by Juliaa 9:17 PM; ~58 days old (>20d rule); no breakout"
+  },
+  {
+   "time": "2026-11-07T21:20:00+08:00",
+   "ticker": "PIRATE",
+   "mint": "6mXFCoZ515w37YfmwXGJMPfQfiK5tr9WkihW3oN9pump",
+   "source": "Juliaa",
+   "decision": "watch",
+   "reason": "sent by Juliaa 9:20 PM; passes age/fees/trades/RugCheck (score 1, LP 97.5% locked); no breakout yet (-13% 6h). Re-check each run for hourly close above 24h high on >2x volume; paper buy RM20 if it triggers"
+  },
+  {
+   "time": "2026-11-07T21:22:00+08:00",
+   "ticker": "Dacity",
+   "mint": "nxPqZ4F7ux8Vph5NFu25rEP6Kx9Gr1U6Fmj36Rjpump",
+   "source": "Juliaa",
+   "decision": "skipped",
+   "reason": "sent by Juliaa 9:21 PM; ~27 days old (>20d rule); RugCheck clean; no breakout (+3% 1h, -3% 24h)"
+  },
+  {
+   "time": "2026-11-07T21:23:00+08:00",
+   "ticker": "baton",
+   "decision": "paper buy",
+   "reason": "Juliaa: coins she mentions count as passed"
+  },
+  {
+   "time": "2026-11-07T21:23:00+08:00",
+   "ticker": "COGE,HODL,Alice,Diamond,WEALTH,Rocco,NIO,SLINGFOLIO,RM,duge,GabeHorn,inu,HATCH",
+   "mint": "-",
+   "source": "GeckoTerminal trending pump.fun/PumpSwap pools",
+   "decision": "skipped",
+   "reason": "re-check: no breakout signal on any (closes below recent high and/or volume under 2x; WEALTH 1h candle still 1.47x vol, now stale)"
+  },
+  {
+   "time": "2026-11-07T21:23:00+08:00",
+   "ticker": "scanner latest.json 21:18 (8 coins)",
+   "mint": "-",
+   "source": "pumpfun-called/latest.json",
+   "decision": "skipped",
+   "reason": "same 8 coins, all still REJECT"
+  },
+  {
+   "time": "2026-11-08T15:32:22+08:00",
+   "ticker": "baton",
+   "mint": "Hg5Ja55T5wESq4vyFoiVCMeHXtGyVA69X2UHq8hgpump",
+   "source": "open position mark",
+   "decision": "paper sell",
+   "reason": "stop-loss -15%; DexScreener main pool 0.004682 (-16.94%), GT pool 0.004821 (-14.48%), GT token 0.004740 (-15.91%)"
+  },
+  {
+   "time": "2026-11-08T15:32:22+08:00",
+   "ticker": "PIRATE",
+   "mint": "6mXFCoZ515w37YfmwXGJMPfQfiK5tr9WkihW3oN9pump",
+   "source": "juliaa_picks_queue (sent 9:20 PM 7 Nov)",
+   "decision": "paper buy",
+   "reason": "Juliaa pick counts as passed; bought at DexScreener main-pool price 0.00007703 (GT 0.00007806); RM20; entry impact ~0.04% on $24.2k PumpSwap SOL pool"
+  },
+  {
+   "time": "2026-11-08T16:56:03+08:00",
+   "ticker": "PIRATE",
+   "mint": "6mXFCoZ515w37YfmwXGJMPfQfiK5tr9WkihW3oN9pump",
+   "source": "open position mark",
+   "decision": "paper sell",
+   "reason": "take-profit +25%; DexScreener main pool 0.0001296 (+68.25%), GT pool 0.0001284 (+66.69%)"
+  },
+  {
+   "time": "2026-11-08T16:56:03+08:00",
+   "ticker": "Dacity",
+   "mint": "nxPqZ4F7ux8Vph5NFu25rEP6Kx9Gr1U6Fmj36Rjpump",
+   "source": "juliaa_picks_queue (sent 9:21 PM 7 Nov)",
+   "decision": "paper buy",
+   "reason": "Juliaa pick counts as passed; bought at DexScreener main-pool (PumpSwap Dacity/TTWO) price 0.007695 (GT 0.00771187; Meteora Dacity/SOL 0.007703); RM20; entry impact ~0.00% on $423k PumpSwap pool"
+  },
+  {
+   "time": "2026-11-10T15:54:00+08:00",
+   "ticker": "Dacity",
+   "decision": "paper sell",
+   "reason": "take-profit +25%; 0.009688 (+25.9%); recorded by parent"
+  },
+  {
+   "time": "2026-11-11T16:57:00+08:00",
+   "ticker": "CASHTAG",
+   "decision": "paper buy",
+   "reason": "Juliaa said yes buy RM40 (4:56 PM)"
+  },
+  {
+   "time": "2026-11-11T17:05:55+08:00",
+   "ticker": "CASHTAG",
+   "mint": "BoRsyzgtFw56gHqWgqb7wL45bMr9vQMF564j1Gvtcash",
+   "source": "open position mark",
+   "decision": "paper sell",
+   "reason": "stop-loss -10%; DexScreener main pool 0.0001393 (-45.27%); full RM40 closed for RM20.87, P&L RM-19.13"
+  }
+ ],
+ "last_run": "2026-11-11T17:05:55+08:00",
+ "last_run_note": "CASHTAG full stop-loss at -45.27%; sold for RM20.87, P&L RM-19.13; cash now RM50.46. Routine to be deleted.",
+ "fixed_cost_rm_per_swap": 0.1,
+ "cost_note": "Updated 7 Nov 4:55 PM per strategys report: 2% per swap + RM0.10 network; fill at the next run price; exit-liquidity check",
+ "daily_summary_sent": "2026-11-07",
+ "juliaa_picks_queue": [],
+ "dacity_close_notified": true,
+ "rules_v2": "CASHTAG (11 Nov): sell half at +10%; sell rest at +20%; stop -10% before half sold; after half sold, stop on rest at breakeven (entry). 2% + RM0.10 per swap."
+}

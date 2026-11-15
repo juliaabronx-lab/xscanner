@@ -1,0 +1,890 @@
+{
+ "generated_myt": "2026-11-14 14:51 MYT",
+ "elapsed_s": 1.7,
+ "x_posts": 274,
+ "x_shill_posts": 210,
+ "coins_checked": 197,
+ "deep_checked": 18,
+ "themes": [
+  [
+   "pepe",
+   [
+    "DOPE",
+    "PEPE",
+    "Pepe"
+   ]
+  ]
+ ],
+ "blacklisted_seen": [
+  "AMC",
+  "ASTRALIS",
+  "Christmax",
+  "JENSEN",
+  "WOHAIHAO",
+  "mihao"
+ ],
+ "top": [
+  {
+   "score": 60,
+   "parts": {
+    "x": 17.7,
+    "market": 33.0,
+    "safety": 25.0
+   },
+   "name": "Wishmas ",
+   "symbol": "WISHMAS",
+   "mint": "9cmXfuC26anZtH9AUWVzpUxU1UJ7PPogYxftYTepump",
+   "pool": "FcsUythNUWbfT7RP2yuFp1kiWjft15du9WtgLUrrqx3p",
+   "dex": "pumpswap",
+   "url": "https://dexscreener.com/solana/fcsuythnuwbft7rp2yufp1kiwjft15du9wtglurrqx3p",
+   "age_h": 9.1,
+   "liq": 30469.56,
+   "mcap": 143648,
+   "vol24": 1682176.86,
+   "m5": [
+    84,
+    35
+   ],
+   "h1": [
+    1262,
+    539
+   ],
+   "pc5": 4.63,
+   "pc1": 2.29,
+   "pc24": 362,
+   "fees_est": 44.2,
+   "boosts": 10,
+   "reason": "X 21/h vs 14.3/h avg; 4 organic / 10 shill X accts; 1h 1262b/539s, 2.29%; mcap $144K, liq $30K, age 9.1h",
+   "flags": [
+    "paid DexScreener boost (10)",
+    "80% of X posts are paid shills (@alpha_trader_1, @apx_gmso21, @coinbullrun1)",
+    "15 same-name copycats exist",
+    "mostly paid-shilled: capped at 60 (CASHTAG lesson)"
+   ],
+   "copycats": 15,
+   "x": {
+    "mentions": 25,
+    "authors": 14,
+    "organic_authors": 4,
+    "shill_authors": 10,
+    "organic_eng": 10,
+    "organic_followers": 3428,
+    "last1h": 6,
+    "shill_share": 0.8,
+    "phishing": 0,
+    "shill_reasons": {
+     "templated call text": 17,
+     "same text repeated": 3,
+     "multi-coin caller": 1,
+     "known call-group acct": 2,
+     "hashtag spam": 1,
+     "bare CA/ticker drop": 3
+    },
+    "shill_accts": [
+     "alpha_trader_1",
+     "apx_gmso21",
+     "coinbullrun1",
+     "coinpump01",
+     "gio_bioo",
+     "hanhee0902"
+    ]
+   },
+   "vel": {
+    "last": 21,
+    "prev_avg": 14.3,
+    "ratio": 1.44,
+    "total": 213
+   },
+   "rugcheck": {
+    "score": 1,
+    "risks": [],
+    "top10": 19.8,
+    "top1": 2.9,
+    "insiders": 0,
+    "holders": 4221,
+    "liq": 30774.70382785302,
+    "price": 0.00014892907368049325,
+    "mcap": 142174.37161822408,
+    "rugged": false,
+    "mint_auth": null,
+    "freeze_auth": null,
+    "creator": "7K6wxyYjieAXdzSmpGdS4FshN1uAA4LGnUvdE8mPhPKM",
+    "creator_tokens": 0,
+    "creator_rugged": 0,
+    "insider_networks": 3,
+    "bundle_pct": 3.0,
+    "bundle_wallets": 24,
+    "launchpad": "Pump.Fun"
+   },
+   "organic_examples": [
+    "https://x.com/faheemdil2/status/2121469786404372792",
+    "https://x.com/luzrolkx33/status/2121490952476930322"
+   ]
+  },
+  {
+   "score": 39,
+   "parts": {
+    "x": 12.7,
+    "market": 6.8,
+    "safety": 20.0
+   },
+   "name": "Macca The Gator",
+   "symbol": "Macca",
+   "mint": "AKotzk1dhcNangAJBtvNKtT9bhbSVZc2mMhRFgkFpump",
+   "pool": "4FoNNNMMKMa66ppCiA9557cg63s2BNN9UoFcaKxXbmvg",
+   "dex": "pumpswap",
+   "url": "https://dexscreener.com/solana/4fonnnmmkma66ppcia9557cg63s2bnn9uofcakxxbmvg",
+   "age_h": 713.2,
+   "liq": 204634.06999999998,
+   "mcap": 2254569,
+   "vol24": 920309.54,
+   "m5": [
+    10,
+    8
+   ],
+   "h1": [
+    99,
+    92
+   ],
+   "pc5": -0.09,
+   "pc1": -3.34,
+   "pc24": 83.12,
+   "fees_est": 8.7,
+   "boosts": 0,
+   "reason": "1 organic / 0 shill X accts; 1h 99b/92s, -3.34%; mcap $2255K, liq $205K, age 713.2h",
+   "flags": [
+    "bundle: 28 linked wallets hold 4.8%",
+    "13 same-name copycats exist",
+    "weak X narrative (<3 organic accounts, no acceleration)"
+   ],
+   "copycats": 13,
+   "x": {
+    "mentions": 1,
+    "authors": 1,
+    "organic_authors": 1,
+    "shill_authors": 0,
+    "organic_eng": 4,
+    "organic_followers": 273,
+    "last1h": 1,
+    "shill_share": 0.0,
+    "phishing": 0,
+    "shill_reasons": {},
+    "shill_accts": []
+   },
+   "vel": null,
+   "rugcheck": {
+    "score": 1,
+    "risks": [],
+    "top10": 18.4,
+    "top1": 3.7,
+    "insiders": 0,
+    "holders": 15025,
+    "liq": 204686.79508565526,
+    "price": 0.002319849375208424,
+    "mcap": 2211365.552543708,
+    "rugged": false,
+    "mint_auth": null,
+    "freeze_auth": null,
+    "creator": "7rGJCiVow7JqJekov6rgb2WVxjz9RaqQHL1RYsP2UKz",
+    "creator_tokens": 0,
+    "creator_rugged": 0,
+    "insider_networks": 3,
+    "bundle_pct": 4.8,
+    "bundle_wallets": 28,
+    "launchpad": "Pump.Fun"
+   },
+   "organic_examples": [
+    "https://x.com/domi_esser/status/2121486712857829786"
+   ]
+  },
+  {
+   "score": 37,
+   "parts": {
+    "x": 0.0,
+    "market": 11.7,
+    "safety": 25.0
+   },
+   "name": "GTA6CAT",
+   "symbol": "GATO",
+   "mint": "HsprHxBRgiVaQdRf3TnKNuZZtaX9JUSPgMFdAkk6pump",
+   "pool": "5E3dXLXGwmTDCokA51WYYaKttjFZBwqCoyUHBUi5gt2m",
+   "dex": "pumpswap",
+   "url": "https://dexscreener.com/solana/5e3dxlxgwmtdcoka51wyyakttjfzbwqcoyuhbui5gt2m",
+   "age_h": 1938.4,
+   "liq": 414702.29000000004,
+   "mcap": 8981781,
+   "vol24": 2065904.5,
+   "m5": [
+    18,
+    27
+   ],
+   "h1": [
+    441,
+    384
+   ],
+   "pc5": -0.67,
+   "pc1": -5.23,
+   "pc24": 69,
+   "fees_est": 32.1,
+   "boosts": 100,
+   "reason": "0 organic / 0 shill X accts; 1h 441b/384s, -5.23%; mcap $8982K, liq $415K, age 1938.4h",
+   "flags": [
+    "paid DexScreener boost (100)",
+    "1 same-name copycats exist",
+    "weak X narrative (<3 organic accounts, no acceleration)"
+   ],
+   "copycats": 1,
+   "x": {
+    "mentions": 0,
+    "authors": 0,
+    "organic_authors": 0,
+    "shill_authors": 0,
+    "organic_eng": 0,
+    "organic_followers": 0,
+    "last1h": 0,
+    "shill_share": 0.0,
+    "phishing": 0,
+    "shill_reasons": {},
+    "shill_accts": []
+   },
+   "vel": null,
+   "rugcheck": {
+    "score": 1,
+    "risks": [],
+    "top10": 16.3,
+    "top1": 3.0,
+    "insiders": 0,
+    "holders": 26446,
+    "liq": 420639.0640462072,
+    "price": 0.0084078708012667,
+    "mcap": 8297728.284044441,
+    "rugged": false,
+    "mint_auth": null,
+    "freeze_auth": null,
+    "creator": "5MVneCfDge5vtf4C7QZmczCJbBB8vfvDbMqvopvkBLJm",
+    "creator_tokens": 0,
+    "creator_rugged": 0,
+    "insider_networks": 2,
+    "bundle_pct": 2.1,
+    "bundle_wallets": 10,
+    "launchpad": "Pump.Fun"
+   },
+   "organic_examples": []
+  },
+  {
+   "score": 35,
+   "parts": {
+    "x": 6.0,
+    "market": 22.0,
+    "safety": 25.0
+   },
+   "name": "Cyber Super Inu",
+   "symbol": "CSI",
+   "mint": "CRwB4GxVDM4Bnh8QMqh9Nk8UZNscced3xec824vxpump",
+   "pool": "8f95uFDBHsXaErCMCDxboE3AfePWLUkzomhkGSYdTP5M",
+   "dex": "pumpswap",
+   "url": "https://dexscreener.com/solana/8f95ufdbhsxaercmcdxboe3afepwlukzomhkgsydtp5m",
+   "age_h": 8.2,
+   "liq": 40808.74,
+   "mcap": 300188,
+   "vol24": 1661701.83,
+   "m5": [
+    352,
+    91
+   ],
+   "h1": [
+    6591,
+    1088
+   ],
+   "pc5": -6.76,
+   "pc1": -47.94,
+   "pc24": 598,
+   "fees_est": 107.8,
+   "boosts": 0,
+   "reason": "X 9/h vs 9.7/h avg; 0 organic / 15 shill X accts; 1h 6591b/1088s, -47.94%; mcap $300K, liq $41K, age 8.2h",
+   "flags": [
+    "fading -47.94% 1h (stale signal)",
+    "100% of X posts are paid shills (@alpha_calls100, @apx_gmso21, @apx_gmso2i)",
+    "3 same-name copycats exist",
+    "weak X narrative (<3 organic accounts, no acceleration)",
+    "mostly paid-shilled: capped at 60 (CASHTAG lesson)"
+   ],
+   "copycats": 3,
+   "x": {
+    "mentions": 28,
+    "authors": 15,
+    "organic_authors": 0,
+    "shill_authors": 15,
+    "organic_eng": 0,
+    "organic_followers": 0,
+    "last1h": 7,
+    "shill_share": 1.0,
+    "phishing": 0,
+    "shill_reasons": {
+     "templated call text": 20,
+     "multi-coin caller": 2,
+     "same text repeated": 5,
+     "bare CA/ticker drop": 8,
+     "hashtag spam": 7,
+     "known call-group acct": 5
+    },
+    "shill_accts": [
+     "alpha_calls100",
+     "apx_gmso21",
+     "apx_gmso2i",
+     "cipheredgecalls",
+     "coinbullrun1",
+     "legend_britney"
+    ]
+   },
+   "vel": {
+    "last": 9,
+    "prev_avg": 9.7,
+    "ratio": 0.88,
+    "total": 83
+   },
+   "rugcheck": {
+    "score": 1,
+    "risks": [],
+    "top10": 1.1,
+    "top1": 0.2,
+    "insiders": 0,
+    "holders": 7992,
+    "liq": 40725.466357588004,
+    "price": 0.0003093827105339231,
+    "mcap": 308261.7936632651,
+    "rugged": false,
+    "mint_auth": null,
+    "freeze_auth": null,
+    "creator": "3vKq88SxKKrtQAdX7WhxMiVJjFWTsykdJcWbJsFEwsqF",
+    "creator_tokens": 0,
+    "creator_rugged": 0,
+    "insider_networks": 0,
+    "bundle_pct": 0.0,
+    "bundle_wallets": 0,
+    "launchpad": "Pump.Fun"
+   },
+   "organic_examples": []
+  },
+  {
+   "score": 35,
+   "parts": {
+    "x": 10.0,
+    "market": 21.8,
+    "safety": 25.0
+   },
+   "name": "rapid acceleration",
+   "symbol": "r/acc",
+   "mint": "Hx1H9xGMuFRJcnVyzJb7VVyiFXnDh47xUYWt5JGtpump",
+   "pool": "6rpaXwgnSBaUkUpv8yi2Kzcy3K9ZxH1YczkXdEGf4aXR",
+   "dex": "pumpswap",
+   "url": "https://dexscreener.com/solana/6rpaxwgnsbaukupv8yi2kzcy3k9zxh1yczkxdegf4axr",
+   "age_h": 0.1,
+   "liq": 19768.43,
+   "mcap": 56905,
+   "vol24": 61478.94,
+   "m5": [
+    1335,
+    1003
+   ],
+   "h1": [
+    1335,
+    1003
+   ],
+   "pc5": 24.33,
+   "pc1": 24.33,
+   "pc24": 24.33,
+   "fees_est": 2.3,
+   "boosts": 0,
+   "reason": "X 9/h vs 0.0/h avg; 0 organic / 0 shill X accts; 1h 1335b/1003s, 24.33%; mcap $57K, liq $20K, age 0.1h",
+   "flags": [
+    "thin liq $20K",
+    "est fees ~2.3 SOL (<10)",
+    "weak X narrative (<3 organic accounts, no acceleration)"
+   ],
+   "copycats": 0,
+   "x": {
+    "mentions": 0,
+    "authors": 0,
+    "organic_authors": 0,
+    "shill_authors": 0,
+    "organic_eng": 0,
+    "organic_followers": 0,
+    "last1h": 0,
+    "shill_share": 0.0,
+    "phishing": 0,
+    "shill_reasons": {},
+    "shill_accts": []
+   },
+   "vel": {
+    "last": 9,
+    "prev_avg": 0.0,
+    "ratio": 99.0,
+    "total": 7
+   },
+   "rugcheck": {
+    "score": 1,
+    "risks": [],
+    "top10": 16.7,
+    "top1": 2.7,
+    "insiders": 0,
+    "holders": 1018,
+    "liq": 18747.355184803215,
+    "price": 5.0495984088958885e-05,
+    "mcap": 49214.191037073586,
+    "rugged": false,
+    "mint_auth": null,
+    "freeze_auth": null,
+    "creator": "7V3JbSGjaSjpNQ6aeP8NK2sZQqt3JaJyyqKkg3mR6Bz",
+    "creator_tokens": 0,
+    "creator_rugged": 0,
+    "insider_networks": 0,
+    "bundle_pct": 0.0,
+    "bundle_wallets": 0,
+    "launchpad": "Pump.Fun"
+   },
+   "organic_examples": []
+  },
+  {
+   "score": 31,
+   "parts": {
+    "x": 10.3,
+    "market": 18.3,
+    "safety": 15.0
+   },
+   "name": "UP Syndrome",
+   "symbol": "UP",
+   "mint": "A5bpyAGdSPKwX3YDyF563DmbVSfM3EcYgBPjPna8pump",
+   "pool": "AMb1VtZB1ooixnssf8NbX8EtCysT8bSb7vuQ1SjvTF3u",
+   "dex": "pumpswap",
+   "url": "https://dexscreener.com/solana/amb1vtzb1ooixnssf8nbx8etcyst8bsb7vuq1sjvtf3u",
+   "age_h": 2.6,
+   "liq": 20742.59,
+   "mcap": 71380,
+   "vol24": 1024100.9,
+   "m5": [
+    225,
+    186
+   ],
+   "h1": [
+    4253,
+    3234
+   ],
+   "pc5": -18.1,
+   "pc1": 18.25,
+   "pc24": 160,
+   "fees_est": 29.4,
+   "boosts": 0,
+   "reason": "X 21/h vs 59.0/h avg; 1 organic / 19 shill X accts; 1h 4253b/3234s, 18.25%; mcap $71K, liq $21K, age 2.6h",
+   "flags": [
+    "X chatter cooling (21/h vs 59.0/h)",
+    "BUNDLE: 13 linked wallets hold 20.5%",
+    "97% of X posts are paid shills (@0xanon01, @_hillscaller, @apx_gmso21)",
+    "weak X narrative (<3 organic accounts, no acceleration)",
+    "mostly paid-shilled: capped at 60 (CASHTAG lesson)"
+   ],
+   "copycats": 0,
+   "x": {
+    "mentions": 30,
+    "authors": 20,
+    "organic_authors": 1,
+    "shill_authors": 19,
+    "organic_eng": 24,
+    "organic_followers": 1019,
+    "last1h": 4,
+    "shill_share": 0.97,
+    "phishing": 0,
+    "shill_reasons": {
+     "multi-coin caller": 1,
+     "same text repeated": 8,
+     "bare CA/ticker drop": 15,
+     "templated call text": 20,
+     "hashtag spam": 6,
+     "known call-group acct": 4
+    },
+    "shill_accts": [
+     "0xanon01",
+     "_hillscaller",
+     "apx_gmso21",
+     "apx_gmso2i",
+     "charlie_sol23",
+     "cipher_belle1"
+    ]
+   },
+   "vel": {
+    "last": 21,
+    "prev_avg": 59.0,
+    "ratio": 0.35,
+    "total": 194
+   },
+   "rugcheck": {
+    "score": 1,
+    "risks": [],
+    "top10": 15.5,
+    "top1": 3.2,
+    "insiders": 0,
+    "holders": 3484,
+    "liq": 22439.642322270895,
+    "price": 7.563999353555305e-05,
+    "mcap": 69912.09593547614,
+    "rugged": false,
+    "mint_auth": null,
+    "freeze_auth": null,
+    "creator": "BhGKXbr5ydHwfPNT1JQBSdnmtqkM24CBFqME5HqWDLSd",
+    "creator_tokens": 0,
+    "creator_rugged": 0,
+    "insider_networks": 3,
+    "bundle_pct": 20.5,
+    "bundle_wallets": 13,
+    "launchpad": "Pump.Fun"
+   },
+   "organic_examples": [
+    "https://x.com/climamonterrey/status/2121495318416240643"
+   ]
+  },
+  {
+   "score": 31,
+   "parts": {
+    "x": 19.8,
+    "market": 0.0,
+    "safety": 25.0
+   },
+   "name": "slasherinu",
+   "symbol": "slasherinu",
+   "mint": "9kZ4abkWLjYh76RMcf8rZWLH6KCTkLzaU1pBdb22pump",
+   "pool": "CBqKH2bHnar8ymS5Fmwy33t8TbSEmaxMpAVykcTJZCBg",
+   "dex": "pumpfun",
+   "url": "https://dexscreener.com/solana/cbqkh2bhnar8yms5fmwy33t8tbsemaxmpavykctjzcbg",
+   "age_h": 4.5,
+   "liq": 1689.4538253184287,
+   "mcap": 2129.92,
+   "vol24": 74.5,
+   "m5": [
+    0,
+    0
+   ],
+   "h1": [
+    0,
+    0
+   ],
+   "pc5": null,
+   "pc1": null,
+   "pc24": -0.66,
+   "fees_est": 0.0,
+   "boosts": 0,
+   "reason": "1 organic / 0 shill X accts; 1h 0b/0s, None%; mcap $2K, liq $2K, age 4.5h",
+   "flags": [
+    "no momentum (0 trades/1h)",
+    "thin liq $2K",
+    "est fees ~0.0 SOL (<10)",
+    "4 same-name copycats exist",
+    "weak X narrative (<3 organic accounts, no acceleration)"
+   ],
+   "copycats": 4,
+   "x": {
+    "mentions": 1,
+    "authors": 1,
+    "organic_authors": 1,
+    "shill_authors": 0,
+    "organic_eng": 99,
+    "organic_followers": 65911,
+    "last1h": 0,
+    "shill_share": 0.0,
+    "phishing": 0,
+    "shill_reasons": {},
+    "shill_accts": []
+   },
+   "vel": null,
+   "rugcheck": {
+    "score": 1,
+    "risks": [],
+    "top10": null,
+    "top1": null,
+    "insiders": 0,
+    "holders": 1,
+    "liq": 1689.4538253184287,
+    "price": 2.13019017149956e-06,
+    "mcap": 2130.19017149956,
+    "rugged": false,
+    "mint_auth": null,
+    "freeze_auth": null,
+    "creator": "7kGSqea5QfnYMWegR88Pv1HWmXhTxRdm29ARduYedcAj",
+    "creator_tokens": 0,
+    "creator_rugged": 0,
+    "insider_networks": 0,
+    "bundle_pct": 0.0,
+    "bundle_wallets": 0,
+    "launchpad": "Pump.Fun"
+   },
+   "organic_examples": [
+    "https://x.com/THFO351/status/2121465967305965570"
+   ]
+  },
+  {
+   "score": 28,
+   "parts": {
+    "x": 8.2,
+    "market": 11.9,
+    "safety": 20.0
+   },
+   "name": "BallsCoin",
+   "symbol": "BALLS",
+   "mint": "F77uzRN1E4CW9ReUGfdPKrmuuYkqHqz21gu9CAS6pump",
+   "pool": "FtkRfwYevpHrmafkSSPb8hs2Sx7Dau5t3PvsXSotoQjm",
+   "dex": "pumpfun",
+   "url": "https://dexscreener.com/solana/ftkrfwyevphrmafksspb8hs2sx7dau5t3pvsxsotoqjm",
+   "age_h": 1.1,
+   "liq": 6084.677849564549,
+   "mcap": 19874.38127652268,
+   "vol24": 114343.66,
+   "m5": [
+    22,
+    25
+   ],
+   "h1": [
+    1194,
+    925
+   ],
+   "pc5": -20.23,
+   "pc1": 55.19,
+   "pc24": 602,
+   "fees_est": 3.1,
+   "boosts": 0,
+   "reason": "X 7/h vs 0.7/h avg; 0 organic / 6 shill X accts; 1h 1194b/925s, 55.19%; mcap $20K, liq $6K, age 1.1h",
+   "flags": [
+    "bundle: 3 linked wallets hold 9.7%",
+    "thin liq $6K",
+    "est fees ~3.1 SOL (<10)",
+    "100% of X posts are paid shills (@bitecong, @dex_kolwatcher, @exrdev)",
+    "weak X narrative (<3 organic accounts, no acceleration)",
+    "mostly paid-shilled: capped at 60 (CASHTAG lesson)"
+   ],
+   "copycats": 0,
+   "x": {
+    "mentions": 6,
+    "authors": 6,
+    "organic_authors": 0,
+    "shill_authors": 6,
+    "organic_eng": 0,
+    "organic_followers": 0,
+    "last1h": 5,
+    "shill_share": 1.0,
+    "phishing": 0,
+    "shill_reasons": {
+     "multi-coin caller": 2,
+     "known call-group acct": 2,
+     "templated call text": 2,
+     "bare CA/ticker drop": 2,
+     "reply-spam with CA": 1
+    },
+    "shill_accts": [
+     "bitecong",
+     "dex_kolwatcher",
+     "exrdev",
+     "jaydenbecker24",
+     "mcsampson013",
+     "thomassuttonjr1"
+    ]
+   },
+   "vel": {
+    "last": 7,
+    "prev_avg": 0.7,
+    "ratio": 10.95,
+    "total": 8
+   },
+   "rugcheck": {
+    "score": 1,
+    "risks": [],
+    "top10": 25.9,
+    "top1": 3.5,
+    "insiders": 0,
+    "holders": 434,
+    "liq": 6084.677849564549,
+    "price": 1.9874381418360695e-05,
+    "mcap": 19874.38127652268,
+    "rugged": false,
+    "mint_auth": null,
+    "freeze_auth": null,
+    "creator": "At2HP4FBy7g16coiNNdXTuWFsKVicBjAZvE855Pj8jRa",
+    "creator_tokens": 0,
+    "creator_rugged": 0,
+    "insider_networks": 1,
+    "bundle_pct": 9.7,
+    "bundle_wallets": 3,
+    "launchpad": "Pump.Fun"
+   },
+   "organic_examples": []
+  },
+  {
+   "score": 24,
+   "parts": {
+    "x": 1.9,
+    "market": 17.0,
+    "safety": 15.0
+   },
+   "name": "AudaCity",
+   "symbol": "DacityCoin",
+   "mint": "DKYcjobF7HPtL9RyQBRdeRQ2iWvizpfbgWwPWNXdpump",
+   "pool": "7Te1wXcfeQjKLGHXFvxSCnGZTqunoZ9fxBn7KKjrkNEr",
+   "dex": "pumpswap",
+   "url": "https://dexscreener.com/solana/7te1wxcfeqjklghxfvxscngztqunoz9fxbn7kkjrkner",
+   "age_h": 713.4,
+   "liq": 505471.01,
+   "mcap": 4930103,
+   "vol24": 977054.66,
+   "m5": [
+    15,
+    20
+   ],
+   "h1": [
+    103,
+    195
+   ],
+   "pc5": 2.64,
+   "pc1": 7.88,
+   "pc24": -1.77,
+   "fees_est": 8.1,
+   "boosts": 0,
+   "reason": "0 organic / 1 shill X accts; 1h 103b/195s, 7.88%; mcap $4930K, liq $505K, age 713.4h",
+   "flags": [
+    "BUNDLE: 1228 linked wallets hold 32.1%",
+    "weak X narrative (<3 organic accounts, no acceleration)"
+   ],
+   "copycats": 0,
+   "x": {
+    "mentions": 1,
+    "authors": 1,
+    "organic_authors": 0,
+    "shill_authors": 1,
+    "organic_eng": 0,
+    "organic_followers": 0,
+    "last1h": 1,
+    "shill_share": 1.0,
+    "phishing": 0,
+    "shill_reasons": {
+     "multi-coin caller": 1
+    },
+    "shill_accts": [
+     "saggerdudemax"
+    ]
+   },
+   "vel": null,
+   "rugcheck": {
+    "score": 1,
+    "risks": [],
+    "top10": 22.2,
+    "top1": 3.0,
+    "insiders": 0,
+    "holders": 30889,
+    "liq": 504658.9270869703,
+    "price": 0.004990336082318916,
+    "mcap": 4842139.296909786,
+    "rugged": false,
+    "mint_auth": null,
+    "freeze_auth": null,
+    "creator": "6o4f7pRKcNZtKy2bnpJtMN51nt66DcX6iNnaVw4PvWNv",
+    "creator_tokens": 0,
+    "creator_rugged": 0,
+    "insider_networks": 10,
+    "bundle_pct": 32.1,
+    "bundle_wallets": 1228,
+    "launchpad": "Pump.Fun"
+   },
+   "organic_examples": []
+  },
+  {
+   "score": 21,
+   "parts": {
+    "x": 4.5,
+    "market": 0.7,
+    "safety": 25.0
+   },
+   "name": "Peace Frog",
+   "symbol": "PEACEFROG",
+   "mint": "m7SihqeaWimE1zpBzjHBwKJbbhuaczX5fHvGoNupump",
+   "pool": "8cXat7ipJ8kAm2c1kRfM33qahggHMs3NtSq41Q6PyGDc",
+   "dex": "pumpswap",
+   "url": "https://dexscreener.com/solana/8cxat7ipj8kam2c1krfm33qahgghms3ntsq41q6pygdc",
+   "age_h": 10.2,
+   "liq": 21181.2,
+   "mcap": 64210,
+   "vol24": 400475.39,
+   "m5": [
+    2,
+    9
+   ],
+   "h1": [
+    36,
+    51
+   ],
+   "pc5": -7.54,
+   "pc1": -15.89,
+   "pc24": 173,
+   "fees_est": 7.7,
+   "boosts": 100,
+   "reason": "X 1/h vs 3.0/h avg; 0 organic / 7 shill X accts; 1h 36b/51s, -15.89%; mcap $64K, liq $21K, age 10.2h",
+   "flags": [
+    "no momentum (87 trades/1h)",
+    "fading -15.89% 1h (stale signal)",
+    "paid DexScreener boost (100)",
+    "100% of X posts are paid shills (@0xanon01, @_coinchic, @coinpump01)",
+    "weak X narrative (<3 organic accounts, no acceleration)",
+    "mostly paid-shilled: capped at 60 (CASHTAG lesson)"
+   ],
+   "copycats": 0,
+   "x": {
+    "mentions": 10,
+    "authors": 7,
+    "organic_authors": 0,
+    "shill_authors": 7,
+    "organic_eng": 0,
+    "organic_followers": 0,
+    "last1h": 3,
+    "shill_share": 1.0,
+    "phishing": 0,
+    "shill_reasons": {
+     "templated call text": 10,
+     "same text repeated": 1,
+     "bare CA/ticker drop": 2,
+     "reply-spam with CA": 1
+    },
+    "shill_accts": [
+     "0xanon01",
+     "_coinchic",
+     "coinpump01",
+     "eazy_sol_",
+     "jeetslayer00",
+     "legend_britney"
+    ]
+   },
+   "vel": {
+    "last": 1,
+    "prev_avg": 3.0,
+    "ratio": 0.4,
+    "total": 55
+   },
+   "rugcheck": {
+    "score": 1,
+    "risks": [],
+    "top10": 10.5,
+    "top1": 2.6,
+    "insiders": 0,
+    "holders": 1483,
+    "liq": 21134.516840944332,
+    "price": 9.014871520315774e-05,
+    "mcap": 63836.36031963633,
+    "rugged": false,
+    "mint_auth": null,
+    "freeze_auth": null,
+    "creator": "G6hPuy6sVuVgGVHghg6Si36x9LJxjmM3guEvZ9ZYLxkd",
+    "creator_tokens": 0,
+    "creator_rugged": 0,
+    "insider_networks": 2,
+    "bundle_pct": 0.5,
+    "bundle_wallets": 10,
+    "launchpad": "Pump.Fun"
+   },
+   "organic_examples": []
+  }
+ ]
+}

@@ -1,0 +1,16 @@
+# Optional named host: https://xscanner.onrender.com (Render free web service; needs a Render account + a GitHub repo).
+services:
+  - type: web
+    name: xscanner            # becomes xscanner.onrender.com if the name is free
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PUBLIC_READONLY
+        value: "1"            # no Run scan; CA lookup + charts stay free for anyone
+      - key: SCANNER_DIR
+        value: deploy/data    # snapshot of report.json + dashboard_data.json
+      - key: LEDGER_PATH
+        value: deploy/data/ledger.json

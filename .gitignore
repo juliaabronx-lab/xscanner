@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+*.log
+*.pid
+.ssh/
+.env
+*.pem
+*.key
+id_*
