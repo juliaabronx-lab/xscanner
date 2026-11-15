@@ -21,6 +21,7 @@ INTERVAL = max(60, min(int(os.environ.get("LIVE_SCAN_INTERVAL", "120")), 900))
 X_INTERVAL = max(300, int(os.environ.get("LIVE_X_INTERVAL", "1800")))
 SCAN_TIMEOUT = int(os.environ.get("LIVE_SCAN_TIMEOUT", "150"))
 WORK, SERVE = os.path.join(LIVE_DIR, "work"), os.path.join(LIVE_DIR, "serve")
+THIN_KEEP_S = int(os.environ.get("LIVE_THIN_KEEP_S", "1800"))   # keep a full list up to 30 min over a thin scan
 
 status = {"enabled": ENABLED, "interval_s": INTERVAL, "running": False, "scans_ok": 0, "scans_failed": 0,
           "last_scan_at": None, "last_scan_epoch": None, "last_attempt_at": None, "last_error": None,
@@ -80,6 +81,7 @@ def _touch_ledger():
 def prepare(snapshot_dir, xfeed_path):
     """Create work/serve dirs seeded from the bundled snapshot. Returns (serve_dir, xfeed_path_to_serve)."""
     os.makedirs(WORK, exist_ok=True); os.makedirs(SERVE, exist_ok=True)
+    status["published_epoch"] = time.time()   # the bundled snapshot counts as freshly published at startup
     for f in ("scan.py", "config.json", "x_raw.json"):
         src = os.path.join(snapshot_dir, f)
         if os.path.exists(src): shutil.copy2(src, os.path.join(WORK, f))
@@ -182,11 +184,19 @@ def scan_once():
         if not r.get("top") or not r.get("coins_checked"):
             raise RuntimeError(f"scan came back empty (upstream APIs rate-limited: {status.get('http')}); kept previous data")
         status["last_counts"] = {"coins_checked": r.get("coins_checked"), "deep_checked": r.get("deep_checked"), "top": len(r["top"])}
+        # thin scan guard: when DexScreener rate-limits us, a 2-coin result must not replace a full list
+        try: prev_top = len(json.load(open(os.path.join(SERVE, "report.json"))).get("top") or [])
+        except Exception: prev_top = 0
+        pub_age = time.time() - (status.get("published_epoch") or 0)
+        if len(r["top"]) < 5 and prev_top >= 5 and pub_age < THIN_KEEP_S:
+            status["thin_skipped"] = status.get("thin_skipped", 0) + 1
+            raise RuntimeError(f"thin scan ({len(r['top'])} coins, upstream rate-limited); kept the previous {prev_top}-coin list")
         for f in ("dashboard_data.json", "report.json"):
             src = os.path.join(WORK, f)
             if os.path.exists(src):
                 tmp = os.path.join(SERVE, f + ".tmp"); shutil.copy2(src, tmp); os.replace(tmp, os.path.join(SERVE, f))
         _touch_ledger()
+        status["published_epoch"] = time.time()
         status.update(snapshot_time=_now(), scans_ok=status["scans_ok"] + 1, last_scan_at=_now(), last_scan_epoch=int(time.time()), last_error=None)
     except Exception as e:
         status.update(scans_failed=status["scans_failed"] + 1, last_error=f"{type(e).__name__}: {e}"[:400])
