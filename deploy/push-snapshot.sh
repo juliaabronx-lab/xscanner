@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Refresh the hosted xScanner snapshot: rebuild the clean bundle into the deploy repo, scan it for secrets,
-# commit and push. The host (Render) redeploys automatically on push. Not scheduled; run by hand.
+# commit and push. NOTE: the Render service (srv-dbsfsc0n74is739ojmkg) was added by public repo URL, so it does NOT
+# auto-deploy on push: after pushing, an agent must call Render trigger_deploy (or click Manual Deploy). Not scheduled.
 # Usage: deploy/push-snapshot.sh [repo_dir]   (default /workspace/xscanner-deploy, must have an 'origin' remote)
 set -euo pipefail
 REPO=${1:-/workspace/xscanner-deploy}
@@ -13,4 +14,4 @@ git add -A
 if git diff --cached --quiet; then echo "snapshot unchanged, nothing to push"; exit 0; fi
 git commit -q -m "snapshot $(date '+%Y-%m-%d %H:%M %Z')"
 git push -q origin HEAD
-echo "pushed; Render will redeploy"
+echo "pushed; now trigger a Render deploy for srv-dbsfsc0n74is739ojmkg (no auto-deploy)"
