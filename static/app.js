@@ -1,7 +1,7 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const usd=v=>{if(v==null||v===''||!isFinite(+v))return'—';v=+v;const a=Math.abs(v);
-  for(const[d,u]of[[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e3,'K']])if(a>=d)return'$'+(v/d).toFixed(a/d>=100?0:a/d>=10?1:2)+u;
+  for(const[d,u]of[[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e3,'K']])if(a>=d){let s=(v/d).toFixed(a/d>=100?0:a/d>=10?1:2);if(s.includes('.'))s=s.replace(/0+$/,'').replace(/\.$/,'');return'$'+s+u}
   return a>=1||a===0?'$'+v.toFixed(0):(typeof fmtPx==='function'?fmtPx(v):'$'+v.toPrecision(2))};
 const pct=v=>v==null||v===''||!isFinite(+v)?'—':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${(+v).toFixed(1)}%</span>`;
 const rm=v=>v==null?'—':`<span class="${v>=0?'up':'dn'}">RM${(+v).toFixed(2)}</span>`;

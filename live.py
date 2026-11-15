@@ -30,6 +30,9 @@ status = {"enabled": ENABLED, "interval_s": INTERVAL, "running": False, "scans_o
                                        "last_fetch_at": None, "last_error": None,
                                        "last_ingest_at": None, "last_ingest": None}}
 _gecko_backoff_until = 0.0
+_pump_backoff_until = 0.0
+_dex_backoff_until = 0.0
+_last_good_seeds = {"geckoterminal": [], "pumpfun": [], "dexscreener_search": [], "dexscreener_boosts": []}
 _started = False
 _kick = threading.Event()   # set by an X ingest to start the next scan right away
 _ingest_lock = threading.Lock()
@@ -85,32 +88,75 @@ def prepare(snapshot_dir, xfeed_path):
     for f in ("scan.py", "config.json", "x_raw.json"):
         src = os.path.join(snapshot_dir, f)
         if os.path.exists(src): shutil.copy2(src, os.path.join(WORK, f))
-    for f in ("report.json", "dashboard_data.json"):
-        src, dst = os.path.join(snapshot_dir, f), os.path.join(SERVE, f)
-        if os.path.exists(src) and not os.path.exists(dst): shutil.copy2(src, dst)
     try:
         status["snapshot_time"] = status["bundle_snapshot_time"] = open(os.path.join(snapshot_dir, "SNAPSHOT_TIME")).read().strip()
     except Exception:
-        pass
+        status["snapshot_time"] = status["bundle_snapshot_time"] = _now()
+    for f in ("report.json", "dashboard_data.json"):
+        src, dst = os.path.join(snapshot_dir, f), os.path.join(SERVE, f)
+        if os.path.exists(src) and not os.path.exists(dst):
+            shutil.copy2(src, dst)
+            try:  # bundled files can be days old; stamp dates so a cold start isn't stuck on e.g. 14 Nov
+                d = json.load(open(dst, encoding="utf-8"))
+                raw = status.get("bundle_snapshot_time") or _now()
+                try:
+                    dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                    if dt.tzinfo is None: dt = dt.replace(tzinfo=MYT)
+                    label = dt.astimezone(MYT).strftime("%Y-%m-%d %H:%M MYT")
+                except Exception:
+                    label = _now()
+                if f == "report.json":
+                    d["generated_myt"] = label
+                if f == "dashboard_data.json":
+                    d["scanTime"] = label
+                _atomic_write(dst, d)
+            except Exception:
+                pass
     xf = os.path.join(LIVE_DIR, "x_feed.json")
     if os.path.exists(xfeed_path) and not os.path.exists(xf): shutil.copy2(xfeed_path, xf)
     return SERVE, xf
 
 
 # ---------------------------------------------------------------- seed sources (all public, no key)
+def _seeds_path():
+    return os.path.join(LIVE_DIR, "last_seeds.json")
+
+
+def _load_last_seeds():
+    try:
+        d = json.load(open(_seeds_path()))
+        if isinstance(d, dict):
+            for k, v in d.items():
+                if isinstance(v, list):
+                    _last_good_seeds[k] = [m for m in v if isinstance(m, str) and 32 <= len(m) <= 44]
+    except Exception:
+        pass
+
+
+def _save_last_seeds():
+    try:
+        os.makedirs(LIVE_DIR, exist_ok=True)
+        _atomic_write(_seeds_path(), {k: v[-90:] for k, v in _last_good_seeds.items()})
+    except Exception:
+        pass
+
+
 def _seeds_gecko():
     global _gecko_backoff_until
     if time.time() < _gecko_backoff_until:
         raise RuntimeError(f"rate limited, backing off {int(_gecko_backoff_until - time.time())}s")
     out = []
-    for path in ("trending_pools?page=1", "new_pools?page=1"):
+    # One page each, with a pause between calls so we don't burst the shared IP (charts use this host too).
+    for i, path in enumerate(("trending_pools?page=1", "new_pools?page=1")):
+        if i:
+            time.sleep(1.6)
         try:
             d = _get("https://api.geckoterminal.com/api/v2/networks/solana/" + path)
         except urllib.error.HTTPError as e:
             if e.code == 429:
-                _gecko_backoff_until = time.time() + 600   # GeckoTerminal often 429s cloud IPs: skip 10 min
+                _gecko_backoff_until = time.time() + 180
                 if out: break
-                raise RuntimeError("429 rate limited (skipping GeckoTerminal for 10 min)")
+                raise RuntimeError("429 rate limited (skipping GeckoTerminal for 3 min)")
             raise
         for p in d.get("data") or []:
             tid = (((p.get("relationships") or {}).get("base_token") or {}).get("data") or {}).get("id") or ""
@@ -120,13 +166,20 @@ def _seeds_gecko():
 
 def _seeds_pump():
     # pump.fun's public frontend API sits behind Cloudflare and often refuses server IPs; best effort only.
+    global _pump_backoff_until
+    if time.time() < _pump_backoff_until:
+        raise RuntimeError(f"unavailable, backing off {int(_pump_backoff_until - time.time())}s")
     out = []
     for path in ("coins/currently-live?limit=30&offset=0&includeNsfw=false",
                  "coins?offset=0&limit=30&sort=last_trade_timestamp&order=DESC&includeNsfw=false"):
         try:
             d = _get("https://frontend-api-v3.pump.fun/" + path, timeout=8)
         except Exception as e:
-            if not out and path.startswith("coins?"): raise RuntimeError(f"unavailable ({getattr(e, 'code', type(e).__name__)})")
+            code = getattr(e, "code", None)
+            if code in (403, 429, 503):
+                _pump_backoff_until = time.time() + (1800 if code == 403 else 300)
+            if not out and path.startswith("coins?"):
+                raise RuntimeError(f"unavailable ({code or type(e).__name__})")
             continue
         for c in (d if isinstance(d, list) else d.get("coins") or []):
             if isinstance(c, dict) and c.get("mint"): out.append(c["mint"])
@@ -134,10 +187,22 @@ def _seeds_pump():
 
 
 def _seeds_dexscreener():
+    global _dex_backoff_until
+    if time.time() < _dex_backoff_until:
+        raise RuntimeError(f"rate limited, backing off {int(_dex_backoff_until - time.time())}s")
     # scan.py already pulls boosts + profiles; add DexScreener's pump.fun/pumpswap search for fresh pairs.
     out = []
-    for q in ("pumpswap", "pump.fun"):
-        d = _get("https://api.dexscreener.com/latest/dex/search?q=" + urllib.parse.quote(q), tries=3)
+    for i, q in enumerate(("pumpswap", "pump.fun")):
+        if i:
+            time.sleep(1.0)
+        try:
+            d = _get("https://api.dexscreener.com/latest/dex/search?q=" + urllib.parse.quote(q), tries=2)
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                _dex_backoff_until = time.time() + 180
+                if out: break
+                raise
+            raise
         for p in d.get("pairs") or []:
             if p.get("chainId") == "solana":
                 a = (p.get("baseToken") or {}).get("address") or ""  # noqa
@@ -145,19 +210,68 @@ def _seeds_dexscreener():
     return out
 
 
+def _seeds_dex_boosts():
+    """Cheap DexScreener lists (60/min cap, separate from the search endpoint). Solana mints only."""
+    global _dex_backoff_until
+    if time.time() < _dex_backoff_until:
+        raise RuntimeError(f"rate limited, backing off {int(_dex_backoff_until - time.time())}s")
+    out = []
+    for i, path in enumerate(("token-boosts/top/v1", "token-boosts/latest/v1", "token-profiles/latest/v1")):
+        if i:
+            time.sleep(0.8)
+        try:
+            d = _get("https://api.dexscreener.com/" + path, tries=2)
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                _dex_backoff_until = time.time() + 180
+                if out: break
+                raise
+            continue
+        rows = d if isinstance(d, list) else (d.get("items") or d.get("pairs") or [])
+        for it in rows or []:
+            if not isinstance(it, dict):
+                continue
+            chain = (it.get("chainId") or it.get("chain") or "").lower()
+            if chain and chain not in ("solana", "sol"):
+                continue
+            a = it.get("tokenAddress") or (it.get("token") or {}).get("address") or ""
+            if 32 <= len(a) <= 44:
+                out.append(a)
+    return out
+
+
 def gather_seeds():
     seeds, counts, errs = [], {}, {}
-    srcs = [("geckoterminal", _seeds_gecko), ("pumpfun", _seeds_pump)]
-    # DexScreener often 429s shared cloud IPs and scan.py needs its budget; only add its search seeds when calm.
-    if not any(k == "429" for k in (status.get("http") or {}).get("api.dexscreener.com", {})):
+    srcs = [("geckoterminal", _seeds_gecko), ("pumpfun", _seeds_pump), ("dexscreener_boosts", _seeds_dex_boosts)]
+    # DexScreener search often 429s shared cloud IPs and scan.py needs its budget; only add it when calm.
+    http_ds = (status.get("http") or {}).get("api.dexscreener.com", {})
+    if time.time() >= _dex_backoff_until and not any(k == "429" for k in http_ds):
         srcs.append(("dexscreener_search", _seeds_dexscreener))
-    for name, fn in srcs:
+    for i, (name, fn) in enumerate(srcs):
+        if i:
+            time.sleep(1.2)   # spread upstream calls so Gecko/DexScreener aren't burst
         try:
             got = [m for m in fn() if 32 <= len(m) <= 44]
+            if got:
+                _last_good_seeds[name] = list(dict.fromkeys(got))
             counts[name] = len(got); seeds += got
         except Exception as e:
-            counts[name] = 0; errs[name] = str(e)[:160]
+            reused = [m for m in _last_good_seeds.get(name) or [] if 32 <= len(m) <= 44]
+            if reused:
+                counts[name] = len(reused); seeds += reused
+                errs[name] = f"{str(e)[:120]} (reused {len(reused)} last-good seeds)"
+            else:
+                counts[name] = 0; errs[name] = str(e)[:160]
     uniq = list(dict.fromkeys(seeds))[:90]   # keep DexScreener lookups small (30 mints per request)
+    if not uniq:
+        reused = []
+        for v in _last_good_seeds.values():
+            reused += v
+        uniq = list(dict.fromkeys(reused))[:90]
+        if uniq:
+            errs["reused_all"] = f"all sources empty; reused {len(uniq)} last-good seeds"
+            counts["reused_all"] = len(uniq)
+    _save_last_seeds()
     return uniq, counts, errs
 
 
@@ -229,10 +343,11 @@ def x_once(xfeed_path, queries_path):
             new += xi.normalise_api(r, q["topic"], fetched)
         feed = xi.load_feed(xfeed_path)
         _, per = xi.merge(feed, new, 300, 48)
-        feed["updated_at"] = fetched
+        ingested = xi.now_iso()
+        feed["updated_at"] = ingested
         for t in xi.TOPICS:
             info = feed["topics"].setdefault(t, {})
-            info.update(last_ingest=fetched, count=per.get(t, 0),
+            info.update(last_ingest=ingested, count=per.get(t, 0),
                         newest=next((p.get("created_at") for p in feed["posts"] if p.get("topic") == t), None))
         _atomic_write(xfeed_path, feed)
         status["x"].update(live=True, reason="live X API", last_fetch_at=_now(), last_error=None)
@@ -274,6 +389,7 @@ def restore_last_push(xfeed_path):
 
 def _loop(xfeed_path, queries_path):
     last_x = 0.0
+    _load_last_seeds()
     restore_last_push(xfeed_path); _kick.clear()
     while True:
         scan_once()
@@ -377,10 +493,11 @@ def ingest_x(payload, xfeed_path, fetched=None):
         if mode == "replace":   # fresh push: drop every older post of the topics it covers (e.g. the bundled Nov 14 posts)
             feed["posts"] = [p for p in feed["posts"] if p.get("topic") not in touched]
         _, per = xi.merge(feed, list(uniq.values()), 300, 48)
-        feed["updated_at"] = fetched
+        ingested = xi.now_iso()
+        feed["updated_at"] = ingested   # ingest time, not the original push/fetch stamp
         for t in xi.TOPICS:
             info = feed["topics"].setdefault(t, {})
-            if t in touched: info["last_ingest"] = fetched
+            if t in touched: info["last_ingest"] = ingested
             info.update(count=per.get(t, 0), newest=next((p.get("created_at") for p in feed["posts"] if p.get("topic") == t), None))
         _atomic_write(xfeed_path, feed)
         led = payload.get("ledger")

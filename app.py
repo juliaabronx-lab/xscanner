@@ -6,7 +6,7 @@ The only side effect is POST /api/scan, which runs `python3 scan.py` (disabled w
 DexScreener + RugCheck refresh, reusing the last x_raw.json; scan.py itself never calls X).
 No wallets, keys, signing, trading or posting anywhere.
 """
-import json, os, subprocess, sys, threading, time
+import json, os, re, subprocess, sys, threading, time
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request
 import lookup as lk
@@ -52,6 +52,36 @@ def num(v, d=None):
         return float(v) if v is not None else d
     except (TypeError, ValueError):
         return d
+
+
+def fmt_usd(v):
+    """Same K/M/B/T scale as the frontend usd() helper: $882M, not $881932K."""
+    v = num(v)
+    if v is None:
+        return "—"
+    a = abs(v)
+    sign = "-" if v < 0 else ""
+    for d, u in ((1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")):
+        if a >= d:
+            x = a / d
+            decimals = 0 if x >= 100 else 1 if x >= 10 else 2
+            s = f"{x:.{decimals}f}".rstrip("0").rstrip(".")
+            return f"{sign}${s}{u}"
+    if a >= 1 or a == 0:
+        return f"{sign}${a:.0f}"
+    return f"{sign}${a:.4g}"
+
+
+_K_MONEY = re.compile(r"\$(\d+(?:\.\d+)?)K\b")
+
+
+def rewrite_money(text):
+    """Upgrade scan.py's always-K amounts ($881932K, $2255K) to K/M/B/T."""
+    if not text or not isinstance(text, str):
+        return text
+    def repl(m):
+        return fmt_usd(float(m.group(1)) * 1000)
+    return _K_MONEY.sub(repl, text)
 
 
 def pair(v):
@@ -107,7 +137,7 @@ def data_issues(c):
     elif mcap > 1e11: out.append(f"implausible market cap (${mcap/1e12:.1f}T)" if mcap >= 1e12 else "implausible market cap")
     if liq is None or liq <= 0: out.append("missing liquidity")
     elif liq < 100: out.append("liquidity near zero")
-    elif mcap and mcap > 0 and liq > 1.5 * mcap: out.append("liquidity far above market cap")
+    elif mcap and mcap > 0 and liq > 1.0 * mcap: out.append("liquidity above market cap")
     if vol is None or vol <= 0: out.append("no 24h volume")
     return out
 
@@ -121,7 +151,7 @@ def normalise_report_coin(c, dash):
     x = c.get("x") or {}
     rc = c.get("rugcheck") or {}
     b5, s5 = pair(c.get("m5")); b1, s1 = pair(c.get("h1"))
-    flags = c.get("flags") or []
+    flags = [rewrite_money(f) for f in (c.get("flags") or [])]
     paid_share = num(x.get("shill_share"))
     out = {
         "source": "report", "score": c.get("score"), "parts": c.get("parts") or {}, "tier": tier(c.get("score")),
@@ -129,7 +159,7 @@ def normalise_report_coin(c, dash):
         "dex": c.get("dex"), "url": c.get("url"), "age_h": c.get("age_h"), "liq": c.get("liq"), "mcap": c.get("mcap"),
         "vol24": c.get("vol24"), "pc5": c.get("pc5"), "pc1": c.get("pc1"), "pc24": c.get("pc24"),
         "buys5": b5, "sells5": s5, "buys1h": b1, "sells1h": s1, "fees_est": c.get("fees_est"), "boosts": c.get("boosts"),
-        "copycats": c.get("copycats"), "reason": c.get("reason"), "flags": flags,
+        "copycats": c.get("copycats"), "reason": rewrite_money(c.get("reason")), "flags": [rewrite_money(f) for f in flags],
         "pump": is_pump(c), "paid_share": paid_share,
         "paid_shilled": bool((paid_share or 0) >= 0.5 or any("paid shill" in f.lower() for f in flags)),
         "x": x, "vel": c.get("vel") or {}, "rugcheck": rc, "organic_examples": c.get("organic_examples") or [],
@@ -169,6 +199,30 @@ def normalise_dash_coin(d):
     return out
 
 
+def _fmt_myt(iso):
+    """Turn an ISO timestamp into the 'YYYY-MM-DD HH:MM MYT' label the UI expects."""
+    if not iso:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=MYT)
+        return dt.astimezone(MYT).strftime("%Y-%m-%d %H:%M MYT")
+    except Exception:
+        return str(iso)
+
+
+def _scan_generated(report, dashd):
+    """Prefer the live loop's last successful scan, then SNAPSHOT_TIME, then the report stamp.
+    Stops a cold start from showing a stale bundled generated_myt (e.g. 14 Nov)."""
+    for raw in (live.status.get("last_scan_at"), live.status.get("snapshot_time"),
+                live.status.get("bundle_snapshot_time")):
+        label = _fmt_myt(raw)
+        if label:
+            return label
+    return report.get("generated_myt") or dashd.get("scanTime")
+
+
 def build_state():
     report, rmeta = load(os.path.join(SCANNER, "report.json"), {})
     dashd, dmeta = load(os.path.join(SCANNER, "dashboard_data.json"), {})
@@ -183,7 +237,7 @@ def build_state():
     coins.sort(key=lambda c: -(num(c.get("score"), 0) or 0))
     buy = [c["symbol"] for c in coins if c["tier"] == "look" and c.get("pump") and c.get("status") != "blocked" and not c.get("data_issues")]
     summary = {
-        "generated": report.get("generated_myt") or dashd.get("scanTime"),
+        "generated": _scan_generated(report, dashd),
         "elapsed_s": report.get("elapsed_s"), "x_posts": report.get("x_posts"), "x_shill_posts": report.get("x_shill_posts"),
         "coins_checked": report.get("coins_checked"), "deep_checked": report.get("deep_checked"),
         "verdict": (f"Buy-worthy: {', '.join(buy[:3])}" if buy else "Nothing worth buying right now") if (report or dashd) else None, "blacklisted_seen": report.get("blacklisted_seen") or [],

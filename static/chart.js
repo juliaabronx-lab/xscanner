@@ -63,16 +63,28 @@ async function directGT(c,tf){
 }
 async function load(showLoading){
   const c=CH.coin;if(!c||!c.pool||!CH.cs)return;const seq=++CH.seq,tf=CH.tf;
-  if(showLoading&&!CH.lastT)chMsg('<span class="spin"></span> Loading chart…');
-  let j,r;
-  try{r=await fetch(`/api/ohlcv/${encodeURIComponent(c.pool)}?tf=${tf}&token=${encodeURIComponent(c.mint||'')}`);j=await r.json().catch(()=>({}))}
-  catch(e){if(seq===CH.seq&&!CH.lastT)chMsg('Could not reach the server for chart data. Retrying in 15s.');return}
-  if(r&&!r.ok&&[429,502,503].includes(r.status)){try{const d=await directGT(c,tf);if(d){j=d;r={ok:true,status:200}}}catch(e){}}
+  if(!CH.lastT)chMsg('<span class="spin"></span> '+(showLoading?'Loading chart…':'Chart loading…'));
+  let j={},r=null,ok=false;
+  for(let i=0;i<4 && seq===CH.seq;i++){
+    try{r=await fetch(`/api/ohlcv/${encodeURIComponent(c.pool)}?tf=${tf}&token=${encodeURIComponent(c.mint||'')}`);j=await r.json().catch(()=>({}))}
+    catch(e){r=null;j={}}
+    if(r&&r.ok){ok=true;break}
+    if(r&&[429,502,503].includes(r.status)){
+      try{const d=await directGT(c,tf);if(d&&d.candles&&d.candles.length){j=d;r={ok:true,status:200};ok=true;break}}catch(e){}
+    }
+    if(r&&r.status===404)break;
+    if(!CH.lastT)chMsg('<span class="spin"></span> Chart loading…');
+    else{const u=document.getElementById('chUpd');if(u)u.textContent=' · retrying… — keeping last data'}
+    await new Promise(res=>setTimeout(res,1500*(i+1)));
+  }
   if(seq!==CH.seq||!CH.cs)return;
-  if(!r.ok){
-    if(CH.lastT){document.getElementById('chUpd').textContent=' · '+(j.detail||'refresh failed')+' — keeping last data';return}
-    if(r.status===404)chMsg(`${esc(j.detail||'No chart data for this pair yet.')} <a href="#" onclick="setMode('dex');return false">Try the DexScreener chart</a>`);
-    else{if(r.status===429){const k=CH.seq;setTimeout(()=>{if(k===CH.seq)load(false)},6000)}chMsg(`${esc(j.detail||'Chart unavailable')} <a href="#" onclick="setMode('dex');return false">Use the DexScreener chart</a>`)}
+  if(!ok){
+    if(CH.lastT){document.getElementById('chUpd').textContent=' · '+(j.detail||'still loading')+' — keeping last data';return}
+    if(r&&r.status===404)chMsg(`${esc(j.detail||'No chart data for this pair yet.')} <a href="#" onclick="setMode('dex');return false">Try the DexScreener chart</a>`);
+    else{
+      const k=CH.seq;setTimeout(()=>{if(k===CH.seq)load(false)},8000);
+      chMsg(`<span class="spin"></span> Chart loading… <a href="#" onclick="setMode('dex');return false">Use the DexScreener chart</a>`);
+    }
     return}
   const cd=j.candles||[];
   if(!cd.length){chMsg(`No trades in this timeframe yet. Try a longer timeframe or <a href="#" onclick="setMode('dex');return false">the DexScreener chart</a>.`);CH.cs.setData([]);CH.vs.setData([]);return}

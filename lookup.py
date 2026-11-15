@@ -68,11 +68,11 @@ def _ds_pairs(S, mint):
     def keep(ps):
         return [p for p in ps if isinstance(p, dict) and p.get("chainId") == "solana" and (p.get("baseToken") or {}).get("address") == mint]
     errs = []
-    r = S.get(f"https://api.dexscreener.com/tokens/v1/solana/{mint}", tries=2)
+    r = S.get(f"https://api.dexscreener.com/tokens/v1/solana/{mint}", tries=3)
     if isinstance(r, dict) and "_error" in r: errs.append(r["_error"])
     pairs = keep(r if isinstance(r, list) else [])
     if not pairs:
-        r = S.get(f"https://api.dexscreener.com/latest/dex/tokens/{mint}", tries=2)
+        r = S.get(f"https://api.dexscreener.com/latest/dex/tokens/{mint}", tries=3)
         if isinstance(r, dict) and "_error" in r: errs.append(r["_error"])
         pairs = keep((r.get("pairs") or []) if isinstance(r, dict) else [])
     return pairs, (errs[0] if len(errs) == 2 else None)
@@ -157,7 +157,19 @@ def lookup_live(mint, ip):
         hit, age = cached(mint)
         if hit: return {**hit, "cached": True, "cache_age_s": age}
         rate_check(ip)
-        c = live_scan(mint)
+        last = None
+        for i in range(3):
+            try:
+                c = live_scan(mint)
+                last = None
+                break
+            except LookupError_ as e:
+                last = e
+                if e.status not in (502, 503) or i == 2:
+                    raise
+                time.sleep(1.5 * (2 ** i))   # cold / rate-limited upstream: retry inside the server
+        if last:
+            raise last
         with _cache_lock:
             _cache[mint] = (time.time(), c)
             if len(_cache) > 500:
