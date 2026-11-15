@@ -76,6 +76,9 @@ def get(url, timeout=12, tries=4):
         if hit is not None:
             with _lock: _stats[_host(url)]["cache"] += 1
             return hit
+    # spend the shared-IP DexScreener budget on the 30-mint batch calls (fresh prices) rather than ticker searches
+    if "/latest/dex/search" in url: tries = 1
+    elif "/dex/tokens/" in url or "/tokens/v1/" in url: tries = max(tries, 5)
     out = _get(url, timeout, tries)
     if ttl:
         if "_error" not in out: _cache_put(url, out)
