@@ -10,7 +10,7 @@
   bundled X feed snapshot is shown with its own updated_at time.
 Read-only toward the outside world: GET requests only. No wallets, keys, signing, trading or posting.
 """
-import json, os, shutil, subprocess, sys, threading, time, urllib.parse, urllib.request
+import json, os, shutil, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timezone, timedelta
 
 MYT = timezone(timedelta(hours=8))
@@ -35,10 +35,15 @@ def _now():
     return datetime.now(MYT).isoformat(timespec="seconds")
 
 
-def _get(url, timeout=12, headers=None):
-    req = urllib.request.Request(url, headers={**UA, **(headers or {})})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode())
+def _get(url, timeout=12, headers=None, tries=1):
+    for i in range(tries):
+        req = urllib.request.Request(url, headers={**UA, **(headers or {})})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or i == tries - 1: raise
+            time.sleep(2.0 * 2 ** i)
 
 
 def _atomic_write(path, data):
@@ -106,7 +111,7 @@ def _seeds_dexscreener():
     # scan.py already pulls boosts + profiles; add DexScreener's pump.fun/pumpswap search for fresh pairs.
     out = []
     for q in ("pumpswap", "pump.fun"):
-        d = _get("https://api.dexscreener.com/latest/dex/search?q=" + urllib.parse.quote(q))
+        d = _get("https://api.dexscreener.com/latest/dex/search?q=" + urllib.parse.quote(q), tries=3)
         for p in d.get("pairs") or []:
             if p.get("chainId") == "solana":
                 a = (p.get("baseToken") or {}).get("address") or ""  # noqa
