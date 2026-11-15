@@ -124,6 +124,11 @@ def prepare(snapshot_dir, xfeed_path):
         except Exception:
             pass
     _load_last_seeds([bundled, _BUNDLED_SEEDS])
+    try:
+        import chart as ch
+        ch.prewarm_from_report(os.path.join(SERVE, "report.json"))
+    except Exception:
+        pass
     return SERVE, xf
 
 
@@ -404,6 +409,11 @@ def scan_once():
         try:
             import images as im
             im.warm([{"mint": c.get("mint"), "symbol": c.get("symbol")} for c in (r.get("top") or []) if c.get("mint")])
+        except Exception:
+            pass
+        try:
+            import chart as ch
+            ch.prewarm(r.get("top") or [])
         except Exception:
             pass
     except Exception as e:

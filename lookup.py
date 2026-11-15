@@ -6,15 +6,17 @@ exec'd into a private namespace with bytecode writing disabled. Nothing is ever 
 /workspace/scanner or /workspace/paper. Read-only HTTP calls to DexScreener + RugCheck only.
 No wallets, keys, signing or trading.
 """
-import os, re, threading, time, types
+import json, os, re, threading, time, types
 from collections import defaultdict, deque
 
 SCANNER = os.environ.get("SCANNER_DIR", "/workspace/scanner")
 SCAN_PY = os.path.join(SCANNER, "scan.py")
 B58_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 CACHE_TTL = 300
+STALE_MAX = 6 * 3600               # serve last-good lookup this long if DexScreener is busy
 RATE_N, RATE_WIN = 10, 60          # live lookups per IP per minute
 GLOBAL_N = 60                      # live lookups per minute, all IPs (protects upstream APIs)
+STORE = os.environ.get("LOOKUP_CACHE", "/tmp/xscanner-live/lookup_last.json")
 
 _cache, _cache_lock = {}, threading.Lock()
 _hits, _global, _rate_lock = defaultdict(deque), deque(), threading.Lock()
@@ -52,13 +54,60 @@ def rate_check(ip):
         q.append(now); _global.append(now)
 
 
-def cached(mint):
+def cached(mint, max_age=CACHE_TTL):
     with _cache_lock:
         e = _cache.get(mint)
-        if e and time.time() - e[0] < CACHE_TTL:
+        if e and time.time() - e[0] < max_age:
             return e[1], int(time.time() - e[0])
-        _cache.pop(mint, None)
+        if e and max_age <= CACHE_TTL:
+            _cache.pop(mint, None)
     return None, None
+
+
+def stale_cached(mint):
+    """Last-good lookup, even if the fresh TTL has expired."""
+    return cached(mint, max_age=STALE_MAX)
+
+
+def _load_store():
+    try:
+        d = json.load(open(STORE, encoding="utf-8"))
+        if not isinstance(d, dict):
+            return
+        now = time.time()
+        with _cache_lock:
+            for mint, e in d.items():
+                if not isinstance(e, dict) or not e.get("data"):
+                    continue
+                ts = float(e.get("ts") or 0)
+                if now - ts > STALE_MAX:
+                    continue
+                cur = _cache.get(mint)
+                if not cur or ts > cur[0]:
+                    _cache[mint] = (ts, e["data"])
+    except Exception:
+        pass
+
+
+def _remember(mint, data):
+    ts = time.time()
+    with _cache_lock:
+        _cache[mint] = (ts, data)
+        if len(_cache) > 500:
+            for k in sorted(_cache, key=lambda k: _cache[k][0])[:100]:
+                _cache.pop(k, None)
+        snap = {k: {"ts": v[0], "data": v[1]} for k, v in _cache.items()}
+    try:
+        os.makedirs(os.path.dirname(STORE) or ".", exist_ok=True)
+        tmp = STORE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(snap, f)
+        os.replace(tmp, STORE)
+    except Exception:
+        pass
+
+
+_load_store()
 
 
 def _ds_pairs(S, mint, timeout=5, tries=2):
@@ -183,26 +232,39 @@ def live_scan(mint, deadline=None):
 LOOKUP_BUDGET_S = 12   # stay under ~15s end-to-end, including module load
 
 
+def _busy(msg=None):
+    return LookupError_(429, msg or "DexScreener is busy right now. Please try the scan again in a moment.")
+
+
 def lookup_live(mint, ip):
     hit, age = cached(mint)
-    if hit: return {**hit, "cached": True, "cache_age_s": age}
+    if hit:
+        return {**hit, "cached": True, "cache_age_s": age}
     with _inflight[mint]:                       # dedupe concurrent lookups of the same mint
         hit, age = cached(mint)
-        if hit: return {**hit, "cached": True, "cache_age_s": age}
-        rate_check(ip)
+        if hit:
+            return {**hit, "cached": True, "cache_age_s": age}
+        try:
+            rate_check(ip)
+        except LookupError_ as e:
+            stale, sage = stale_cached(mint)
+            if stale:
+                return {**stale, "cached": True, "stale": True, "cache_age_s": sage}
+            raise _busy(e.msg) if e.status >= 500 or e.status == 503 else e
         deadline = time.time() + LOOKUP_BUDGET_S
         try:
             c = live_scan(mint, deadline=deadline)
         except LookupError_ as e:
-            if e.status == 503:
-                raise LookupError_(429, "DexScreener is busy right now. Please try the scan again in a moment.")
-            raise
+            stale, sage = stale_cached(mint)
+            if stale:
+                return {**stale, "cached": True, "stale": True, "cache_age_s": sage}
+            raise _busy() if e.status >= 500 or e.status == 503 else e
         except Exception as e:
+            stale, sage = stale_cached(mint)
+            if stale:
+                return {**stale, "cached": True, "stale": True, "cache_age_s": sage}
             if time.time() >= deadline or "deadline" in str(e).lower():
                 raise LookupError_(429, "The lookup is taking too long because the market-data APIs are slow. Please try again in a moment.")
-            raise
-        with _cache_lock:
-            _cache[mint] = (time.time(), c)
-            if len(_cache) > 500:
-                for k in sorted(_cache, key=lambda k: _cache[k][0])[:100]: _cache.pop(k, None)
+            raise _busy(f"Live scan failed ({type(e).__name__}). Please try again in a moment.")
+        _remember(mint, c)
         return {**c, "cached": False, "cache_age_s": 0}

@@ -288,12 +288,30 @@ async function runLookup(raw){
   if(!mint){sMsg('Paste a token contract address first.','err');return}
   if(!B58.test(mint)){sMsg('That doesn\'t look like a Solana token address. It should be 32–44 letters/numbers (no 0, O, I or l).','err');return}
   const btn=$('#searchBtn');btn.disabled=true;btn.textContent='⏳ Scanning…';
-  sMsg(`Looking up <code>${esc(mint.slice(0,6))}…${esc(mint.slice(-6))}</code> — checking the report, then DexScreener + RugCheck live (up to ~20s)…`);
+  sMsg(`<span class="spin"></span> Looking up <code>${esc(mint.slice(0,6))}…${esc(mint.slice(-6))}</code> — checking the report, then DexScreener + RugCheck live…`);
+  const sleep=ms=>new Promise(res=>setTimeout(res,ms));
   try{
-    const r=await fetch('/api/lookup/'+encodeURIComponent(mint));const j=await r.json().catch(()=>({}));
-    if(!r.ok){sMsg(esc(j.detail||('Lookup failed ('+r.status+')')),r.status===429?'warn':'err');return}
+    let r=null,j={},ok=false;
+    for(let i=1;i<=3;i++){
+      try{
+        r=await fetch('/api/lookup/'+encodeURIComponent(mint));
+        j=await r.json().catch(()=>({}));
+      }catch(e){r=null;j={}}
+      if(r&&r.ok){ok=true;break}
+      const busy= !r || [429,502,503].includes(r.status);
+      if(busy && i<3){
+        sMsg(`<span class="spin"></span> DexScreener is busy — retrying (${i}/2)…`,'warn');
+        btn.textContent='⏳ Retrying…';
+        await sleep(900*i);
+        continue;
+      }
+      const detail=(j&&j.detail)||(r?('Lookup failed ('+r.status+')'):'Network error — try again.');
+      sMsg(esc(typeof detail==='string'?detail:JSON.stringify(detail)), busy?'warn':'err');
+      return;
+    }
+    if(!ok){sMsg('DexScreener is busy right now. Please try the scan again in a moment.','warn');return}
     const lk=j.lookup||{};
-    sMsg(tokImg(mint,j.symbol,'savatar')+(lk.source==='live'?`<b>$${esc(j.symbol)}</b> scored <b>${j.score}</b>/100 in a live scan${lk.cached?' (cached)':''}. ${lk.x_available?'':'X / paid-shill data isn\'t available for live lookups.'}`
+    sMsg(tokImg(mint,j.symbol,'savatar')+(lk.source==='live'?`<b>$${esc(j.symbol)}</b> scored <b>${j.score}</b>/100 in a live scan${lk.cached?' (cached)':''}${lk.stale?' (a moment ago)':''}. ${lk.x_available?'':'X / paid-shill data isn\'t available for live lookups.'}`
       :`<b>$${esc(j.symbol)}</b> is already in the latest scan report (score ${j.score}).`),'ok');
     openCoin(mint,j);
   }catch(e){sMsg('Network error — try again.','err')}

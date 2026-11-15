@@ -394,9 +394,19 @@ def lookup_coin(mint: str, request: Request):
     try:
         r = lk.lookup_live(mint, _client_ip(request))
     except lk.LookupError_ as e:
-        raise HTTPException(e.status, e.msg)
+        stale, sage = lk.stale_cached(mint)
+        if stale:
+            r = {**stale, "cached": True, "stale": True, "cache_age_s": sage}
+        else:
+            code = 429 if e.status >= 500 or e.status == 503 else e.status
+            raise HTTPException(code, e.msg if code != 429 else (
+                e.msg if e.status in (429, 503) else "DexScreener is busy right now. Please try the scan again in a moment."))
     except Exception as e:
-        raise HTTPException(502, f"Live scan failed ({type(e).__name__}). DexScreener or RugCheck may be slow; try again shortly.")
+        stale, sage = lk.stale_cached(mint)
+        if stale:
+            r = {**stale, "cached": True, "stale": True, "cache_age_s": sage}
+        else:
+            raise HTTPException(429, "DexScreener is busy right now. Please try the scan again in a moment.")
     x = {k: v for k, v in (r.get("x") or {}).items() if k != "top_organic"}
     raw = {**{k: r.get(k) for k in ("score", "parts", "name", "symbol", "mint", "pool", "dex", "url", "age_h", "liq", "mcap",
                                    "vol24", "m5", "h1", "pc5", "pc1", "pc24", "fees_est", "boosts", "reason", "flags", "copycats")},
@@ -406,7 +416,7 @@ def lookup_coin(mint: str, request: Request):
     out["source"] = "live"
     out["status"] = "blocked" if any(f.startswith(("DUMP", "RugCheck DANGER", "RUGGED", "BLACKLISTED", "COPYCAT", "mint/freeze", "creator rugged")) for f in out["flags"]) else None
     out["narrative"] = None
-    out["lookup"] = {"source": "live", "x_available": r.get("x_available"), "cached": r.get("cached"), "cache_age_s": r.get("cache_age_s"),
+    out["lookup"] = {"source": "live", "x_available": r.get("x_available"), "cached": r.get("cached"), "stale": r.get("stale"), "cache_age_s": r.get("cache_age_s"),
                      "copy_of": r.get("copy_of"),
                      "checked_at": datetime.now(MYT).isoformat(timespec="seconds"),
                      "note": "Live single-coin scan (DexScreener + RugCheck). Not in the latest report; X/paid-shill data "

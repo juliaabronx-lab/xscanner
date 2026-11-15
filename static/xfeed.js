@@ -90,10 +90,15 @@ async function tick(){
   status();
 }
 function status(){
-  const el=$('#xLive'); el.classList.toggle('off',!every); el.classList.toggle('err',failed);
+  const el=$('#xLive');
+  const ageMs=updatedAt?Math.max(0,Date.now()-Date.parse(updatedAt)):0;
+  const stale=!!(updatedAt && ageMs>2*3600*1000); // hourly push; don't warn under 2 hours
+  el.classList.toggle('off',!every); el.classList.toggle('err',failed); el.classList.toggle('stale',stale);
+  const when=updatedAt?(ago(updatedAt)+' ago'):'—';
+  const cadence=(!failed && updatedAt && ageMs<=2*3600*1000)?' · pushed hourly':'';
   $('#xStatus').textContent=failed?'connection problem, retrying':
-    `feed updated ${updatedAt?ago(updatedAt)+' ago':'—'}`+(every?` · next check ${Math.max(0,countdown)}s`:' · auto-refresh off');
-  $('#xStatus').title=updatedAt?'Feed file updated '+myt(updatedAt):'';
+    `feed updated ${when}${cadence}`+(every?` · next check ${Math.max(0,countdown)}s`:' · auto-refresh off');
+  $('#xStatus').title=updatedAt?'Feed file updated '+myt(updatedAt)+'. Posts are pushed about hourly.':'';
 }
 function setTopic(t){topic=t;save();$$('#xTopics button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
   $('#xCaOnly').closest('label').classList.toggle('hidden',t!=='memecoins');loadX()}
