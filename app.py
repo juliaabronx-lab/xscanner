@@ -10,6 +10,7 @@ import json, os, subprocess, sys, threading, time
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request
 import lookup as lk
+import live
 import chart as ch
 import images as im
 from fastapi.responses import Response
@@ -179,6 +180,7 @@ def summary():
     s["tiers"] = {t: sum(1 for c in coins if c["tier"] == t) for t in ("look", "watch", "skip")}
     s["sources"] = meta
     s["public_readonly"] = PUBLIC_READONLY
+    s["live"] = live.public_status()
     return s
 
 
@@ -346,7 +348,7 @@ _scan = {"running": False, "started": None, "finished": None, "returncode": None
 
 
 def scan_state_public():
-    return {**dict(_scan), "public_readonly": PUBLIC_READONLY}
+    return {**dict(_scan), "public_readonly": PUBLIC_READONLY, "live": live.public_status()}
 
 
 def _run_scan(args):
@@ -389,6 +391,19 @@ def scan_status():
 
 # ---- X Live Feed (read-only; data/x_feed.json is written by xfeed_ingest.py from agent X searches)
 XFEED = os.environ.get("XFEED_PATH", os.path.join(HERE, "data", "x_feed.json"))
+XQUERIES = os.path.join(HERE, "data", "xfeed_queries.json")
+if live.ENABLED:  # hosted live mode: serve data the server-side loop keeps refreshing (snapshot until first scan)
+    SCANNER, XFEED = live.prepare(SCANNER, XFEED)
+
+
+@app.on_event("startup")
+def _start_live():
+    live.start(XFEED, XQUERIES)   # no-op unless LIVE_SCAN=1; first scan runs immediately
+
+
+@app.get("/api/live")
+def live_status():
+    return live.public_status()
 XTOPICS = ("memecoins", "politics", "tech")
 _xcache = {"mtime": None, "data": None}
 
@@ -431,7 +446,7 @@ def xfeed(topic: str = "", q: str = "", min_followers: int = 0, ca_only: bool = 
         posts.sort(key=lambda p: (p.get("created_at") or "", p.get("id") or ""), reverse=True)
     lim = max(1, min(int(limit), 300))
     return {"topic": t or None, "q": q, "count": len(posts), "counts": counts, "updated_at": d.get("updated_at"),
-            "topics": d.get("topics") or {}, "error": err, "live_api": False,
+            "topics": d.get("topics") or {}, "error": err, "live_api": bool(live.status["x"]["live"]),
             "refresh_note": "Feed file is refreshed by the agent's X searches (xfeed_ingest.py); the page polls this endpoint.",
             "posts": posts[:lim]}
 
@@ -446,7 +461,8 @@ def xfeed_heads(n: int = 60):
                    key=lambda p: (p.get("created_at") or "", p.get("id") or ""), reverse=True)
     n = max(1, min(int(n), 300))
     heads = {t: [p.get("id") for p in posts if p.get("topic") == t][:n] for t in XTOPICS}
-    return {"updated_at": d.get("updated_at"), "topics": d.get("topics") or {}, "heads": heads, "error": err}
+    return {"updated_at": d.get("updated_at"), "topics": d.get("topics") or {}, "heads": heads, "error": err,
+            "live_api": bool(live.status["x"]["live"])}
 
 
 app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")

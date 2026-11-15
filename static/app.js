@@ -226,9 +226,10 @@ async function pollScan(){
   const s=await api('/api/scan');
   publicReadonly=!!s.public_readonly;
   const btn=$('#scanBtn');
+  liveInfo=s.live||null; liveInfo&&(liveInfo._got=Date.now());
   if(publicReadonly){
     btn.hidden=true; btn.disabled=true;
-    $('#scanInfo').textContent='Public read-only view';
+    paintLive();
     return s;
   }
   btn.hidden=false;
@@ -255,7 +256,21 @@ $('#fScore').oninput=()=>{$('#fScoreV').textContent=$('#fScore').value;loadFeed(
 $('#radarSel').onchange=drawRadar; $('#dClose').onclick=closeDrawer; $('#scrim').onclick=closeDrawer;
 document.addEventListener('keydown',e=>e.key==='Escape'&&closeDrawer());
 pollScan(); show((location.hash||'#feed').slice(1) in loaders?(location.hash||'#feed').slice(1):'feed');
-setInterval(()=>{if(publicReadonly||!$('#scanBtn').disabled)refresh()},60000);
+setInterval(()=>{if(publicReadonly||!$('#scanBtn').disabled){refresh();pollScan().catch(()=>{})}},60000);
+// ---- Live-scan indicator ("Last scan: N min ago"), ticks every 15 s between data refreshes
+var liveInfo=null;
+function agoTxt(s){if(s==null)return'—';if(s<60)return'just now';const m=Math.round(s/60);return m<60?m+' min ago':Math.round(m/60)+' h ago'}
+function paintLive(){
+  const el=$('#scanInfo'); if(!el||!publicReadonly)return;
+  const L=liveInfo;
+  if(!L||!L.enabled){el.innerHTML='<span class="livedot off"></span>Snapshot view';el.title='Public read-only view';return}
+  const drift=L._got?Math.round((Date.now()-L._got)/1000):0;
+  if(!L.last_scan_epoch){el.innerHTML=`<span class="livedot pulse"></span>${L.running?'Scanning now…':'Starting first scan…'}`;el.title='Showing the saved snapshot until the first live scan finishes';return}
+  const age=(L.now_epoch-L.last_scan_epoch)+drift;
+  el.innerHTML=`<span class="livedot ${L.running?'pulse':''} ${age>600?'stale':''}"></span>Last scan: ${agoTxt(age)}`;
+  el.title=`Live server scan every ${Math.round((L.interval_s||120)/60)} min · ${L.scans_ok} scans since wake · page refreshes every 60 s`+(L.last_error?` · last error: ${L.last_error}`:'');
+}
+setInterval(paintLive,15000);
 
 // ---- Paste CA to scan
 const B58=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/;

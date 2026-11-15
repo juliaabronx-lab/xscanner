@@ -14,3 +14,6 @@ services:
         value: deploy/data    # snapshot of report.json + dashboard_data.json
       - key: LEDGER_PATH
         value: deploy/data/ledger.json
+      - key: LIVE_SCAN
+        value: "1"            # server-side scan loop every LIVE_SCAN_INTERVAL s (default 120); snapshot until first scan
+      # Optional, set in the Render dashboard only (never in this repo): X_BEARER_TOKEN enables the live X feed.
