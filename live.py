@@ -121,7 +121,11 @@ def _seeds_dexscreener():
 
 def gather_seeds():
     seeds, counts, errs = [], {}, {}
-    for name, fn in (("geckoterminal", _seeds_gecko), ("pumpfun", _seeds_pump), ("dexscreener_search", _seeds_dexscreener)):
+    srcs = [("geckoterminal", _seeds_gecko), ("pumpfun", _seeds_pump)]
+    # DexScreener often 429s shared cloud IPs and scan.py needs its budget; only add its search seeds when calm.
+    if not any(k == "429" for k in (status.get("http") or {}).get("api.dexscreener.com", {})):
+        srcs.append(("dexscreener_search", _seeds_dexscreener))
+    for name, fn in srcs:
         try:
             got = [m for m in fn() if 32 <= len(m) <= 44]
             counts[name] = len(got); seeds += got
