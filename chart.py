@@ -121,8 +121,8 @@ def _ts(s):
         return None
 
 
-def _fetch_dexpaprika(pool, tf):
-    """Keyless DexPaprika OHLCV. 1h/24h only; shorter tfs get 1h bars (degraded)."""
+def _fetch_dexpaprika_pool(pool, tf):
+    """Keyless DexPaprika OHLCV for a known pool id. 1h/24h only; shorter tfs get 1h bars."""
     interval, degraded = DP_TF.get(tf, ("1h", True))
     start = "-24h"  # keyless DexPaprika only allows the last 24 hours
     url = (f"https://api.dexpaprika.com/networks/solana/pools/{pool}/ohlcv?"
@@ -147,25 +147,90 @@ def _fetch_dexpaprika(pool, tf):
     return out
 
 
+# token mint -> DexPaprika pool id (the scan report's pool is sometimes unknown to DexPaprika)
+_dp_pool, _dp_pool_lock = {}, threading.Lock()
+_QUOTES = {
+    "So11111111111111111111111111111111111111112",  # WSOL
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC
+    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  # USDT
+}
+
+
+def _resolve_dp_pool(token):
+    """Find a DexPaprika pool for a mint when the report's pool id isn't in their catalog."""
+    if not token: return None
+    with _dp_pool_lock:
+        if token in _dp_pool: return _dp_pool[token]
+    try:
+        d = _http_json("https://api.dexpaprika.com/search?query=" + urllib.parse.quote(token), timeout=8)
+    except Exception:
+        return None
+    cands = []
+    for p in d.get("pools") or []:
+        if not isinstance(p, dict) or p.get("chain") != "solana":
+            continue
+        ids = [t.get("id") for t in (p.get("tokens") or []) if isinstance(t, dict)]
+        if token not in ids:
+            continue
+        quote_ok = any(i in _QUOTES for i in ids)
+        cands.append(((1 if quote_ok else 0), float(p.get("volume_usd") or 0), p.get("id")))
+    if not cands:
+        return None
+    cands.sort(reverse=True)
+    pid = cands[0][2]
+    with _dp_pool_lock:
+        _dp_pool[token] = pid
+    return pid
+
+
+def _fetch_dexpaprika(pool, tf, token=None):
+    """DexPaprika fallback: try the given pool, then look up a pool by mint if needed."""
+    d = _fetch_dexpaprika_pool(pool, tf) if pool else None
+    if d:
+        return d
+    alt = _resolve_dp_pool(token)
+    if alt and alt != pool:
+        d = _fetch_dexpaprika_pool(alt, tf)
+        if d:
+            d["note"] = ((d.get("note") + " ") if d.get("note") else "") + "Pool looked up on DexPaprika by mint."
+            return d
+    return None
+
+
 def _fetch(pool, tf, token):
+    gecko_err = None
     try:
         d = _fetch_gecko(pool, tf, token)
         if d.get("candles"): return d
     except ChartError as ce:
+        gecko_err = ce
+        # 404: try token-level Gecko, then DexPaprika (including mint lookup)
         if ce.status == 404 and token:
             t = _fetch_gecko_token(token, tf)
             if t: return t
-        if ce.status == 404:
-            alt = _fetch_dexpaprika(pool, tf)
-            if alt: return alt
-            raise
-        # 429 / 502: try a different host before giving up
-        alt = _fetch_dexpaprika(pool, tf)
-        if alt: return alt
-        raise
-    alt = _fetch_dexpaprika(pool, tf)
+    # Any Gecko 429/404/502/empty: fall back to DexPaprika (direct pool, then mint lookup)
+    alt = _fetch_dexpaprika(pool, tf, token)
     if alt: return alt
+    if gecko_err:
+        raise gecko_err
     return d
+
+
+def _stale_from_cache(pool, tf, token, now, msg):
+    """Prefer an exact-key stale entry; otherwise any recent cache for this pool or mint."""
+    with _lock:
+        keys = [(pool, tf, token), (pool, tf, None)]
+        if token:
+            keys += [k for k in _cache if k[1] == tf and (k[0] == pool or k[2] == token)]
+        best = None
+        for k in keys:
+            e = _cache.get(k)
+            if e and now - e[0] < STALE_MAX and (e[1].get("candles")):
+                if best is None or e[0] > best[0]:
+                    best = e
+        if not best:
+            return None
+        return {**best[1], "cached": True, "stale": True, "age_s": round(now - best[0], 1), "note": msg}
 
 
 def get_ohlcv(pool, tf, token=None):
@@ -185,14 +250,12 @@ def get_ohlcv(pool, tf, token=None):
             if e and now - e[0] < TTL_BY_TF.get(tf, CACHE_TTL):
                 return {**e[1], "cached": True, "age_s": round(now - e[0], 1)}
         def stale(msg):
-            if e and now - e[0] < STALE_MAX:
-                return {**e[1], "cached": True, "stale": True, "age_s": round(now - e[0], 1), "note": msg}
-            return None
+            return _stale_from_cache(pool, tf, token, now, msg)
         # If GeckoTerminal is in cooldown or over budget, try the alternate first, then stale.
         gecko_ok = _budget_ok()
         try:
             if not gecko_ok:
-                alt = _fetch_dexpaprika(pool, tf)
+                alt = _fetch_dexpaprika(pool, tf, token)
                 if alt:
                     alt["fetched_at"] = time.time()
                     with _lock:
@@ -208,9 +271,15 @@ def get_ohlcv(pool, tf, token=None):
                 time.sleep(3); _cool[0] = 0.0
                 d = _fetch(pool, tf, token)
         except ChartError as ce:
-            if ce.status in (429, 502):
-                s = stale(ce.msg)
-                if s: return s
+            # last resort: DexPaprika mint lookup + stale cache on any error
+            alt = _fetch_dexpaprika(pool, tf, token)
+            if alt:
+                alt["fetched_at"] = time.time()
+                with _lock:
+                    _cache[key] = (time.time(), alt)
+                return {**alt, "cached": False, "age_s": 0}
+            s = stale(ce.msg)
+            if s: return s
             raise
         d["fetched_at"] = time.time()
         with _lock:

@@ -32,7 +32,9 @@ status = {"enabled": ENABLED, "interval_s": INTERVAL, "running": False, "scans_o
 _gecko_backoff_until = 0.0
 _pump_backoff_until = 0.0
 _dex_backoff_until = 0.0
-_last_good_seeds = {"geckoterminal": [], "pumpfun": [], "dexscreener_search": [], "dexscreener_boosts": []}
+_last_good_seeds = {"geckoterminal": [], "pumpfun": [], "dexscreener_search": [], "dexscreener_boosts": [], "dexpaprika": []}
+_seed_cache = {}          # name -> (fetched_at, mints)
+SEED_CACHE_S = 600        # reuse a successful seed fetch for 10 min so scan.py pair calls don't 429 the next seed pass
 _started = False
 _kick = threading.Event()   # set by an X ingest to start the next scan right away
 _ingest_lock = threading.Lock()
@@ -114,6 +116,14 @@ def prepare(snapshot_dir, xfeed_path):
                 pass
     xf = os.path.join(LIVE_DIR, "x_feed.json")
     if os.path.exists(xfeed_path) and not os.path.exists(xf): shutil.copy2(xfeed_path, xf)
+    bundled = os.path.join(snapshot_dir, "last_seeds.json")
+    if os.path.exists(bundled) and not os.path.exists(_seeds_path()):
+        try:
+            os.makedirs(LIVE_DIR, exist_ok=True)
+            shutil.copy2(bundled, _seeds_path())
+        except Exception:
+            pass
+    _load_last_seeds([bundled, _BUNDLED_SEEDS])
     return SERVE, xf
 
 
@@ -122,21 +132,37 @@ def _seeds_path():
     return os.path.join(LIVE_DIR, "last_seeds.json")
 
 
-def _load_last_seeds():
-    try:
-        d = json.load(open(_seeds_path()))
-        if isinstance(d, dict):
-            for k, v in d.items():
-                if isinstance(v, list):
-                    _last_good_seeds[k] = [m for m in v if isinstance(m, str) and 32 <= len(m) <= 44]
-    except Exception:
-        pass
+_BUNDLED_SEEDS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "deploy", "data", "last_seeds.json")
+
+
+def _merge_seed_list(name, values):
+    got = [m for m in values if isinstance(m, str) and 32 <= len(m) <= 44]
+    if not got:
+        return
+    cur = _last_good_seeds.setdefault(name, [])
+    _last_good_seeds[name] = list(dict.fromkeys(list(cur) + got))[-120:]
+
+
+def _load_last_seeds(extra_paths=None):
+    paths = [_seeds_path(), _BUNDLED_SEEDS]
+    if extra_paths:
+        paths = list(extra_paths) + paths
+    for path in paths:
+        try:
+            d = json.load(open(path, encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(d, dict):
+            continue
+        for k, v in d.items():
+            if isinstance(v, list):
+                _merge_seed_list(k, v)
 
 
 def _save_last_seeds():
     try:
         os.makedirs(LIVE_DIR, exist_ok=True)
-        _atomic_write(_seeds_path(), {k: v[-90:] for k, v in _last_good_seeds.items()})
+        _atomic_write(_seeds_path(), {k: v[-120:] for k, v in _last_good_seeds.items() if v})
     except Exception:
         pass
 
@@ -240,37 +266,100 @@ def _seeds_dex_boosts():
     return out
 
 
+_DP_QUOTES = {
+    "So11111111111111111111111111111111111111112",
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+}
+
+
+def _seeds_dexpaprika():
+    """Public DexPaprika search (different host from DexScreener/Gecko). Solana mints only."""
+    out = []
+    for i, q in enumerate(("pump", "SOL")):
+        if i:
+            time.sleep(0.6)
+        d = _get("https://api.dexpaprika.com/search?query=" + urllib.parse.quote(q), tries=2)
+        for p in d.get("pools") or []:
+            if not isinstance(p, dict) or p.get("chain") != "solana":
+                continue
+            for tok in p.get("tokens") or []:
+                a = (tok or {}).get("id") or ""
+                if 32 <= len(a) <= 44 and a not in _DP_QUOTES:
+                    out.append(a)
+        for tok in d.get("tokens") or []:
+            if not isinstance(tok, dict) or tok.get("chain") != "solana":
+                continue
+            a = tok.get("id") or ""
+            if 32 <= len(a) <= 44 and a not in _DP_QUOTES:
+                out.append(a)
+    return out
+
+
+def _fresh_seed_cache(name):
+    hit = _seed_cache.get(name)
+    if hit and time.time() - hit[0] < SEED_CACHE_S and hit[1]:
+        return list(hit[1])
+    return None
+
+
+def _remember_seeds(name, got):
+    got = list(dict.fromkeys(m for m in got if 32 <= len(m) <= 44))
+    if got:
+        _seed_cache[name] = (time.time(), got)
+        _merge_seed_list(name, got)
+    return got
+
+
 def gather_seeds():
     seeds, counts, errs = [], {}, {}
-    srcs = [("geckoterminal", _seeds_gecko), ("pumpfun", _seeds_pump), ("dexscreener_boosts", _seeds_dex_boosts)]
-    # DexScreener search often 429s shared cloud IPs and scan.py needs its budget; only add it when calm.
+    srcs = [("geckoterminal", _seeds_gecko), ("pumpfun", _seeds_pump),
+            ("dexpaprika", _seeds_dexpaprika)]
+    # DexScreener seed lists share an IP with scan.py pair lookups. Use a 10-min cache,
+    # and only hit the network when not in backoff; otherwise reuse last-good / bundled lists.
     http_ds = (status.get("http") or {}).get("api.dexscreener.com", {})
-    if time.time() >= _dex_backoff_until and not any(k == "429" for k in http_ds):
+    ds_calm = time.time() >= _dex_backoff_until and not any(k == "429" for k in http_ds)
+    if ds_calm:
+        srcs.append(("dexscreener_boosts", _seeds_dex_boosts))
         srcs.append(("dexscreener_search", _seeds_dexscreener))
+
+    def add(name, got, note=None):
+        got = [m for m in got if 32 <= len(m) <= 44]
+        counts[name] = len(got)
+        seeds.extend(got)
+        if note:
+            errs[name] = note
+
     for i, (name, fn) in enumerate(srcs):
+        cached = _fresh_seed_cache(name)
+        if cached:
+            add(name, cached, f"cached {int(time.time() - _seed_cache[name][0])}s")
+            continue
         if i:
-            time.sleep(1.2)   # spread upstream calls so Gecko/DexScreener aren't burst
+            time.sleep(1.2)
         try:
-            got = [m for m in fn() if 32 <= len(m) <= 44]
-            if got:
-                _last_good_seeds[name] = list(dict.fromkeys(got))
-            counts[name] = len(got); seeds += got
+            got = _remember_seeds(name, fn())
+            add(name, got)
         except Exception as e:
             reused = [m for m in _last_good_seeds.get(name) or [] if 32 <= len(m) <= 44]
             if reused:
-                counts[name] = len(reused); seeds += reused
-                errs[name] = f"{str(e)[:120]} (reused {len(reused)} last-good seeds)"
+                add(name, reused, f"{str(e)[:120]} (reused {len(reused)} last-good seeds)")
             else:
-                counts[name] = 0; errs[name] = str(e)[:160]
-    uniq = list(dict.fromkeys(seeds))[:90]   # keep DexScreener lookups small (30 mints per request)
-    if not uniq:
-        reused = []
+                add(name, [], str(e)[:160])
+
+    # Sources we didn't fetch this pass (e.g. DexScreener in backoff) still contribute last-good lists
+    for name, vals in _last_good_seeds.items():
+        if name not in counts and vals:
+            add(name, vals, f"reused {len(vals)} last-good seeds")
+
+    uniq = list(dict.fromkeys(seeds))[:90]
+    if len(uniq) < 60:
+        extra = []
         for v in _last_good_seeds.values():
-            reused += v
-        uniq = list(dict.fromkeys(reused))[:90]
-        if uniq:
-            errs["reused_all"] = f"all sources empty; reused {len(uniq)} last-good seeds"
-            counts["reused_all"] = len(uniq)
+            extra += v
+        uniq = list(dict.fromkeys(list(uniq) + extra))[:90]
+        if uniq and "reused_all" not in errs:
+            errs["reused_fill"] = f"filled to {len(uniq)} with last-good seeds"
     _save_last_seeds()
     return uniq, counts, errs
 

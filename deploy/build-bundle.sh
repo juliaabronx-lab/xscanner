@@ -28,3 +28,5 @@ else
 fi
 # last successful X push (public posts + paper ledger, no token): the live server restores it on startup if newer
 [ -f "$SRC/data/push/last_push.json" ] && cp -p "$SRC/data/push/last_push.json" "$OUT/deploy/data/last_push.json" || true
+# last-good live-scan seed lists (public mints only) so a cold start isn't stuck with 0 DexScreener seeds
+[ -f "$SRC/deploy/data/last_seeds.json" ] && cp -p "$SRC/deploy/data/last_seeds.json" "$OUT/deploy/data/last_seeds.json" || true

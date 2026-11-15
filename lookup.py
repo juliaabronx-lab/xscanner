@@ -61,60 +61,83 @@ def cached(mint):
     return None, None
 
 
-def _ds_pairs(S, mint):
+def _ds_pairs(S, mint, timeout=5, tries=2):
     """Pairs where `mint` is the base token. Tries both DexScreener endpoints; filters before deciding,
     so a response holding only quote-side pairs (or an upstream error) still falls through to the second one.
     Returns (pairs, upstream_error)."""
     def keep(ps):
         return [p for p in ps if isinstance(p, dict) and p.get("chainId") == "solana" and (p.get("baseToken") or {}).get("address") == mint]
     errs = []
-    r = S.get(f"https://api.dexscreener.com/tokens/v1/solana/{mint}", tries=3)
+    r = S.get(f"https://api.dexscreener.com/tokens/v1/solana/{mint}", timeout=timeout, tries=tries)
     if isinstance(r, dict) and "_error" in r: errs.append(r["_error"])
     pairs = keep(r if isinstance(r, list) else [])
     if not pairs:
-        r = S.get(f"https://api.dexscreener.com/latest/dex/tokens/{mint}", tries=3)
+        r = S.get(f"https://api.dexscreener.com/latest/dex/tokens/{mint}", timeout=timeout, tries=tries)
         if isinstance(r, dict) and "_error" in r: errs.append(r["_error"])
         pairs = keep((r.get("pairs") or []) if isinstance(r, dict) else [])
-    return pairs, (errs[0] if len(errs) == 2 else None)
+    return pairs, (errs[0] if errs and not pairs else None)
 
 
-def live_scan(mint):
+def _fast_get(S, deadline, default_timeout=5, default_tries=2):
+    """Wrap scan.py's get() with a hard deadline so a live lookup stays under ~15s."""
+    orig = S.get
+    def get(url, timeout=default_timeout, tries=default_tries):
+        left = deadline - time.time()
+        if left <= 0.3:
+            return {"_error": "deadline"}
+        to = min(timeout, max(1.5, left - 0.2))
+        tr = 1 if left < 4 else max(1, min(tries, 2))
+        return orig(url, timeout=to, tries=tr)
+    S.get = get
+    return orig
+
+
+def live_scan(mint, deadline=None):
     S = load_scan_module()
-    pairs, ds_err = _ds_pairs(S, mint)
+    if deadline:
+        _fast_get(S, deadline)
+    left = (deadline or (time.time() + 20)) - time.time()
+    pairs, ds_err = _ds_pairs(S, mint, timeout=min(5, max(2, left / 2)), tries=2 if left > 6 else 1)
     if not pairs and ds_err:
-        raise LookupError_(503, "DexScreener didn't answer just now (busy or rate-limited). Try again in a minute.")
+        raise LookupError_(429, "DexScreener is busy right now. Please try the scan again in a moment.")
     if not pairs:
-        rc_probe = S.get(f"https://api.rugcheck.xyz/v1/tokens/{mint}/report/summary", timeout=10, tries=1)
+        if deadline and deadline - time.time() < 2:
+            raise LookupError_(429, "The lookup is taking too long because the market-data APIs are slow. Please try again in a moment.")
+        rc_probe = S.get(f"https://api.rugcheck.xyz/v1/tokens/{mint}/report/summary", timeout=5, tries=1)
         if isinstance(rc_probe, dict) and "_error" not in rc_probe and rc_probe.get("score_normalised") is not None:
             raise LookupError_(404, "This token exists on RugCheck but has no trading pair on DexScreener yet, so there is no price/volume to score. Try again in a few minutes.")
         raise LookupError_(404, "No Solana token found for that address on DexScreener or RugCheck. Check that you pasted the token's contract (mint) address, not a wallet or pool address.")
     c = S.summarize_token(mint, pairs)
+    partial = []
 
-    # copycats: same-symbol Solana coins on DexScreener (scan.py logic minus X mint mentions)
+    # copycats: skip when the deadline is tight (extra DexScreener search)
     c["copycats"], c["primary"] = 0, True
-    try:
-        sym = S.norm_sym(c["symbol"])
-        if sym:
-            group = defaultdict(list)
-            for p in S.ds_search(c["symbol"]):
-                if S.norm_sym(p["baseToken"].get("symbol")) == sym:
-                    group[p["baseToken"]["address"]].append(p)
-            group[mint] = pairs
-            coins = [S.summarize_token(m, ps) if m != mint else c for m, ps in group.items()]
-            coins = [x for x in coins if x]
-            def rank_key(x):
-                b1, s1 = x["h1"]
-                return (x["is_pump"], (b1 + s1) >= 100 and ((x["liq"] or 0) >= 10000 or not x["liq"]), (x["mcap"] or 0), -(x["age_h"] or 0))
-            coins.sort(key=rank_key, reverse=True)
-            orig = coins[0]
-            if orig is c:
-                c["copycats"] = len(coins) - 1
-            else:
-                c["primary"] = False
-                c["is_copy"] = (c["mcap"] or 0) < 0.5 * (orig["mcap"] or 0) or (c["age_h"] or 0) < (orig["age_h"] or 0)
-                c["copy_of"] = {"symbol": orig["symbol"], "mint": orig["mint"], "mcap": orig["mcap"]}
-    except Exception:
-        pass
+    if not deadline or deadline - time.time() > 4:
+        try:
+            sym = S.norm_sym(c["symbol"])
+            if sym:
+                group = defaultdict(list)
+                for p in S.ds_search(c["symbol"]):
+                    if S.norm_sym(p["baseToken"].get("symbol")) == sym:
+                        group[p["baseToken"]["address"]].append(p)
+                group[mint] = pairs
+                coins = [S.summarize_token(m, ps) if m != mint else c for m, ps in group.items()]
+                coins = [x for x in coins if x]
+                def rank_key(x):
+                    b1, s1 = x["h1"]
+                    return (x["is_pump"], (b1 + s1) >= 100 and ((x["liq"] or 0) >= 10000 or not x["liq"]), (x["mcap"] or 0), -(x["age_h"] or 0))
+                coins.sort(key=rank_key, reverse=True)
+                orig = coins[0]
+                if orig is c:
+                    c["copycats"] = len(coins) - 1
+                else:
+                    c["primary"] = False
+                    c["is_copy"] = (c["mcap"] or 0) < 0.5 * (orig["mcap"] or 0) or (c["age_h"] or 0) < (orig["age_h"] or 0)
+                    c["copy_of"] = {"symbol": orig["symbol"], "mint": orig["mint"], "mcap": orig["mcap"]}
+        except Exception:
+            pass
+    else:
+        partial.append("copycat check skipped (slow upstream)")
 
     # X: no live X search here (needs agent MCP tools). Reuse last scan's stored posts read-only.
     try:
@@ -129,10 +152,15 @@ def live_scan(mint):
     n24 = c["h24"][0] + c["h24"][1]
     c["fees_est"] = round(n24 * S.CFG["fee_per_trade_sol_est"], 1) if n24 else None
 
-    rc = S.rugcheck(mint, [p["pairAddress"] for p in pairs])
-    c["rc"] = rc
-    if not c["liq"] and rc.get("liq"): c["liq"] = rc["liq"]; c["liq_src"] = "rugcheck"
-    if not c["mcap"] and rc.get("mcap"): c["mcap"] = rc["mcap"]; c["mcap_src"] = "rugcheck"
+    if not deadline or deadline - time.time() > 3:
+        rc = S.rugcheck(mint, [p["pairAddress"] for p in pairs])
+        c["rc"] = rc
+        if not c["liq"] and rc.get("liq"): c["liq"] = rc["liq"]; c["liq_src"] = "rugcheck"
+        if not c["mcap"] and rc.get("mcap"): c["mcap"] = rc["mcap"]; c["mcap_src"] = "rugcheck"
+    else:
+        c["rc"] = {}
+        partial.append("RugCheck skipped (slow upstream)")
+
     c["score"], c["parts"], c["flags"] = S.score(c)
     c["reason"] = S.reason(c)
 
@@ -145,9 +173,14 @@ def live_scan(mint):
             flags.append(f)
     if x_avail:
         flags.append(f"X data from the last scan's stored posts only ({c['x']['mentions']} mentions); no live X search")
+    flags += partial
     c["flags"] = flags
     c["x_available"] = x_avail
+    c["partial"] = bool(partial)
     return c
+
+
+LOOKUP_BUDGET_S = 12   # stay under ~15s end-to-end, including module load
 
 
 def lookup_live(mint, ip):
@@ -157,19 +190,17 @@ def lookup_live(mint, ip):
         hit, age = cached(mint)
         if hit: return {**hit, "cached": True, "cache_age_s": age}
         rate_check(ip)
-        last = None
-        for i in range(3):
-            try:
-                c = live_scan(mint)
-                last = None
-                break
-            except LookupError_ as e:
-                last = e
-                if e.status not in (502, 503) or i == 2:
-                    raise
-                time.sleep(1.5 * (2 ** i))   # cold / rate-limited upstream: retry inside the server
-        if last:
-            raise last
+        deadline = time.time() + LOOKUP_BUDGET_S
+        try:
+            c = live_scan(mint, deadline=deadline)
+        except LookupError_ as e:
+            if e.status == 503:
+                raise LookupError_(429, "DexScreener is busy right now. Please try the scan again in a moment.")
+            raise
+        except Exception as e:
+            if time.time() >= deadline or "deadline" in str(e).lower():
+                raise LookupError_(429, "The lookup is taking too long because the market-data APIs are slow. Please try again in a moment.")
+            raise
         with _cache_lock:
             _cache[mint] = (time.time(), c)
             if len(_cache) > 500:

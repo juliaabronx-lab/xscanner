@@ -65,7 +65,8 @@ def fmt_usd(v):
         if a >= d:
             x = a / d
             decimals = 0 if x >= 100 else 1 if x >= 10 else 2
-            s = f"{x:.{decimals}f}".rstrip("0").rstrip(".")
+            s = f"{x:.{decimals}f}"
+            if "." in s: s = s.rstrip("0").rstrip(".")
             return f"{sign}${s}{u}"
     if a >= 1 or a == 0:
         return f"{sign}${a:.0f}"
@@ -82,6 +83,37 @@ def rewrite_money(text):
     def repl(m):
         return fmt_usd(float(m.group(1)) * 1000)
     return _K_MONEY.sub(repl, text)
+
+
+def fmt_age(h):
+    """Same m/h/d/mo/y scale as the frontend ageTxt() helper: 34101.1h -> 3.9y."""
+    h = num(h)
+    if h is None:
+        return "—"
+    if h < 1:
+        return f"{max(1, int(round(h * 60)))}m"
+    if h < 48:
+        return (f"{h:.1f}h" if h < 10 else f"{h:.0f}h")
+    d = h / 24
+    if d < 60:
+        return f"{int(round(d))}d"
+    if d < 730:
+        return f"{int(round(d / 30.4))}mo"
+    return f"{d / 365:.1f}y"
+
+
+_AGE = re.compile(r"\bage (\d+(?:\.\d+)?)h\b")
+
+
+def rewrite_age(text):
+    if not text or not isinstance(text, str):
+        return text
+    return _AGE.sub(lambda m: "age " + fmt_age(float(m.group(1))), text)
+
+
+def rewrite_text(text):
+    """Apply the shared money and age formatters to scan.py reason/flag strings."""
+    return rewrite_age(rewrite_money(text))
 
 
 def pair(v):
@@ -151,7 +183,7 @@ def normalise_report_coin(c, dash):
     x = c.get("x") or {}
     rc = c.get("rugcheck") or {}
     b5, s5 = pair(c.get("m5")); b1, s1 = pair(c.get("h1"))
-    flags = [rewrite_money(f) for f in (c.get("flags") or [])]
+    flags = [rewrite_text(f) for f in (c.get("flags") or [])]
     paid_share = num(x.get("shill_share"))
     out = {
         "source": "report", "score": c.get("score"), "parts": c.get("parts") or {}, "tier": tier(c.get("score")),
@@ -159,7 +191,7 @@ def normalise_report_coin(c, dash):
         "dex": c.get("dex"), "url": c.get("url"), "age_h": c.get("age_h"), "liq": c.get("liq"), "mcap": c.get("mcap"),
         "vol24": c.get("vol24"), "pc5": c.get("pc5"), "pc1": c.get("pc1"), "pc24": c.get("pc24"),
         "buys5": b5, "sells5": s5, "buys1h": b1, "sells1h": s1, "fees_est": c.get("fees_est"), "boosts": c.get("boosts"),
-        "copycats": c.get("copycats"), "reason": rewrite_money(c.get("reason")), "flags": [rewrite_money(f) for f in flags],
+        "copycats": c.get("copycats"), "reason": rewrite_text(c.get("reason")), "flags": [rewrite_text(f) for f in flags],
         "pump": is_pump(c), "paid_share": paid_share,
         "paid_shilled": bool((paid_share or 0) >= 0.5 or any("paid shill" in f.lower() for f in flags)),
         "x": x, "vel": c.get("vel") or {}, "rugcheck": rc, "organic_examples": c.get("organic_examples") or [],
