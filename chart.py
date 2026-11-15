@@ -124,7 +124,7 @@ def _ts(s):
 def _fetch_dexpaprika(pool, tf):
     """Keyless DexPaprika OHLCV. 1h/24h only; shorter tfs get 1h bars (degraded)."""
     interval, degraded = DP_TF.get(tf, ("1h", True))
-    start = "-7d" if interval == "24h" else "-2d"
+    start = "-24h"  # keyless DexPaprika only allows the last 24 hours
     url = (f"https://api.dexpaprika.com/networks/solana/pools/{pool}/ohlcv?"
            + urllib.parse.urlencode({"start": start, "interval": interval, "limit": 300}))
     try:
