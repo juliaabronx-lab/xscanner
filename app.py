@@ -286,14 +286,19 @@ def apply_bundle_and_confidence(out):
         conf = cf.evaluate(out, None); conf["error"] = type(e).__name__
     st = b.get("status")
     known = st in ("ok", "elevated", "flagged")
-    out["bundle"] = {k: b.get(k) for k in ("status", "level", "flagged", "reason", "source", "wallets", "networks", "net_share",
-                                         "largest_share", "top10_ex_lp", "top20_ex_lp", "insider_top_holders", "uniform_n",
-                                         "uniform_of", "fund", "age_s", "stale", "pending", "partial")}
-    # linked wallets / share = the cluster that explains the verdict, whichever detector found it
-    # (RugCheck insider network, near-identical holder balances, or one funding wallet)
+    out["bundle"] = {k: b.get(k) for k in ("status", "level", "flagged", "reason", "source", "networks", "top10_ex_lp", "top20_ex_lp",
+                                         "insider_top_holders", "uniform_n", "uniform_of", "uniform_pct", "fund", "age_s", "stale",
+                                         "pending", "partial")}
+    # ONE source of truth: linked_wallets / share_pct = the cluster that explains the verdict (whichever detector found it).
+    # RugCheck's own insider-network numbers are kept apart as insider_*; wallets / net_share are aliases of the cluster numbers.
     out["bundle"]["linked_wallets"] = b.get("cluster_wallets", b.get("wallets")) if known else None
-    out["bundle"]["share_pct"] = b.get("cluster_share", b.get("net_share")) if known else None
+    out["bundle"]["share_pct"] = b.get("cluster_share", b.get("net_share")) if known else None     # None = unknown (never 0)
     out["bundle"]["basis"] = b.get("cluster_basis") if known else None
+    out["bundle"]["cluster_text"] = b.get("cluster_text") if known else None
+    out["bundle"]["wallets"], out["bundle"]["net_share"] = out["bundle"]["linked_wallets"], out["bundle"]["share_pct"]
+    out["bundle"]["insider_wallets"] = b.get("wallets") if known else None
+    out["bundle"]["insider_share"] = b.get("net_share") if known else None
+    out["bundle"]["insider_share_raw"] = b.get("net_share_raw") if known else None
     out["bundle_pct"] = out["bundle"]["share_pct"]
     out["bundle_wallets"] = out["bundle"]["linked_wallets"]
     out["data_confidence"] = {k: conf.get(k) for k in ("score", "level", "label", "uncertain", "notes", "fields", "sources",
@@ -341,6 +346,9 @@ def apply_bundle_and_confidence(out):
     return out
 
 
+_STORY_MEMO = {}          # mint -> (key, story fields): the story is rebuilt only when its inputs change, not on every request
+
+
 def apply_story(out):
     """Attach the plain-English coin story (what it is, why it is moving). Cache reads only; any failure -> no story."""
     try:
@@ -348,11 +356,20 @@ def apply_story(out):
         e = cf._cache.get(mint) or {}
         cached, _ = bd.get_cached(mint)
         rcx = (cached or {}).get("rc") or {}
-        posts, trends = st_.load_x(XFEED, [os.path.join(live.WORK, "x_raw.json"), os.path.join(HERE, "deploy", "data", "x_raw.json"),
-                                           os.path.join(SCANNER, "x_raw.json")])
+        raws = [os.path.join(live.WORK, "x_raw.json"), os.path.join(HERE, "deploy", "data", "x_raw.json"), os.path.join(SCANNER, "x_raw.json")]
+        posts, trends = st_.load_x(XFEED, raws)
+        sig = tuple(os.path.getmtime(p) if os.path.exists(p) else 0 for p in [XFEED, *raws])
+        key = (sig, out.get("score"), out.get("mcap"), out.get("liq"), out.get("pc1"), out.get("pc24"), out.get("age_h"),
+               tuple(out.get("flags") or ()), (e.get("ds") or {}).get("price"), rcx.get("meta_desc"))
+        hit = _STORY_MEMO.get(mint)
+        if hit and hit[0] == key:
+            out["story"], out["story_short"], out["story_detail"] = hit[1]
+            return out
         s = st_.build(out, ds=e.get("ds"), gt=e.get("gt"), rc_meta={"desc": rcx.get("meta_desc")}, posts=posts, trends=trends)
         out["story"], out["story_short"] = s["text"], s["short"]
         out["story_detail"] = {k: s[k] for k in ("sentences", "theme", "highlights", "x_matches", "catalyst")}
+        if len(_STORY_MEMO) > 400: _STORY_MEMO.clear()
+        _STORY_MEMO[mint] = (key, (out["story"], out["story_short"], out["story_detail"]))
     except Exception as ex:
         out["story"] = out["story_short"] = None
         out["story_error"] = type(ex).__name__
@@ -402,7 +419,7 @@ def _scan_generated(report, dashd):
     return report.get("generated_myt") or dashd.get("scanTime")
 
 
-def build_state():
+def _build_state_uncached():
     report, rmeta = load(os.path.join(SCANNER, "report.json"), {})
     dashd, dmeta = load(os.path.join(SCANNER, "dashboard_data.json"), {})
     dash_coins = {c.get("mint"): c for c in (dashd.get("coins") or []) if isinstance(c, dict)}
@@ -425,6 +442,82 @@ def build_state():
     return coins, summary, dashd, {"report": rmeta, "dashboard_data": dmeta}
 
 
+# The enriched coin list (bundle + confidence + story + verdict for every coin) is computed ONCE per scan / per few seconds
+# and shared by every endpoint; requests only ever read it. A refresh runs in the background and the old copy keeps serving.
+STATE_TTL = float(os.environ.get("STATE_TTL_S", "8"))
+_ST = {"v": None, "t": 0.0, "key": None, "building": False}
+_ST_LOCK = threading.Lock()
+
+
+def _state_key():
+    paths = [os.path.join(SCANNER, "report.json"), os.path.join(SCANNER, "dashboard_data.json"), XFEED, LEDGER]
+    return tuple(os.path.getmtime(p) if os.path.exists(p) else 0 for p in paths)
+
+
+_RECENT = {}                 # mint -> {"t", "coin"}: coins that WERE in the feed; served if a live lookup is rate-limited
+_RECENT_FILE = os.path.join(os.environ.get("LIVE_DIR", "/tmp/xscanner-live"), "recent_coins.json")
+RECENT_MAX, RECENT_AGE_S = 150, 24 * 3600
+_recent_flush = {"t": 0.0, "loaded": False}
+
+
+def _recent_load():
+    if _recent_flush["loaded"]: return
+    _recent_flush["loaded"] = True
+    try:
+        d = json.load(open(_RECENT_FILE, encoding="utf-8"))
+        for m, e in d.items():
+            if isinstance(e, dict) and time.time() - e.get("t", 0) < RECENT_AGE_S: _RECENT.setdefault(m, e)
+    except Exception:
+        pass
+
+
+def _recent_remember(coins):
+    _recent_load()
+    now = time.time()
+    for c in coins:
+        if c.get("mint") and c.get("source") != "live": _RECENT[c["mint"]] = {"t": now, "coin": c}
+    for m in sorted(_RECENT, key=lambda k: _RECENT[k]["t"])[:max(0, len(_RECENT) - RECENT_MAX)]: _RECENT.pop(m, None)
+    if now - _recent_flush["t"] > 60:
+        _recent_flush["t"] = now
+        try:
+            os.makedirs(os.path.dirname(_RECENT_FILE), exist_ok=True)
+            with open(_RECENT_FILE + ".tmp", "w", encoding="utf-8") as f: json.dump(_RECENT, f, default=str)
+            os.replace(_RECENT_FILE + ".tmp", _RECENT_FILE)
+        except Exception:
+            pass
+
+
+def _refresh_state():
+    try:
+        key = _state_key()
+        v = _build_state_uncached()
+        with _ST_LOCK:
+            _ST.update(v=v, t=time.time(), key=key)
+        try: _recent_remember(v[0])
+        except Exception: pass
+    finally:
+        _ST["building"] = False
+
+
+def build_state():
+    v = _ST["v"]
+    if v is None:                                   # cold start only: the first request builds it
+        with _ST_LOCK:
+            building = _ST["building"]; _ST["building"] = True
+        if not building:
+            _refresh_state()
+        else:
+            for _ in range(200):
+                if _ST["v"] is not None: break
+                time.sleep(0.05)
+        return _ST["v"] if _ST["v"] is not None else _build_state_uncached()
+    if (time.time() - _ST["t"] > STATE_TTL or _state_key() != _ST["key"]):
+        with _ST_LOCK:
+            go = not _ST["building"]; _ST["building"] = True
+        if go: threading.Thread(target=_refresh_state, name="state-refresh", daemon=True).start()
+    return v
+
+
 _BOOT = time.time()
 
 
@@ -438,6 +531,7 @@ def health():
 @app.get("/api/summary")
 def summary():
     coins, s, _, meta = build_state()
+    s = dict(s)
     s["coin_count"] = len(coins)
     s["tiers"] = {t: sum(1 for c in coins if c["tier"] == t) for t in ("look", "watch", "skip")}
     s["sources"] = meta
@@ -446,9 +540,24 @@ def summary():
     return s
 
 
+_LIST_DROP = ("story", "story_detail", "rugcheck", "x", "organic_examples", "risk", "vel", "reason", "parts_detail", "data_issues_raw")
+
+
+def _slim_coin(c):
+    """List-endpoint shape: everything a card / table row needs; the heavy nested fields live in /api/coins/{mint} and /api/lookup."""
+    o = {k: v for k, v in c.items() if k not in _LIST_DROP}
+    b = c.get("bundle") or {}
+    o["bundle"] = {k: b.get(k) for k in ("status", "level", "flagged", "reason", "linked_wallets", "share_pct", "basis", "cluster_text")}
+    d = c.get("data_confidence") or {}
+    o["data_confidence"] = {k: d.get(k) for k in ("score", "level", "label", "uncertain", "problems", "warnings")}
+    x = c.get("x") or {}
+    o["x"] = {"mentions": x.get("mentions")}
+    return o
+
+
 @app.get("/api/coins")
 def coins(min_score: float = 0, min_liq: float = 0, pump_only: bool = False, hide_paid: bool = False,
-          sort: str = "score", desc: bool = True):
+          sort: str = "score", desc: bool = True, full: bool = False):
     cs, _, _, meta = build_state()
     out = [c for c in cs if (num(c.get("score"), 0) or 0) >= min_score and (num(c.get("liq"), 0) or 0) >= min_liq
            and (not pump_only or c["pump"]) and (not hide_paid or not c["paid_shilled"])]
@@ -457,8 +566,9 @@ def coins(min_score: float = 0, min_liq: float = 0, pump_only: bool = False, hid
     else:
         out.sort(key=lambda c: num(c.get(sort), float("-inf")), reverse=desc)
     im.warm(out)
+    out = [({**c} if full else _slim_coin(c)) for c in out]
     for c in out: c["img_real"] = im.has_file(c.get("mint") or "")
-    return {"count": len(out), "total": len(cs), "coins": out, "sources": meta}
+    return {"count": len(out), "total": len(cs), "coins": out, "sources": meta, "slim": not full}
 
 
 @app.get("/api/coins/{mint}")
@@ -530,6 +640,17 @@ def _client_ip(request: Request):
     return request.client.host if request.client else "unknown"
 
 
+def _recent_lookup(mint):
+    """A coin that was in the feed within the last day: serve its last scan instead of failing when DexScreener is busy."""
+    _recent_load()
+    e = _RECENT.get(mint)
+    if not e or time.time() - e["t"] > RECENT_AGE_S: return None
+    age = int(time.time() - e["t"])
+    return {**e["coin"], "narrative": None,
+            "lookup": {"source": "report", "x_available": True, "cached": True, "stale": True, "cache_age_s": age,
+                       "note": f"DexScreener is busy, so this is the last scan that included this coin ({age // 60} min ago)."}}
+
+
 @app.get("/api/lookup/{mint}")
 def lookup_coin(mint: str, request: Request):
     mint = (mint or "").strip()
@@ -545,16 +666,22 @@ def lookup_coin(mint: str, request: Request):
         r = lk.lookup_live(mint, _client_ip(request))
     except lk.LookupError_ as e:
         stale, sage = lk.stale_cached(mint)
+        rec = _recent_lookup(mint)
         if stale:
             r = {**stale, "cached": True, "stale": True, "cache_age_s": sage}
+        elif rec:
+            return rec
         else:
             code = 429 if e.status >= 500 or e.status == 503 else e.status
             raise HTTPException(code, e.msg if code != 429 else (
                 e.msg if e.status in (429, 503) else "DexScreener is busy right now. Please try the scan again in a moment."))
     except Exception as e:
         stale, sage = lk.stale_cached(mint)
+        rec = _recent_lookup(mint)
         if stale:
             r = {**stale, "cached": True, "stale": True, "cache_age_s": sage}
+        elif rec:
+            return rec
         else:
             raise HTTPException(429, "DexScreener is busy right now. Please try the scan again in a moment.")
     ts = [threading.Thread(target=fn, args=(mint,), daemon=True) for fn in (lambda m: bd.fetch_now(m, 6), lambda m: cf.fetch_now(m, 6))]

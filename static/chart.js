@@ -16,7 +16,15 @@ function chartBlockHTML(){
     <div class="chctl"><div class="tfs">${TFS.map(t=>`<button data-tf="${t}" class="${t===CH.tf?'on':''}">${t}</button>`).join('')}</div>
     <div class="tfs"><button data-mode="native" class="on">Chart</button><button data-mode="dex">DexScreener</button></div></div></div>
     <div id="chWrap" class="chwrap"><div id="chNative" class="chnative"></div><div id="chMsg" class="chmsg hidden"></div><div id="chDex" class="chdex off"></div></div>
-    <div class="chfoot muted"><span id="chSrc">Candles: GeckoTerminal · refreshes every 15s while open</span></div></div>`;
+    <div class="chfoot muted"><span id="chSrc">Candles: GeckoTerminal · refreshes every 15s while open</span> <span id="chLim" class="chlim hidden" title="">Limited history</span></div></div>`;
+}
+// same rules as the server (chart.py sanitize): low <= min(open,close), high >= max(open,close), drop >10x spikes vs neighbours
+function saneCandles(cs){
+  let a=(cs||[]).filter(k=>k&&[k.o,k.h,k.l,k.c].every(x=>typeof x==='number'&&isFinite(x)&&x>0));
+  const med=xs=>{const s=[...xs].sort((p,q)=>p-q),n=s.length;return n?(n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2):null};
+  if(a.length>=5)a=a.filter((k,i)=>{const nb=[];for(let j=Math.max(0,i-3);j<Math.min(a.length,i+4);j++)if(j!==i)nb.push(a[j].c);const m=med(nb);
+    if(m&&(Math.min(k.o,k.c)>m*10||Math.max(k.o,k.c)<m/10))return false;if(m&&k.h>m*10)k.h=Math.max(k.o,k.c);if(m&&k.l<m/10)k.l=Math.min(k.o,k.c);return true});
+  return a.map(k=>({...k,h:Math.max(k.h,k.o,k.c,k.l),l:Math.min(k.l,k.o,k.c,k.h)}));
 }
 function chMsg(t){const m=document.getElementById('chMsg');if(!m)return;if(!t){m.classList.add('hidden');return}m.classList.remove('hidden');m.innerHTML=t}
 function setMode(mode){
@@ -91,7 +99,7 @@ async function load(showLoading){
       chMsg(`<span class="spin"></span> Chart loading… <a href="#" onclick="setMode('dex');return false">Use the DexScreener chart</a>`);
     }
     return}
-  const cd=j.candles||[];
+  const cd=saneCandles(j.candles||[]);
   if(!cd.length){chMsg(`No trades in this timeframe yet. Try a longer timeframe or <a href="#" onclick="setMode('dex');return false">the DexScreener chart</a>.`);CH.cs.setData([]);CH.vs.setData([]);return}
   chMsg('');
   CH.cs.setData(cd.map(k=>({time:k.t,open:k.o,high:k.h,low:k.l,close:k.c})));
@@ -113,6 +121,9 @@ async function load(showLoading){
   const srcEl=document.getElementById('chSrc');
   if(srcEl){const nm={geckoterminal:'GeckoTerminal','geckoterminal-direct':'GeckoTerminal (your browser)','geckoterminal+snapshots':'GeckoTerminal + our price snapshots',snapshots:'our own price snapshots (no volume)',derived:'approximate, from DexScreener 5m/1h/24h changes'}[j.source]||j.source||'GeckoTerminal';
     srcEl.textContent='Candles: '+nm+(j.approximate?' · approximate':'')+' · refreshes every 15s while open'}
+  const lim=document.getElementById('chLim');
+  if(lim){const on=!!j.limited||j.source==='derived'||j.source==='snapshots';lim.classList.toggle('hidden',!on);
+    lim.title=on?(j.limited_reason||'Exchange candles are rate-limited right now, so this chart is built from our own price snapshots (no volume).'):''}
   const ft=j.fetched_at?new Date(j.fetched_at*1000):new Date();
   document.getElementById('chUpd').textContent=' · updated '+ft.toLocaleTimeString('en-GB',{timeZone:'Asia/Kuala_Lumpur'})+' MYT'+(j.stale?' (delayed)':'');
 }

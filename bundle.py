@@ -29,6 +29,7 @@ SEED = os.environ.get("CACHE_SEED", os.path.join(os.path.dirname(os.path.abspath
 MINT_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 
 # thresholds
+NEGLIGIBLE_PCT = 1.0     # non-pool top-20 holders hold less than this combined: no usable holder data (pool-only token)
 FLAG_SHARE, FLAG_WALLETS, FLAG_ONE_NET, FLAG_TOP10 = 10.0, 50, 5.0, 50.0
 WARN_SHARE, WARN_WALLETS, WARN_TOP10, WARN_TOP20, WARN_INS_HOLDERS = 5.0, 20, 30.0, 45.0, 3
 # score caps applied in app.py
@@ -55,6 +56,25 @@ def _num(v, d=0.0):
         return d
 
 
+UNI_TOL, UNI_MIN = 0.05, 5          # holders within 5% of each other's balance, at least 5 of them
+ANALYSIS_V = 6                      # bump when analyze() changes shape: older cached analyses are refreshed first
+
+
+def value_cluster(amts, supply, tol=UNI_TOL, min_n=UNI_MIN):
+    """Largest group of balances within `tol` of each other (>= min_n holders, each >= 0.05% of supply).
+    Returns (holders, combined % of supply). (0, 0.0) when there is none."""
+    a = sorted((x for x in amts if x and x > 0), reverse=True)
+    best, bs = (0, 0.0), (0, 0.0)
+    for i in range(len(a)):
+        j = i
+        while j + 1 < len(a) and a[j + 1] >= a[i] * (1 - tol): j += 1
+        n = j - i + 1
+        if n < min_n or a[j] / supply * 100 < 0.05: continue
+        s = sum(a[i:j + 1])
+        if (n, s) > bs: bs, best = (n, s), (n, round(s / supply * 100, 2))
+    return best
+
+
 def analyze(rep):
     """Derive bundle numbers from a RugCheck full report dict."""
     supply = _num((rep.get("token") or {}).get("supply")) or 0.0
@@ -74,7 +94,8 @@ def analyze(rep):
     nets = [n for n in (rep.get("insiderNetworks") or []) if isinstance(n, dict)]
     held = [_num(n.get("currentHolding"), _num(n.get("tokenAmount"))) for n in nets]
     shares = [(h / supply * 100.0 if supply else 0.0) for h in held]
-    net_share = min(100.0, sum(shares))
+    net_raw = sum(shares)
+    net_share = min(100.0, net_raw)
     sizes = [int(_num(n.get("size"))) for n in nets]
     wallets = max(int(_num(rep.get("graphInsidersDetected"))), sum(sizes))
     holders = []
@@ -89,19 +110,12 @@ def analyze(rep):
     risk_names = [str(r.get("name")) for r in (rep.get("risks") or []) if isinstance(r, dict) and r.get("name")]
     risk_hit = [n for n in risk_names if re.search(r"insider|bundl|sybil|linked|cluster", n, re.I)]
     big = max(zip(shares, sizes), default=(0.0, 0))
-    if sum(shares) > 100.5:
-        # the networks "hold" more than the whole supply (RugCheck double-counts the pool / cumulative amounts): that share is
-        # not credible, so show only what is verifiable - the insider-flagged top holders - instead of "100%" or "110%"
-        net_share = min(100.0, ins_top_pct)
-        big = (min(big[0], net_share), big[1])
-    # uniform balances: many top holders with near-identical amounts = sybil / farm wallets (a bundle RugCheck's graph may miss)
+    net_credible = net_raw <= 100.5       # the networks cannot hold more than the whole supply: RugCheck double-counts (pool / cumulative amounts)
+    # near-identical balances: cluster the top-20 non-pool holders BY VALUE (>= UNI_MIN holders within UNI_TOL of each other).
     amts = [_num(h.get("amount")) for h in holders[:20]]
     uni_n, uni_pct = 0, 0.0
-    if len(amts) >= 10:
-        srt = sorted(amts); med = srt[len(srt) // 2]
-        if supply and med / supply * 100 >= 0.05:      # ignore dust-sized tokens / whales
-            near = [a for a in amts if abs(a - med) <= 0.10 * med]
-            uni_n, uni_pct = len(near), round(sum(near) / supply * 100, 2)
+    if len(amts) >= 10 and supply:
+        uni_n, uni_pct = value_cluster(amts, supply)
     top_mkt = max(markets, key=lambda m: _num((m.get("lp") or {}).get("quoteUSD")) + _num((m.get("lp") or {}).get("baseUSD")), default={})
     lpd = top_mkt.get("lp") or {}
     detected = rep.get("detectedAt")
@@ -119,8 +133,10 @@ def analyze(rep):
     return {
         "uniform_n": uni_n, "uniform_pct": uni_pct, "uniform_of": len(amts), "rc": rcx, "owners": owners, "top_accts": top_accts,
         "top20_pct_reported": round(top20, 1),
-        "wallets": wallets, "networks": len(nets), "net_share": round(net_share, 1),
-        "largest_share": round(big[0], 1), "largest_size": big[1],
+        "av": ANALYSIS_V, "wallets": wallets, "networks": len(nets),
+        "net_share": round(net_share, 1) if net_credible else None, "net_share_raw": round(net_raw, 1),
+        "largest_share": round(big[0], 1) if net_credible else None, "largest_size": big[1],
+        "holders_negligible": (not top20) or top20 < NEGLIGIBLE_PCT,
         "top10_ex_lp": round(top10, 1), "top20_ex_lp": round(top20, 1), "n_holders_seen": len(holders),
         "insider_top_holders": len(ins_top), "insider_top_pct": round(ins_top_pct, 1),
         "holders": rep.get("totalHolders"), "risk_hits": risk_hit, "supply_known": bool(supply),
@@ -175,29 +191,38 @@ def assess_numbers(a, source="rugcheck"):
     fund_flag = f_res >= FUND_MIN_RESOLVED and f_n >= FUND_FLAG_N and f_n / f_res >= FUND_FLAG_FRAC
     fund_warn = f_res >= FUND_MIN_RESOLVED and f_n >= FUND_WARN_N and f_n / f_res >= FUND_WARN_FRAC
     uni, uni_of = a.get("uniform_n") or 0, a.get("uniform_of") or 0
-    uni_flag, uni_warn = uni >= 12, uni >= 8
+    uni_pct = a.get("uniform_pct") or 0.0
+    uni_flag = uni >= 8 or (uni >= 5 and uni_pct >= 15.0)
+    uni_warn = uni >= 5 and uni_pct >= 3.0
+    share_known = a.get("net_share") is not None
     parts = []
-    if share and (w or a.get("networks")):
-        parts.append(f"{w} linked wallets hold {_fmt_pct(share)}%" if w else f"insider networks hold {_fmt_pct(share)}%")
-    elif w:
-        parts.append(f"{w} linked wallets")
+    # 'linked wallets' is ONLY RugCheck's insider-network count; near-identical balances are labelled as holders
+    if w or a.get("networks"):
+        if share_known and share:
+            parts.append(f"{w} linked wallets hold {_fmt_pct(share)}%" if w else f"insider networks hold {_fmt_pct(share)}%")
+        elif not share_known and w:
+            parts.append(f"{w} linked wallets (share unknown: RugCheck reports over 100% of supply)")
+        elif w:
+            parts.append(f"{w} linked wallets")
     if fund_flag or fund_warn:
         parts.append(f"{f_n} of {f_res} checked top holders were created by one wallet ({fd.get('funder','')[:4]}…{fd.get('funder','')[-4:]})"
                      + (f", {fd.get('same_slots')} within seconds of each other" if (fd.get("same_slots") or 0) >= 3 else ""))
     if uni_flag or uni_warn:
-        parts.append(f"{uni} of the top {uni_of} holders hold near-identical amounts (~{_fmt_pct(a.get('uniform_pct',0)/max(uni,1))}% each)")
+        parts.append(f"{uni} near-identical holders hold {_fmt_pct(uni_pct)}%")
     if t10: parts.append(f"top 10 holders (excl. pool) {_fmt_pct(t10)}%")
-    # the cluster that triggered (or best explains) the verdict: wallets + combined share held, whatever detected it
-    cl = [(w, share, "insider network")]
-    if uni_warn: cl.append((uni, a.get("uniform_pct") or 0.0, "near-identical holders"))
+    # the cluster that triggered (or best explains) the verdict: holders + combined share held, whatever detected it
+    cl = [(w, share if share_known else None, "insider network")]
+    if uni_warn: cl.append((uni, uni_pct, "near-identical holders"))
     if fund_warn: cl.append((f_n, fd.get("pct") or 0.0, "same funding wallet"))
-    cw, cs, cb = max(cl, key=lambda t: (t[0], t[1]))
+    cw, cs, cb = max(cl, key=lambda t: (t[0], t[1] or 0.0))
     if not cw and t10 >= WARN_TOP10:       # pure concentration: the cluster is the top-10 holders themselves
         cw, cs, cb = min(10, a.get("n_holders_seen") or 10), t10, "top-10 holders"
-    net_flag = share >= FLAG_SHARE or w >= FLAG_WALLETS or one >= FLAG_ONE_NET or fund_flag or uni_flag
+    share_t = share if share_known else min(100.0, a.get("net_share_raw") or 0.0)   # thresholds only; never displayed
+    net_flag = share_t >= FLAG_SHARE or w >= FLAG_WALLETS or one >= FLAG_ONE_NET or fund_flag or uni_flag
     flagged = net_flag or t10 >= FLAG_TOP10
-    elevated = (not flagged) and (share >= WARN_SHARE or w >= WARN_WALLETS or t10 >= WARN_TOP10 or t20 >= WARN_TOP20
+    elevated = (not flagged) and (share_t >= WARN_SHARE or w >= WARN_WALLETS or t10 >= WARN_TOP10 or t20 >= WARN_TOP20
                                   or (a.get("insider_top_holders") or 0) >= WARN_INS_HOLDERS or bool(hits) or fund_warn or uni_warn)
+    negligible = a["holders_negligible"] if "holders_negligible" in a else (t20 < NEGLIGIBLE_PCT)
     if flagged:
         head = "Bundled" if net_flag else "Concentrated"
         lvl, status = "flagged", "flagged"
@@ -205,15 +230,22 @@ def assess_numbers(a, source="rugcheck"):
     elif elevated:
         lvl, status = "elevated", "elevated"
         reason = "Bundle risk: " + (", ".join(parts) or "; ".join(hits))
-    elif a.get("n_holders_seen") == 0:
-        # no non-pool holder data at all (e.g. the only holder is the pool): that is unknown, never a pass
+    elif a.get("n_holders_seen") == 0 or negligible:
+        # no usable non-pool holder data (only the pool, or only dust holders): that is unknown, never a pass
         lvl, status, flagged = "unknown", "unavailable", False
-        reason = "Bundle check unavailable: no holder data beyond the liquidity pool"
+        reason = ("Bundle check unavailable: no holder data beyond the liquidity pool" if not a.get("n_holders_seen") else
+                  f"Bundle check unavailable: the {a.get('n_holders_seen')} holders left after excluding the pool hold only {_fmt_pct(t20)}% combined")
     else:
         lvl, status = "ok", "ok"
-        reason = "Bundle check passed" + (f" ({_fmt_pct(share)}% in linked wallets, top 10 {_fmt_pct(t10)}%)" if (share or t10) else "")
+        reason = "Bundle check passed" + (f" ({_fmt_pct(share)}% in linked wallets, top 10 {_fmt_pct(t10)}%)" if ((share and share_known) or t10) else "")
     out = {"status": status, "level": lvl, "flagged": flagged, "reason": reason, "source": source, **a}
-    out["cluster_wallets"], out["cluster_share"], out["cluster_basis"] = (int(cw), round(float(cs), 1), cb) if (cw and cs) or cw else (0, 0.0, None)
+    noun = {"insider network": "linked wallets", "near-identical holders": "near-identical holders",
+            "same funding wallet": "holders created by one wallet", "top-10 holders": "top holders"}.get(cb, "linked wallets")
+    if cw:
+        out["cluster_wallets"], out["cluster_share"], out["cluster_basis"] = int(cw), (round(float(cs), 1) if cs is not None else None), cb
+        out["cluster_text"] = f"{int(cw)} {noun} hold {_fmt_pct(float(cs))}%" if cs is not None else f"{int(cw)} {noun} (share unknown)"
+    else:
+        out["cluster_wallets"], out["cluster_share"], out["cluster_basis"], out["cluster_text"] = 0, 0.0, None, None
     if status == "unavailable":
         out["top10_ex_lp"] = out["top20_ex_lp"] = None   # unknown, not 0%
     return out
@@ -333,10 +365,13 @@ def _want(mint):
     now = time.time()
     with _lock:
         v = _cache.get(mint)
-        if v and now - v["t"] < CACHE_S: return
+        old_shape = bool(v) and (v.get("a") or {}).get("av") != ANALYSIS_V     # cached by an older analyze(): refresh it first
+        if v and now - v["t"] < CACHE_S and not old_shape: return
         if mint in _queued or now - _fail.get(mint, 0) < 60: return
         if len(_queue) > 200: return
-        _queued.add(mint); _queue.append(mint)
+        _queued.add(mint)
+        if old_shape: _queue.insert(0, mint)
+        else: _queue.append(mint)
     _ensure_worker()
 
 

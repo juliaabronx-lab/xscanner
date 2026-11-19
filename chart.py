@@ -32,7 +32,9 @@ GAP_S = 3.0              # seconds between GeckoTerminal calls (one worker)
 UPSTREAM_N, UPSTREAM_WIN = 10, 60   # calls per minute budget (the scanner and the confidence worker share the IP)
 COOLDOWN0, COOLDOWN_MAX = 45, 600
 INLINE_WAIT_S = 6.0      # longest a viewer's request waits for the worker
-PREWARM_TFS = ("5m", "15m")
+PREWARM_TFS = ("5m", "15m", "1h")      # 5m first for every coin (one pool at a time), then the longer frames
+RESAMPLE_FROM = {"15m": 900, "1h": 3600, "4h": 14400}   # built locally from real 5m candles while the direct frame is missing
+GAP_LO_S = 8.0           # background backfill: one pool at a time, this far apart (viewers use GAP_S)
 PREWARM_EVERY = 330      # seconds between background refreshes of a pre-warmed chart
 LIMIT = 300
 UA = {"User-Agent": "memecoin-scanner-platform/1.0", "Accept": "application/json"}
@@ -98,7 +100,7 @@ def _flush(force=False):
         pass
 
 
-def export(tfs=PREWARM_TFS, keep=160):
+def export(tfs=PREWARM_TFS, keep=300):
     """Trimmed last-good candles for the seed file (box -> repo), so a redeploy starts with charts."""
     _load_store()
     out = {}
@@ -168,11 +170,11 @@ def _gt_call(pool, tf, token):
 
 def _worker():
     while True:
-        job = None
+        job, job_hi = None, True
         with _cond:
             while job is None:
                 for pr in ("hi", "lo"):
-                    if _q[pr]: job = _q[pr].popleft(); break
+                    if _q[pr]: job = _q[pr].popleft(); job_hi = (pr == "hi"); break
                 if job is None: _cond.wait(timeout=5); _flush()
         key = job
         pool, tf, token = key
@@ -183,7 +185,7 @@ def _worker():
                 continue
             while not _budget_ok():                  # honour cool-down / per-minute budget, never hammer
                 time.sleep(min(max(_g["cool_until"] - time.time(), 1.0), 5.0))
-            wait = _g["last_call"] + GAP_S - time.time()
+            wait = _g["last_call"] + (GAP_S if job_hi else GAP_LO_S) - time.time()
             if wait > 0: time.sleep(wait)
             try:
                 d = _gt_call(pool, tf, token)
@@ -208,12 +210,75 @@ def _enqueue(key, hi):
             return ev
         ev = threading.Event(); _queued[key] = ev
         _q["hi" if hi else "lo"].append(key)
-        if len(_q["lo"]) > 120: _q["lo"].popleft()
+        if len(_q["lo"]) > 400: _q["lo"].popleft()
         if not _g["worker"]:
             _g["worker"] = True
             threading.Thread(target=_worker, name="ohlcv-worker", daemon=True).start()
         _cond.notify()
         return ev
+
+
+# ------------------------------------------------------------------ candle hygiene
+def _med(xs):
+    s = sorted(xs); n = len(s)
+    return None if not n else (s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2)
+
+
+def sanitize(candles, ratio=10.0, win=3):
+    """Make every candle internally consistent and drop spikes.
+    - sorted, one candle per timestamp, no non-positive / non-numeric prices
+    - low <= min(open, close) and high >= max(open, close)
+    - a candle whose open AND close sit more than `ratio`x away from the median close of its neighbours is dropped; a wick that
+      reaches more than `ratio`x past that median is clamped to the candle body (a bad print, not a real trade range)."""
+    rows = {}
+    for k in candles or []:
+        try:
+            o, h, l, c_ = (float(k["o"]), float(k["h"]), float(k["l"]), float(k["c"]))
+            v = float(k.get("v") or 0)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not all(x == x and x > 0 for x in (o, h, l, c_)): continue
+        rows[int(k["t"])] = {"t": int(k["t"]), "o": o, "h": h, "l": l, "c": c_, "v": v if v == v and v >= 0 else 0.0}
+    cs = [rows[t] for t in sorted(rows)]
+    if len(cs) >= 5:
+        keep = []
+        for i, k in enumerate(cs):
+            nb = [cs[j]["c"] for j in range(max(0, i - win), min(len(cs), i + win + 1)) if j != i]
+            m = _med(nb)
+            if m and m > 0:
+                if min(k["o"], k["c"]) > m * ratio or max(k["o"], k["c"]) < m / ratio: continue      # whole candle is an outlier
+                if k["h"] > m * ratio: k["h"] = max(k["o"], k["c"])
+                if k["l"] < m / ratio: k["l"] = min(k["o"], k["c"])
+            keep.append(k)
+        cs = keep
+    for k in cs:
+        k["h"] = max(k["h"], k["o"], k["c"], k["l"]); k["l"] = min(k["l"], k["o"], k["c"], k["h"])
+    return cs
+
+
+def resample(candles, sec):
+    """Aggregate finer real candles into `sec` candles (volume summed)."""
+    b = {}
+    for k in sorted(candles or [], key=lambda x: x["t"]):
+        t = k["t"] - k["t"] % sec
+        if t in b:
+            x = b[t]; x["h"] = max(x["h"], k["h"]); x["l"] = min(x["l"], k["l"]); x["c"] = k["c"]; x["v"] = (x["v"] or 0) + (k.get("v") or 0)
+        else:
+            b[t] = {"t": t, "o": k["o"], "h": k["h"], "l": k["l"], "c": k["c"], "v": k.get("v") or 0}
+    return [b[t] for t in sorted(b)]
+
+
+def _annotate(d):
+    """Final shape of every /api/ohlcv answer: sane candles + source / limited / n_candles / history_s."""
+    cs = sanitize(d.get("candles"))
+    src = d.get("source") or "unknown"
+    out = {**d, "candles": cs, "n_candles": len(cs), "history_s": (cs[-1]["t"] - cs[0]["t"]) if len(cs) > 1 else 0,
+           "has_volume": any((k.get("v") or 0) > 0 for k in cs)}
+    out["limited"] = src in ("snapshots", "derived")      # true = our own thin history, not exchange candles
+    if out["limited"]:
+        out["limited_reason"] = ("approximate candles from price-change windows" if src == "derived"
+                                 else "built from our own price snapshots; exchange candles are rate-limited right now")
+    return out
 
 
 # ------------------------------------------------------------------ fallbacks
@@ -226,10 +291,21 @@ def _best_cached(pool, tf, token, now):
         return best
 
 
+def _best_or_resampled(pool, tf, token, now):
+    """Last-good candles for tf; failing that, real 5m candles resampled to tf (so one GeckoTerminal success serves every frame)."""
+    best = _best_cached(pool, tf, token, now)
+    if best or tf not in RESAMPLE_FROM: return best
+    b5 = _best_cached(pool, "5m", token, now)
+    if not b5: return None
+    cs = resample(b5[1]["candles"], RESAMPLE_FROM[tf])
+    if not cs: return None
+    return b5[0], {**b5[1], "tf": tf, "candles": cs, "note": "Resampled from real 5m candles."}
+
+
 def _fallback(pool, tf, token, now, why):
     """Best answer that needs no upstream: last-good (+ our snapshots), our snapshot candles, then derived candles."""
     mint = token or ph.pool_mint(pool)
-    best = _best_cached(pool, tf, token, now)
+    best = _best_or_resampled(pool, tf, token, now)
     snap = ph.candles(mint, tf) if mint else []
     if best and snap:
         last = best[1]["candles"][-1]["t"]
@@ -258,7 +334,7 @@ def _fallback(pool, tf, token, now, why):
 
 
 # ------------------------------------------------------------------ public API
-def get_ohlcv(pool, tf, token=None):
+def _get_ohlcv(pool, tf, token=None):
     if not B58_RE.match(pool or ""):
         raise ChartError(400, "Invalid pool address.")
     if token and not B58_RE.match(token):
@@ -277,6 +353,11 @@ def get_ohlcv(pool, tf, token=None):
     if e and now - e[0] < SWR_MAX:                      # stale-while-revalidate: answer now, refresh behind it
         _enqueue(key, True)
         return {**e[1], "cached": True, "age_s": round(now - e[0], 1)}
+    if tf in RESAMPLE_FROM:                              # real 5m candles already here: answer from them, fetch the real frame behind it
+        rs = _best_or_resampled(pool, tf, token, now)
+        if rs and rs[1].get("note", "").startswith("Resampled"):
+            _enqueue(key, False)
+            return {**rs[1], "cached": True, "stale": True, "age_s": round(now - rs[0], 1)}
     ev = _enqueue(key, True)
     depth = len(_q["hi"]) + len(_q["lo"])
     if _budget_ok() and depth <= 3:
@@ -293,6 +374,11 @@ def get_ohlcv(pool, tf, token=None):
     raise ChartError(503, "No candles yet for this pair: price snapshots start within a minute. Try again shortly or use the DexScreener chart.")
 
 
+def get_ohlcv(pool, tf, token=None):
+    """Sanitised, annotated candles (see _annotate). Raises ChartError like before."""
+    return _annotate(_get_ohlcv(pool, tf, token))
+
+
 def prewarm(coins, tfs=PREWARM_TFS):
     """Queue background refreshes of the default timeframes for the current coins (low priority, never blocks)."""
     _load_store()
@@ -301,16 +387,16 @@ def prewarm(coins, tfs=PREWARM_TFS):
         ph.register([c for c in coins or [] if isinstance(c, dict)])
     except Exception:
         pass
-    for c in coins or []:
-        if not isinstance(c, dict): continue
-        pool, mint = c.get("pool"), c.get("mint")
-        if not pool or not B58_RE.match(str(pool)): continue
-        if mint and B58_RE.match(str(mint)): ph.watch(mint, pool)
-        for tf in tfs:
+    for tf in tfs:                      # 5m for every coin first, then the longer frames: one pool at a time, slowly
+        for c in coins or []:
+            if not isinstance(c, dict): continue
+            pool, mint = c.get("pool"), c.get("mint")
+            if not pool or not B58_RE.match(str(pool)): continue
+            if mint and B58_RE.match(str(mint)): ph.watch(mint, pool)
             key = (pool, tf, mint or None)
             with _lock:
                 e = _cache.get(key)
-            if e and now - e[0] < PREWARM_EVERY: continue
+            if e and now - e[0] < (PREWARM_EVERY if tf == "5m" else PREWARM_EVERY * 3): continue
             _enqueue(key, False)
 
 

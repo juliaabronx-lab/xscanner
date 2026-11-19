@@ -403,3 +403,6 @@ a.login-back{display:inline-flex;margin-top:18px}
 .conf{width:100%;border-collapse:collapse;margin:6px 0 12px;font-size:12px}.conf td{padding:5px 6px;border-bottom:1px solid hsl(var(--primary) / .06);vertical-align:top}.conf td:first-child{white-space:nowrap}
 
 .twhy{margin:6px 0 4px;font-size:11.5px;line-height:1.35;color:hsl(var(--foreground) / .85);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.twhy b{display:block;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);font-weight:600}.story{line-height:1.55;margin:4px 0 8px}
+
+.chlim{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:999px;font-size:10.5px;border:1px solid #f5a52455;color:#f5a524;background:#f5a5241a}
+.chlim.hidden{display:none}

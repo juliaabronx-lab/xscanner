@@ -119,13 +119,15 @@ function spark(series,w=260,h=60){
   return `<svg viewBox="0 0 ${w} ${h+14}" width="100%"><polyline points="0,${h} ${p} ${w},${h}" fill="#9b6bff22" stroke="none"/><polyline points="${p}" fill="none" stroke="#9b6bff" stroke-width="2"/>${series.map((s,i)=>`<text x="${i*st}" y="${h+12}" font-size="9" fill="#8a91a6" text-anchor="${i===0?'start':i===series.length-1?'end':'middle'}">${esc(s.label)}</text>`).join('')}</svg>`;
 }
 
+// 'Linked wallets' is only RugCheck's insider-network count; other detectors are named for what they measure
+const clusterLabel=b=>({'near-identical holders':'Near-identical holders','same funding wallet':'Holders from one funder','top-10 holders':'Top holders'}[b.basis]||'Linked wallets');
 function bundleHTML(c){
   const b=c.bundle; if(!b)return '';
   const lvl=b.status==='flagged'?'red':b.status==='elevated'||b.status==='unavailable'?'amb':'grn';
   const word={flagged:b.reason&&b.reason.startsWith('Concentrated')?'CONCENTRATED':'BUNDLE',elevated:'Bundle risk',unavailable:'Check unavailable',ok:'Passed'}[b.status]||b.status;
   const f=b.fund&&b.fund.resolved?`${b.fund.largest} of ${b.fund.resolved} checked top holders share one creator wallet`:'RPC funding check not available';
   return `<h3>Bundle / insider check <span class="pill ${lvl}">${esc(word)}</span></h3><p class="muted" style="margin:4px 0">${esc(b.reason||'')}${b.status==='unavailable'?' — missing data is never counted as safe.':''}</p>
-   <div class="kv"><div><span>Linked wallets</span>${b.linked_wallets??'—'}${b.basis&&b.linked_wallets?` <small class="muted">(${esc(b.basis)})</small>`:''}</div><div><span>Share held by cluster</span>${b.share_pct!=null?b.share_pct+'%':'—'}</div><div><span>Insider networks</span>${b.networks??'—'}</div>
+   <div class="kv"><div><span>${esc(clusterLabel(b))}</span>${b.linked_wallets??'—'}${b.basis&&b.linked_wallets?` <small class="muted">(${esc(b.basis)})</small>`:''}</div><div><span>Share held by cluster</span>${b.share_pct!=null?b.share_pct+'%':(b.linked_wallets?'<span title="RugCheck reports more than 100% of supply for these wallets, so the share is not credible">unknown</span>':'—')}</div><div><span>Insider networks</span>${b.networks??'—'}</div>
    <div><span>Top 10 (ex-pool)</span>${b.top10_ex_lp!=null&&b.status!=='unavailable'?b.top10_ex_lp+'%':'—'}</div><div><span>Insider top holders</span>${b.insider_top_holders??'—'}</div><div><span>On-chain funding</span><small>${esc(f)}</small></div></div>`;
 }
 function confHTML(c){

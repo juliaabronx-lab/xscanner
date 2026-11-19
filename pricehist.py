@@ -22,8 +22,10 @@ JUP = "https://lite-api.jup.ag/price/v3?ids="
 UA = {"User-Agent": "Mozilla/5.0 (xScanner read-only; +https://xscanner-c8jo.onrender.com)", "Accept": "application/json"}
 B58 = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 TICK_S = float(os.environ.get("PRICE_TICK_S", "60"))
-KEEP_S = 26 * 3600
-MAX_PTS = 1700
+KEEP_S = 30 * 3600          # keep 24h+ of history
+MAX_PTS = 2400
+FULL_RES_S = 3 * 3600        # points older than this are thinned to one per COMPACT_S (disk / seed stay small)
+COMPACT_S = 300
 WATCH_S = 6 * 3600           # a coin someone opened (not in the report) is tracked this long
 TF_S = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
 
@@ -40,6 +42,34 @@ def _num(v):
         return f if f == f else None
     except (TypeError, ValueError):
         return None
+
+
+def _median(xs):
+    s = sorted(xs); n = len(s)
+    return None if not n else (s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2)
+
+
+def clean_points(pts, ratio=10.0, win=3):
+    """Drop price points that sit more than `ratio`x away from the median of their neighbours (a bad tick / wrong-unit price)."""
+    n = len(pts)
+    if n < 5: return list(pts)
+    out = []
+    for i, (t, p) in enumerate(pts):
+        nb = [pts[j][1] for j in range(max(0, i - win), min(n, i + win + 1)) if j != i]
+        m = _median(nb)
+        if m and m > 0 and (p > m * ratio or p < m / ratio): continue
+        out.append([t, p])
+    return out
+
+
+def compact(pts, now=None):
+    """Full resolution for the last FULL_RES_S, then one point (the last) per COMPACT_S bucket."""
+    now = now or time.time()
+    old, new, seen = [], [], {}
+    for t, p in pts:
+        if now - t > FULL_RES_S: seen[t - t % COMPACT_S] = [t, p]
+        else: new.append([t, p])
+    return [seen[k] for k in sorted(seen)] + new
 
 
 def load():
@@ -69,7 +99,7 @@ def save():
     try:
         os.makedirs(os.path.dirname(STORE), exist_ok=True)
         with _lock:
-            snap = {m: v for m, v in _h.items()}
+            snap = {m: {**v, "pts": compact(v["pts"])} for m, v in _h.items()}
         tmp = STORE + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f: json.dump(snap, f)
         os.replace(tmp, STORE)
@@ -77,9 +107,12 @@ def save():
         pass
 
 
-def export(max_pts=400):
+def export(max_pts=700, recent_s=4 * 3600):
+    """Seed export: coins tracked in the last `recent_s`, thinned history (24h+ at 5-minute resolution)."""
+    now = time.time()
     with _lock:
-        return {m: {**{k: v[k] for k in v if k != "pts"}, "pts": v["pts"][-max_pts:]} for m, v in _h.items()}
+        return {m: {**{k: v[k] for k in v if k != "pts"}, "pts": compact(v["pts"], now)[-max_pts:]}
+                for m, v in _h.items() if now - (v.get("seen") or 0) < recent_s}
 
 
 def watch(mint, pool=None):
@@ -150,8 +183,8 @@ def tick(coins, now=None, network=True):
         p = prices.get(m)
         mcap = _num(c.get("mcap"))
         if p is None: p = _hint(m)
-        if p is None and mcap and mcap > 0 and m.endswith("pump"):
-            p = mcap / 1e9            # pump.fun supply is a fixed 1B tokens
+        if p is None and mcap and mcap > 0 and m.endswith("pump") and not (_h.get(m) or {}).get("pts"):
+            p = mcap / 1e9            # pump.fun supply is a fixed 1B tokens; only to seed a brand-new coin (mixing units makes spikes)
         if p is None or p <= 0: continue
         with _lock:
             v = _h.setdefault(m, {"pts": []})
@@ -162,7 +195,7 @@ def tick(coins, now=None, network=True):
             if mcap: v["mcap"] = mcap
             if not v["pts"] or now - v["pts"][-1][0] >= TICK_S * 0.6:
                 v["pts"].append([int(now), p]); n += 1
-            v["pts"] = [q for q in v["pts"] if now - q[0] < KEEP_S][-MAX_PTS:]
+            v["pts"] = compact([q for q in v["pts"] if now - q[0] < KEEP_S], now)[-MAX_PTS:]
             v["seen"] = now
     if network: _state.update(last_tick=int(now), ticks=_state["ticks"] + 1)
     if n: save()
@@ -203,6 +236,7 @@ def candles(mint, tf, limit=300):
     with _lock:
         pts = list((_h.get(mint) or {}).get("pts") or [])
     if not sec or not pts: return []
+    pts = clean_points(pts)
     b = {}
     for t, p in pts:
         k = t - t % sec
