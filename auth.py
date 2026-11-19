@@ -9,6 +9,7 @@ sign-in is not configured. No wallets, keys, signing or trading.
 """
 from __future__ import annotations
 
+import logging
 import os
 import re
 import secrets
@@ -22,6 +23,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
+log = logging.getLogger("xscanner.auth")
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOGIN_HTML = os.path.join(HERE, "static", "login.html")
 GOOGLE_AUTH = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -84,11 +86,38 @@ def safe_next(value: Optional[str]) -> str:
     return value
 
 
-def redirect_uri_for(request: Request, cfg: Optional[dict[str, Any]] = None) -> str:
+def redirect_uri_for(request: Optional[Request] = None, cfg: Optional[dict[str, Any]] = None) -> str:
+    """OAuth redirect URI from configuration only: AUTH_REDIRECT_URI, else RENDER_EXTERNAL_URL + /auth/callback.
+    NEVER derived from the Host header (a forged Host would let an attacker steer the callback). Local dev falls back to
+    http://localhost:$PORT."""
     cfg = cfg or settings()
     if cfg["redirect_uri"]:
         return cfg["redirect_uri"]
-    return str(request.url.replace(path="/auth/callback", query=""))
+    ext = os.environ.get("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
+    if not ext and os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip():
+        ext = "https://" + os.environ["RENDER_EXTERNAL_HOSTNAME"].strip()
+    if ext:
+        return ext + "/auth/callback"
+    return f"http://localhost:{os.environ.get('PORT', '8787').strip() or '8787'}/auth/callback"
+
+
+def trusted_proxies() -> list[str]:
+    """Who may set X-Forwarded-* headers. Default: loopback, plus the private ranges Render's proxy connects from when
+    running on Render. Override with TRUSTED_PROXIES (comma separated IPs / CIDRs)."""
+    env = os.environ.get("TRUSTED_PROXIES", "").strip()
+    if env:
+        return [h.strip() for h in env.split(",") if h.strip()]
+    hosts = ["127.0.0.1", "::1"]
+    if os.environ.get("RENDER"):
+        hosts += ["10.0.0.0/8", "172.16.0.0/12", "100.64.0.0/10"]
+    return hosts
+
+
+def allowed_ok(cfg: dict[str, Any], email: str) -> bool:
+    """Allow-list decision. AUTH_REQUIRED=true with an EMPTY ALLOWED_EMAILS denies everyone (fail closed)."""
+    if cfg["allowed"]:
+        return email in cfg["allowed"]
+    return not cfg["required"]
 
 
 def _me_payload(request: Request) -> dict[str, Any]:
@@ -118,8 +147,13 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if path in _OPEN_EXACT or path.startswith(_OPEN_PREFIX):
             return await call_next(request)
-        if current_user(request):
+        user = current_user(request)
+        if user and allowed_ok(cfg, str(user.get("email") or "").lower()):
             return await call_next(request)
+        if user:    # signed in, but not (or no longer) on the allow-list: fail closed
+            if path.startswith("/api/"):
+                return JSONResponse({"detail": "this account is not allowed", "required": True}, status_code=403)
+            return RedirectResponse("/login?error=forbidden", status_code=302)
         if path.startswith("/api/"):
             return JSONResponse({"detail": "sign in required", "required": True}, status_code=401)
         nxt = path
@@ -201,7 +235,10 @@ def install(app: FastAPI) -> None:
         )
     # Render (and any proxy) terminates TLS; honour X-Forwarded-Proto so the
     # callback URL is https://…/auth/callback rather than http://.
-    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_proxies())
+    _c = settings()
+    if _c["required"] and configured(_c) and not _c["allowed"]:
+        log.warning("AUTH_REQUIRED=true but ALLOWED_EMAILS is empty: every Google account will be DENIED until it is set")
 
     @app.api_route("/login", methods=["GET", "HEAD"], include_in_schema=False)
     def login_page(request: Request):
@@ -260,7 +297,9 @@ def install(app: FastAPI) -> None:
             return RedirectResponse("/login?error=unverified", status_code=302)
         if userinfo.get("email_verified") is False:
             return RedirectResponse("/login?error=unverified", status_code=302)
-        if cfg["allowed"] and email not in cfg["allowed"]:
+        if not allowed_ok(cfg, email):
+            if cfg["required"] and not cfg["allowed"]:
+                log.warning("sign-in denied for %s: AUTH_REQUIRED=true and ALLOWED_EMAILS is empty", email)
             request.session.clear()
             return RedirectResponse("/login?error=forbidden", status_code=302)
         # Rotate the session to drop one-time OAuth values (and session fixation).

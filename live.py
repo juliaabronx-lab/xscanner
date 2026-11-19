@@ -318,8 +318,10 @@ def _remember_seeds(name, got):
 
 def gather_seeds():
     seeds, counts, errs = [], {}, {}
-    srcs = [("geckoterminal", _seeds_gecko), ("pumpfun", _seeds_pump),
-            ("dexpaprika", _seeds_dexpaprika)]
+    srcs = [("geckoterminal", _seeds_gecko), ("pumpfun", _seeds_pump)]
+    # DexPaprika now answers 402 Payment Required for this host: off unless LIVE_DEXPAPRIKA=1 (it only produced error noise)
+    if os.environ.get("LIVE_DEXPAPRIKA", "").strip().lower() in ("1", "true", "yes", "on"):
+        srcs.append(("dexpaprika", _seeds_dexpaprika))
     # DexScreener seed lists share an IP with scan.py pair lookups. Use a 10-min cache,
     # and only hit the network when not in backoff; otherwise reuse last-good / bundled lists.
     http_ds = (status.get("http") or {}).get("api.dexscreener.com", {})
@@ -353,7 +355,9 @@ def gather_seeds():
                 add(name, [], str(e)[:160])
 
     # Sources we didn't fetch this pass (e.g. DexScreener in backoff) still contribute last-good lists
+    dp_on = any(n == "dexpaprika" for n, _ in srcs)
     for name, vals in _last_good_seeds.items():
+        if name == "dexpaprika" and not dp_on: continue
         if name not in counts and vals:
             add(name, vals, f"reused {len(vals)} last-good seeds")
 

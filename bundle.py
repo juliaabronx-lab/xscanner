@@ -25,6 +25,7 @@ CACHE_S = int(os.environ.get("BUNDLE_CACHE_S", "600"))        # fresh for 10 min
 STALE_OK_S = int(os.environ.get("BUNDLE_STALE_OK_S", "21600"))  # last-good still usable for 6 h if refresh fails
 GAP_S = float(os.environ.get("BUNDLE_GAP_S", "2.0"))           # min gap between upstream calls
 STORE = os.environ.get("BUNDLE_CACHE", os.path.join(os.environ.get("LIVE_DIR", "/tmp/xscanner-live"), "bundle_last.json"))
+SEED = os.environ.get("CACHE_SEED", os.path.join(os.path.dirname(os.path.abspath(__file__)), "deploy", "data", "seed_caches.json"))
 MINT_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 
 # thresholds
@@ -181,6 +182,11 @@ def assess_numbers(a, source="rugcheck"):
     if uni_flag or uni_warn:
         parts.append(f"{uni} of the top {uni_of} holders hold near-identical amounts (~{_fmt_pct(a.get('uniform_pct',0)/max(uni,1))}% each)")
     if t10: parts.append(f"top 10 holders (excl. pool) {_fmt_pct(t10)}%")
+    # the cluster that triggered (or best explains) the verdict: wallets + combined share held, whatever detected it
+    cl = [(w, share, "insider network")]
+    if uni_warn: cl.append((uni, a.get("uniform_pct") or 0.0, "near-identical holders"))
+    if fund_warn: cl.append((f_n, fd.get("pct") or 0.0, "same funding wallet"))
+    cw, cs, cb = max(cl, key=lambda t: (t[0], t[1]))
     net_flag = share >= FLAG_SHARE or w >= FLAG_WALLETS or one >= FLAG_ONE_NET or fund_flag or uni_flag
     flagged = net_flag or t10 >= FLAG_TOP10
     elevated = (not flagged) and (share >= WARN_SHARE or w >= WARN_WALLETS or t10 >= WARN_TOP10 or t20 >= WARN_TOP20
@@ -192,24 +198,42 @@ def assess_numbers(a, source="rugcheck"):
     elif elevated:
         lvl, status = "elevated", "elevated"
         reason = "Bundle risk: " + (", ".join(parts) or "; ".join(hits))
+    elif a.get("n_holders_seen") == 0:
+        # no non-pool holder data at all (e.g. the only holder is the pool): that is unknown, never a pass
+        lvl, status, flagged = "unknown", "unavailable", False
+        reason = "Bundle check unavailable: no holder data beyond the liquidity pool"
     else:
         lvl, status = "ok", "ok"
         reason = "Bundle check passed" + (f" ({_fmt_pct(share)}% in linked wallets, top 10 {_fmt_pct(t10)}%)" if (share or t10) else "")
-    return {"status": status, "level": lvl, "flagged": flagged, "reason": reason, "source": source, **a}
+    out = {"status": status, "level": lvl, "flagged": flagged, "reason": reason, "source": source, **a}
+    out["cluster_wallets"], out["cluster_share"], out["cluster_basis"] = (int(cw), round(float(cs), 1), cb) if (cw and cs) or cw else (0, 0.0, None)
+    if status == "unavailable":
+        out["top10_ex_lp"] = out["top20_ex_lp"] = None   # unknown, not 0%
+    return out
 
 
 def _load():
     global _loaded
     if _loaded: return
     _loaded = True
-    try:
-        with open(STORE, encoding="utf-8") as f:
-            d = json.load(f)
-        now = time.time()
-        for m, v in d.items():
-            if isinstance(v, dict) and now - v.get("t", 0) < STALE_OK_S: _cache[m] = v
-    except Exception:
-        pass
+    now = time.time()
+    for path, key in ((SEED, "bundle"), (STORE, None)):      # disk store last, so it wins when newer
+        try:
+            with open(path, encoding="utf-8") as f:
+                d = json.load(f)
+            for m, v in ((d.get(key) if key else d) or {}).items():
+                if isinstance(v, dict) and isinstance(v.get("a"), dict) and now - v.get("t", 0) < STALE_OK_S \
+                        and v.get("t", 0) >= (_cache.get(m) or {}).get("t", 0):
+                    _cache[m] = v
+        except Exception:
+            pass
+
+
+def export():
+    """Cache entries for the seed file (box -> repo) so a redeploy does not reset every coin to 'unavailable'."""
+    _load()
+    now = time.time()
+    return {m: v for m, v in _cache.items() if now - v.get("t", 0) < STALE_OK_S}
 
 
 def _save():

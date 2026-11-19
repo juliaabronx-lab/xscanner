@@ -125,7 +125,7 @@ function bundleHTML(c){
   const word={flagged:b.reason&&b.reason.startsWith('Concentrated')?'CONCENTRATED':'BUNDLE',elevated:'Bundle risk',unavailable:'Check unavailable',ok:'Passed'}[b.status]||b.status;
   const f=b.fund&&b.fund.resolved?`${b.fund.largest} of ${b.fund.resolved} checked top holders share one creator wallet`:'RPC funding check not available';
   return `<h3>Bundle / insider check <span class="pill ${lvl}">${esc(word)}</span></h3><p class="muted" style="margin:4px 0">${esc(b.reason||'')}${b.status==='unavailable'?' — missing data is never counted as safe.':''}</p>
-   <div class="kv"><div><span>Linked wallets</span>${b.linked_wallets??'—'}</div><div><span>Share held by cluster</span>${b.share_pct!=null?b.share_pct+'%':'—'}</div><div><span>Insider networks</span>${b.networks??'—'}</div>
+   <div class="kv"><div><span>Linked wallets</span>${b.linked_wallets??'—'}${b.basis&&b.linked_wallets?` <small class="muted">(${esc(b.basis)})</small>`:''}</div><div><span>Share held by cluster</span>${b.share_pct!=null?b.share_pct+'%':'—'}</div><div><span>Insider networks</span>${b.networks??'—'}</div>
    <div><span>Top 10 (ex-pool)</span>${b.top10_ex_lp!=null&&b.status!=='unavailable'?b.top10_ex_lp+'%':'—'}</div><div><span>Insider top holders</span>${b.insider_top_holders??'—'}</div><div><span>On-chain funding</span><small>${esc(f)}</small></div></div>`;
 }
 function confHTML(c){
@@ -134,6 +134,7 @@ function confHTML(c){
   const fmt=v=>typeof v==='boolean'?(v?'set':'none'):typeof v==='number'?(Math.abs(v)>=1000?Math.round(v).toLocaleString():+v.toPrecision(4)):esc(v);
   const rows=Object.values(d.fields||{}).map(f=>`<tr><td>${esc(f.label)}</td><td><span class="pill ${f.status==='agree'?'grn':f.status==='single'?'':'amb'}">${f.status==='agree'?'sources agree':f.status}</span></td><td class="muted" style="font-size:11px">${Object.entries(f.values||{}).map(([k,v])=>esc(k)+' '+fmt(v)).join(' · ')||'no source'}</td></tr>`).join('');
   return `<h3>Data confidence <span class="pill ${lvl}">${esc(d.label)} · ${d.score}/100</span></h3>
+   ${d.problems&&Object.keys(d.problems).length?`<p class="amb-note" style="margin:4px 0;color:#f5a524">⚠ ${Object.entries(d.problems).map(([k,v])=>'<b>'+esc(k)+'</b>: '+esc(v)).join(' · ')}</p>`:''}
    <p class="muted" style="margin:4px 0">${d.uncertain&&d.uncertain.length?'Shaky: '+esc(d.uncertain.join(', '))+'.':'Key fields agree across sources.'} Sources: ${esc((d.sources||[]).join(', ')||'none yet')}.</p>
    <table class="conf"><tbody>${rows}</tbody></table>`;
 }
@@ -142,10 +143,10 @@ async function openCoin(mint,pre){
   const c=pre||await api('/api/coins/'+encodeURIComponent(mint)); const lk=c.lookup||null; const rc=c.rugcheck||{},x=c.x||{},p=c.parts||{};
   const tierWord=c.score>=65?'Worth a look':c.score>=50?'Watch':'Skip';
   const part=(l,v,m)=>`<div style="margin:6px 0"><div class="hrow"><span class="muted">${l}</span><span>${v??0} / ${m}</span></div><div class="bar"><i style="width:${(v||0)/m*100}%"></i></div></div>`;
-  $('#dBody').innerHTML=`<div class="dhead">${tokImg(c.mint,c.symbol,'dimg')}<div style="min-width:0"><div class="hrow"><h2 style="margin:0">$${esc(c.symbol)} <span class="score ${tierCls(c.score)}">${c.score}</span> <small class="muted" style="font-size:13px">${c.status==='blocked'?'Blocked (hard flag)':tierWord}</small></h2></div>
+  $('#dBody').innerHTML=`<div class="dhead">${tokImg(c.mint,c.symbol,'dimg')}<div style="min-width:0"><div class="hrow"><h2 style="margin:0">$${esc(c.symbol)} <span class="score ${tierCls(c.score)}">${c.score}</span> <small class="muted" style="font-size:13px" id="dVerdict">${esc(c.verdict||(c.status==='blocked'?'Blocked (hard flag)':tierWord))}</small></h2></div>
    <div class="muted">${esc(c.name)} · ${esc(c.dex)} ${c.pump?'· pump.fun':''}</div>
    <div class="tca dca"><code title="${esc(c.mint)}">${esc(shortCa(c.mint))}</code><button class="cpy" data-cp="${esc(c.mint)}" onclick="copyCa(this.dataset.cp,this)" title="Copy CA">⧉ Copy CA</button></div></div></div>
-   ${lk?`<div class="lkbadge ${lk.source==='live'?'live':'rep'}">${lk.source==='live'?'● Live scan':'● From latest report'}${lk.cached?` · cached ${lk.cache_age_s}s ago`:''}${lk.source==='live'&&!lk.x_available?' · X / paid-shill data unavailable':''}</div>`:''}
+   ${lk?`<div class="lkbadge ${lk.source==='live'?'live':'rep'}">${lk.source==='live'?'● Live scan':'● From latest report'}${lk.cached?` · cached ${lk.cache_age_s}s ago`:''}${lk.partial?' · partial (RugCheck was slow; re-scored on the next view)':''}${lk.scored_at?' · scored '+new Date(lk.scored_at*1000).toLocaleTimeString('en-GB',{timeZone:'Asia/Kuala_Lumpur'})+' MYT':''}${lk.source==='live'&&!lk.x_available?' · X / paid-shill data unavailable':''}</div>`:''}
    ${lk?.copy_of?`<div class="lkbadge warn">Looks like a copycat of $${esc(lk.copy_of.symbol)} (${usd(lk.copy_of.mcap)} mcap)</div>`:''}
    ${chartBlockHTML()}
    <h3 style="margin-top:12px">The story</h3><p class="story">${esc(c.story||'No story available yet for this coin.')}</p>

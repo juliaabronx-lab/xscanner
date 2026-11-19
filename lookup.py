@@ -13,6 +13,7 @@ SCANNER = os.environ.get("SCANNER_DIR", "/workspace/scanner")
 SCAN_PY = os.path.join(SCANNER, "scan.py")
 B58_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 CACHE_TTL = 300
+PARTIAL_TTL = 20                   # seconds a partial (RugCheck skipped) live scan is reused
 STALE_MAX = 6 * 3600               # serve last-good lookup this long if DexScreener is busy
 RATE_N, RATE_WIN = 10, 60          # live lookups per IP per minute
 GLOBAL_N = 60                      # live lookups per minute, all IPs (protects upstream APIs)
@@ -57,7 +58,10 @@ def rate_check(ip):
 def cached(mint, max_age=CACHE_TTL):
     with _cache_lock:
         e = _cache.get(mint)
-        if e and time.time() - e[0] < max_age:
+        # a partial live scan (RugCheck skipped because upstream was slow) is only reused briefly, so the next view re-scores
+        # it in full instead of showing the partial score for five minutes
+        ttl = min(max_age, PARTIAL_TTL) if (e and e[1].get("partial") and max_age <= CACHE_TTL) else max_age
+        if e and time.time() - e[0] < ttl:
             return e[1], int(time.time() - e[0])
         if e and max_age <= CACHE_TTL:
             _cache.pop(mint, None)

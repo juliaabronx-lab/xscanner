@@ -21,6 +21,7 @@ STALE_S = int(os.environ.get("CONF_STALE_S", "1800"))      # external pulls olde
 KEEP_S = int(os.environ.get("CONF_KEEP_S", "21600"))
 GT_GAP_S = float(os.environ.get("CONF_GT_GAP_S", "2.3"))   # GeckoTerminal free tier ~30 req/min
 STORE = os.environ.get("CONF_CACHE", os.path.join(os.environ.get("LIVE_DIR", "/tmp/xscanner-live"), "confidence_last.json"))
+SEED = os.environ.get("CACHE_SEED", os.path.join(os.path.dirname(os.path.abspath(__file__)), "deploy", "data", "seed_caches.json"))
 MINT_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 TOL = 0.15                    # sources further apart than this (relative) disagree
 TOP10_TOL_PP = 6.0            # top-10 share: percentage points
@@ -43,6 +44,45 @@ def _num(v):
         return f if f == f else None
     except (TypeError, ValueError):
         return None
+
+
+def _pos(v):
+    """A zero / negative / missing number is not a usable value for money fields (it is reported by sanity_problems instead)."""
+    f = _num(v)
+    return f if f is not None and f > 0 else None
+
+
+MCAP_MAX = 1e11          # no memecoin is worth more than $100B
+LIQ_MIN = 100.0          # under $100 of liquidity is a dead pool, not a market
+
+
+def sanity_problems(c, ds=None, gt=None, rc=None):
+    """Impossible or absurd money numbers across every source we hold. Returns {field label: reason}.
+    A zero/negative mcap or liquidity, an mcap above $100B, liquidity under $100, or liquidity above market cap
+    (in any one source, or between the best values) can never be 'high' confidence."""
+    ds, gt, rc = ds or {}, gt or {}, rc or {}
+    mc = {"scanner": c.get("mcap"), "dexscreener": ds.get("mcap"), "geckoterminal": gt.get("fdv"), "rugcheck": rc.get("mcap")}
+    lq = {"scanner": c.get("liq"), "dexscreener": ds.get("liq"), "geckoterminal": gt.get("reserve"), "rugcheck": rc.get("liq")}
+    mc = {k: _num(v) for k, v in mc.items() if _num(v) is not None}
+    lq = {k: _num(v) for k, v in lq.items() if _num(v) is not None}
+    out = {}
+    zero = [k for k, v in mc.items() if v <= 0]
+    if zero: out["market cap"] = f"market cap is ${_fmt(min(mc[k] for k in zero))} ({zero[0]})"
+    elif mc and max(mc.values()) > MCAP_MAX: out["market cap"] = f"market cap ${_fmt(max(mc.values()))} is absurd"
+    elif not mc: out["market cap"] = "market cap missing from every source"
+    zl = [k for k, v in lq.items() if v <= 0]
+    if zl: out["liquidity"] = f"liquidity is ${_fmt(min(lq[k] for k in zl))} ({zl[0]})"
+    elif lq and max(lq.values()) < LIQ_MIN: out["liquidity"] = f"liquidity ${_fmt(max(lq.values()))} is near zero"
+    elif not lq: out["liquidity"] = "liquidity missing from every source"
+    pm = {k: v for k, v in mc.items() if v > 0}; pl = {k: v for k, v in lq.items() if v > 0}
+    if "liquidity" not in out or "market cap" not in out:
+        bad = [k for k in pl if k in pm and pl[k] > pm[k]]
+        if bad: out.setdefault("liquidity", f"liquidity ${_fmt(pl[bad[0]])} is above market cap ${_fmt(pm[bad[0]])} ({bad[0]})")
+        elif pm and pl and max(pl.values()) > max(pm.values()):
+            out.setdefault("liquidity", f"liquidity ${_fmt(max(pl.values()))} is above market cap ${_fmt(max(pm.values()))}")
+    if "liquidity" in out and "above market cap" in out["liquidity"]:
+        out.setdefault("market cap", "market cap is below the liquidity in the pool")
+    return out
 
 
 def _get(url, timeout=10):
@@ -126,13 +166,21 @@ def pull_rpc(mint):
 def _load():
     if _state["loaded"]: return
     _state["loaded"] = True
-    try:
-        with open(STORE, encoding="utf-8") as f: d = json.load(f)
-        now = time.time()
-        for m, v in d.items():
-            if isinstance(v, dict) and now - v.get("t", 0) < KEEP_S: _cache[m] = v
-    except Exception:
-        pass
+    now = time.time()
+    for path, key in ((SEED, "confidence"), (STORE, None)):      # disk store last, so it wins when newer
+        try:
+            with open(path, encoding="utf-8") as f: d = json.load(f)
+            for m, v in ((d.get(key) if key else d) or {}).items():
+                if isinstance(v, dict) and now - v.get("t", 0) < KEEP_S and v.get("t", 0) >= (_cache.get(m) or {}).get("t", 0):
+                    _cache[m] = v
+        except Exception:
+            pass
+
+
+def export():
+    _load()
+    now = time.time()
+    return {m: v for m, v in _cache.items() if now - v.get("t", 0) < KEEP_S}
 
 
 def _save():
@@ -240,12 +288,12 @@ def evaluate(c, entry, scan_age_s=None, rc_extra=None):
     f["mint_authority"] = _cmp_flag({"rpc": rp.get("mint_set"), "rugcheck": (bool(rc.get("mint_auth")) if "mint_auth" in rc else None), "geckoterminal": gt.get("mint_set")})
     f["freeze_authority"] = _cmp_flag({"rpc": rp.get("freeze_set"), "rugcheck": (bool(rc.get("freeze_auth")) if "freeze_auth" in rc else None), "geckoterminal": gt.get("freeze_set")})
     f["supply"] = _cmp_numeric({"rpc": rp.get("supply_raw"), "geckoterminal": gt.get("supply_raw"), "rugcheck": _num(rx.get("supply_raw"))}, tol=0.02)
-    f["liquidity"] = _cmp_numeric({"dexscreener": ds.get("liq"), "geckoterminal": gt.get("reserve"),
-                                   "rugcheck": _num(rc.get("liq")), "scanner": _num(c.get("liq"))})
+    f["liquidity"] = _cmp_numeric({"dexscreener": _pos(ds.get("liq")), "geckoterminal": _pos(gt.get("reserve")),
+                                   "rugcheck": _pos(rc.get("liq")), "scanner": _pos(c.get("liq"))})
     sup_ui = (_num(rp.get("supply_raw")) / 10 ** dec) if rp.get("supply_raw") and dec is not None else None
     chain_mcap = (ds.get("price") * sup_ui) if (ds.get("price") and sup_ui) else None
-    f["market_cap"] = _cmp_numeric({"dexscreener": ds.get("mcap"), "geckoterminal": gt.get("fdv"), "rugcheck": _num(rc.get("mcap")),
-                                    "chain supply x price": chain_mcap})
+    f["market_cap"] = _cmp_numeric({"dexscreener": _pos(ds.get("mcap")), "geckoterminal": _pos(gt.get("fdv")), "rugcheck": _pos(rc.get("mcap")),
+                                    "scanner": _pos(c.get("mcap")), "chain supply x price": chain_mcap})
     f["price"] = _cmp_numeric({"dexscreener": ds.get("price"), "geckoterminal": gt.get("price"), "rugcheck": _num(rc.get("price"))})
     f["holders"] = _cmp_numeric({"geckoterminal": gt.get("holders"), "rugcheck": _num(rc.get("holders"))})
     t10_rc = _num(rx.get("top10_raw")) if rx.get("top10_raw") is not None else None
@@ -273,6 +321,12 @@ def evaluate(c, entry, scan_age_s=None, rc_extra=None):
         age = ("agree" if rc_age >= ds_age - 1.0 else "mismatch", {"dexscreener (pair)": round(ds_age, 1), "rugcheck (detected)": round(rc_age, 1)})
     elif ds_age is not None: age = ("single", {"dexscreener (pair)": round(ds_age, 1)})
     f["age"] = age
+    problems = sanity_problems(c, ds, gt, rc)
+    if not entry:      # nothing fetched yet: "missing everywhere" is just 'pending', not a data problem
+        problems = {k: v for k, v in problems.items() if not v.endswith("missing from every source")}
+    for lab, why in problems.items():
+        k = "market_cap" if lab == "market cap" else "liquidity"
+        f[k] = ("mismatch", f[k][1])
     # staleness: externally pulled data too old, or the scanner copy itself is old
     res, got, pts = {}, 0, 0.0
     for k, (st, vals) in f.items():
@@ -282,6 +336,8 @@ def evaluate(c, entry, scan_age_s=None, rc_extra=None):
         if st in ("agree", "single") and stale: st = "stale"
         credit = {"agree": 1.0, "single": 0.5, "stale": 0.5}.get(st, 0.0)
         res[k] = {"status": st, "values": vals, "label": LABEL[k]}
+        pw = problems.get(LABEL[k])
+        if pw: res[k]["problem"] = pw
         pts += WEIGHTS[k] * credit
     score = int(round(pts))
     n_src = len({s for v in f.values() for s in v[1]})
@@ -290,6 +346,8 @@ def evaluate(c, entry, scan_age_s=None, rc_extra=None):
         score = min(score, 40)
     else:
         level = "high" if score >= 75 else "medium" if score >= 50 else "low"
+    if problems:      # impossible numbers force LOW whatever else agrees, and the fields are named
+        level, score = "low", min(score, 40)
     bad = [k for k, v in res.items() if v["status"] in ("mismatch", "missing", "stale")]
     # a disagreement on supply or authorities is never "high"
     if level == "high" and any(res[k]["status"] == "mismatch" for k in ("mint_authority", "freeze_authority", "supply")):
@@ -298,13 +356,15 @@ def evaluate(c, entry, scan_age_s=None, rc_extra=None):
     for k in bad:
         v = res[k]
         det_s = ", ".join(f"{s} {_fmt(x)}" for s, x in v["values"].items())
+        if v.get("problem"):
+            notes.append(f"{LABEL[k]}: {v['problem']}"); continue
         notes.append(f"{LABEL[k]} ({v['status']}" + (f": {det_s}" if det_s and v["status"] == "mismatch" else "") + ")")
     return {"score": score, "level": level, "cap": CAP[level], "uncertain": [LABEL[k] for k in bad], "notes": notes,
             "fields": res, "sources": sorted({s for v in f.values() for s in v[1]}), "n_sources": n_src,
             "checked_age_s": int(now - entry["t"]) if entry else None,
             "label": {"high": "Data confidence high", "medium": "Data confidence medium", "low": "Data uncertain",
                       "unchecked": "Data confidence pending"}[level],
-            "scan_stale": scan_stale}
+            "scan_stale": scan_stale, "problems": problems}
 
 
 def _fmt(x):

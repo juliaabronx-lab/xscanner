@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Request
 import lookup as lk
 import live
 import chart as ch
+import pricehist as ph
 import images as im
 import bundle as bd
 import confidence as cf
@@ -226,7 +227,9 @@ def normalise_report_coin(c, dash):
         out["tier"] = tier(out["score"])
         out["flags"] = ["DATA: " + "; ".join(issues)] + list(flags)
         if out["status"] in (None, "buy", "watch"): out["status"] = "bad data"
-    return apply_story(apply_bundle_and_confidence(out))
+    out = apply_story(apply_bundle_and_confidence(out))
+    out["verdict"] = verdict_of(out)
+    return out
 
 
 def _scan_age_s():
@@ -240,6 +243,16 @@ def _scan_age_s():
         except Exception:
             continue
     return None
+
+
+_SCANNER_BUNDLE = re.compile(r"^\s*(bundle[d]?\b|concentrated\b)", re.I)
+
+
+def verdict_of(c):
+    """The one verdict string the UI and API share (the UI renders this, it never recomputes from the score)."""
+    if c.get("status") == "blocked":
+        return "Blocked (hard flag)"
+    return {"look": "Worth a look", "watch": "Watch", "skip": "Skip"}.get(c.get("tier") or tier(c.get("score")), "Skip")
 
 
 def _bundle_flag(b):
@@ -276,12 +289,15 @@ def apply_bundle_and_confidence(out):
     out["bundle"] = {k: b.get(k) for k in ("status", "level", "flagged", "reason", "source", "wallets", "networks", "net_share",
                                          "largest_share", "top10_ex_lp", "top20_ex_lp", "insider_top_holders", "uniform_n",
                                          "uniform_of", "fund", "age_s", "stale", "pending", "partial")}
-    out["bundle"]["linked_wallets"] = b.get("wallets") if known else None
-    out["bundle"]["share_pct"] = b.get("net_share") if known else None
+    # linked wallets / share = the cluster that explains the verdict, whichever detector found it
+    # (RugCheck insider network, near-identical holder balances, or one funding wallet)
+    out["bundle"]["linked_wallets"] = b.get("cluster_wallets", b.get("wallets")) if known else None
+    out["bundle"]["share_pct"] = b.get("cluster_share", b.get("net_share")) if known else None
+    out["bundle"]["basis"] = b.get("cluster_basis") if known else None
     out["bundle_pct"] = out["bundle"]["share_pct"]
     out["bundle_wallets"] = out["bundle"]["linked_wallets"]
     out["data_confidence"] = {k: conf.get(k) for k in ("score", "level", "label", "uncertain", "notes", "fields", "sources",
-                                                       "n_sources", "checked_age_s", "scan_stale", "cap")}
+                                                       "n_sources", "checked_age_s", "scan_stale", "cap", "problems")}
     # --- score + safety caps (never raise a score)
     sc0 = num(out.get("score"), 0) or 0
     cap = 100
@@ -294,7 +310,8 @@ def apply_bundle_and_confidence(out):
         elif conf["level"] == "unchecked": scap = min(scap, 18)
         if num(parts["safety"], 0) > scap: parts["safety"] = scap
         out["parts"] = parts
-    flags = list(out.get("flags") or [])
+    # ONE canonical bundle chip: drop the scanner's own BUNDLE:/bundle: text (it counted wallets differently), keep ours
+    flags = [f for f in (out.get("flags") or []) if not _SCANNER_BUNDLE.match(f)]
     new = []
     bf = _bundle_flag(out["bundle"] | {"status": st, "reason": b.get("reason")})
     if bf: new.append(bf)
@@ -310,7 +327,11 @@ def apply_bundle_and_confidence(out):
         if st in bd.CAP and bd.CAP[st] < sc0: why.append({"flagged": "bundle detected", "elevated": "bundle risk", "unavailable": "bundle check unavailable"}[st])
         if conf.get("cap", 100) < sc0: why.append("low data confidence" if conf["level"] == "low" else "data confidence pending")
         new.append(f"capped at {cap}: " + " + ".join(why))
-    out["flags"] = new + flags
+    seen_f, uniq = set(), []
+    for f in new + flags:                       # one chip per distinct flag (case-insensitive)
+        k = re.sub(r"\s+", " ", str(f)).strip().lower()
+        if k not in seen_f: seen_f.add(k); uniq.append(f)
+    out["flags"] = uniq
     if st == "flagged" and out.get("status") != "blocked": out["status"] = "high risk"
     elif conf["level"] == "low" and out.get("status") in (None, "buy", "watch"): out["status"] = "data uncertain"
     # --- risk radar: a bundle risk we could not measure is shown as uncertain (0.5), never as zero
@@ -545,8 +566,9 @@ def lookup_coin(mint: str, request: Request):
     out["source"] = "live"
     out["status"] = "blocked" if any(f.startswith(("DUMP", "RugCheck DANGER", "RUGGED", "BLACKLISTED", "COPYCAT", "mint/freeze", "creator rugged")) for f in out["flags"]) else None
     out["narrative"] = None
-    out["lookup"] = {"source": "live", "x_available": r.get("x_available"), "cached": r.get("cached"), "stale": r.get("stale"), "cache_age_s": r.get("cache_age_s"),
-                     "copy_of": r.get("copy_of"),
+    out["verdict"] = verdict_of(out)
+    out["lookup"] = {"source": "live", "scored_at": round(time.time() - (r.get("cache_age_s") or 0)), "x_available": r.get("x_available"), "cached": r.get("cached"), "stale": r.get("stale"), "cache_age_s": r.get("cache_age_s"),
+                     "copy_of": r.get("copy_of"), "partial": bool(r.get("partial")),
                      "checked_at": datetime.now(MYT).isoformat(timespec="seconds"),
                      "note": "Live single-coin scan (DexScreener + RugCheck). Not in the latest report; X/paid-shill data "
                              + ("from stored posts only." if r.get("x_available") else "unavailable.")}
@@ -587,10 +609,20 @@ def img_stats():
 # ---------------------------------------------------------------- Live chart (OHLCV proxy, read-only, allowed in PUBLIC_READONLY)
 @app.get("/api/ohlcv/{pool}")
 def ohlcv(pool: str, tf: str = "5m", token: str = ""):
+    """Always JSON. A viewer never waits on a rate-limited upstream (see chart.py)."""
     try:
         return ch.get_ohlcv(pool.strip(), tf, token.strip() or None)
     except ch.ChartError as e:
-        raise HTTPException(e.status, e.msg)
+        return JSONResponse({"detail": e.msg}, status_code=e.status if e.status in (400, 404, 503) else 503,
+                            headers={"Retry-After": "20"} if e.status not in (400, 404) else None)
+    except Exception as e:
+        return JSONResponse({"detail": "Chart temporarily unavailable; retrying shortly.", "error": type(e).__name__}, status_code=503,
+                            headers={"Retry-After": "20"})
+
+
+@app.get("/api/ohlcv-status", include_in_schema=False)
+def ohlcv_status():
+    return ch.stats()
 
 
 # ---------------------------------------------------------------- Run scan
@@ -648,9 +680,54 @@ if live.ENABLED:  # hosted live mode: serve data the server-side loop keeps refr
     LEDGER = live.prepare_ledger(LEDGER)
 
 
+def _price_hint(mint):
+    """Last price from our other caches when Jupiter is unavailable: DexScreener pull, RugCheck, else chain supply x mcap."""
+    e = cf._cache.get(mint) or {}
+    p = num((e.get("ds") or {}).get("price"))
+    if p and p > 0: return p
+    a, _ = bd.get_cached(mint)
+    rcx = (a or {}).get("rc") or {}
+    p = num(rcx.get("price"))
+    if p and p > 0: return p
+    sup, dec = num(rcx.get("supply_raw")), num(rcx.get("decimals"))
+    mc = num((e.get("ds") or {}).get("mcap"))
+    if sup and dec is not None and mc and mc > 0: return mc / (sup / 10 ** dec)
+    return None
+
+
+def _report_top():
+    r, _ = load(os.path.join(SCANNER, "report.json"), {})
+    return [c for c in (r.get("top") or []) if isinstance(c, dict)]
+
+
 @app.on_event("startup")
 def _start_live():
+    try:
+        bd._load(); cf._load(); ch._load_store(); ph.load()      # disk store + bundled seed: a restart never resets to 'unavailable'
+        ph.price_hint = _price_hint
+        ph.start(_report_top)                                     # one price snapshot per coin per minute (feeds the charts)
+    except Exception:
+        pass
     live.start(XFEED, XQUERIES)   # no-op unless LIVE_SCAN=1; first scan runs immediately
+
+
+@app.exception_handler(Exception)
+async def _json_errors(request: Request, exc: Exception):
+    """Every /api failure is JSON, never an HTML error page."""
+    return JSONResponse({"detail": "Internal error; please retry shortly.", "error": type(exc).__name__}, status_code=500)
+
+
+@app.get("/api/ingest/cache-export", include_in_schema=False)
+def cache_export(request: Request):
+    """Box -> repo seed: bundle / confidence / OHLCV / price-snapshot caches (public market data only). Needs INGEST_TOKEN."""
+    import hmac
+    want = os.environ.get("INGEST_TOKEN", "").strip()
+    if not want:
+        raise HTTPException(404, "Not Found")
+    if not hmac.compare_digest(request.headers.get("x-ingest-token", "").encode(), want.encode()):
+        raise HTTPException(401, "bad ingest token")
+    return {"exported_at": time.time(), "bundle": bd.export(), "confidence": cf.export(), "ohlcv": ch.export(),
+            "pricehist": ph.export()}
 
 
 @app.get("/api/live")

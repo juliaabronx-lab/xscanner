@@ -6,7 +6,7 @@ set -euo pipefail
 SRC=/workspace/platform
 OUT=${OUT:-/workspace/xscanner-deploy}
 mkdir -p "$OUT/static/vendor" "$OUT/data/img" "$OUT/deploy/data"
-cp -p "$SRC"/{app.py,auth.py,bundle.py,confidence.py,story.py,sol_rpc.py,live.py,scan_runner.py,lookup.py,chart.py,images.py,xfeed_ingest.py,render.yaml,requirements.txt} "$OUT/"
+cp -p "$SRC"/{app.py,auth.py,bundle.py,confidence.py,story.py,pricehist.py,sol_rpc.py,live.py,scan_runner.py,lookup.py,chart.py,images.py,xfeed_ingest.py,render.yaml,requirements.txt} "$OUT/"
 rm -rf "$OUT/static" && mkdir -p "$OUT/static"
 cp -rp "$SRC"/static/. "$OUT/static/"   # whole front end (html/js/css/fonts/vendor); no secrets live in static/
 cp -p "$SRC"/data/{x_feed.json,xfeed_queries.json,img_cache.json} "$OUT/data/"
@@ -30,3 +30,20 @@ fi
 [ -f "$SRC/data/push/last_push.json" ] && cp -p "$SRC/data/push/last_push.json" "$OUT/deploy/data/last_push.json" || true
 # last-good live-scan seed lists (public mints only) so a cold start isn't stuck with 0 DexScreener seeds
 [ -f "$SRC/deploy/data/last_seeds.json" ] && cp -p "$SRC/deploy/data/last_seeds.json" "$OUT/deploy/data/last_seeds.json" || true
+
+# Cache seed (bundle / confidence / OHLCV / price snapshots, public market data only): exported from the LIVE site just before
+# it is replaced, so a deploy (which wipes /tmp) does not reset every coin to "unavailable" and every chart to empty.
+# Falls back to the last good export on the box. The ingest token is passed via a 0600 header file, never on a command line.
+SEED_BOX=/workspace/platform/data/push/seed_caches.json
+TOKF=/workspace/platform/deploy/.ingest_token
+if [ -s "$TOKF" ]; then
+  HDR=$(mktemp); chmod 600 "$HDR"; printf 'X-Ingest-Token: %s\n' "$(cat "$TOKF")" > "$HDR"
+  if curl -fsS -m 90 -H @"$HDR" "${SEED_URL:-https://xscanner-c8jo.onrender.com}/api/ingest/cache-export" -o "$SEED_BOX.tmp" 2>/dev/null \
+     && python3 -c "import json,sys; d=json.load(open('$SEED_BOX.tmp')); sys.exit(0 if len(d.get('bundle',{}))+len(d.get('ohlcv',{}))>0 else 1)"; then
+    mkdir -p "$(dirname "$SEED_BOX")"; mv "$SEED_BOX.tmp" "$SEED_BOX"; echo "seed: exported live caches ($(python3 -c "import json;d=json.load(open('$SEED_BOX'));print({k:len(v) for k,v in d.items() if isinstance(v,dict)})"))"
+  else
+    rm -f "$SEED_BOX.tmp"; echo "warn: live cache export failed; using the last good seed if any"
+  fi
+  rm -f "$HDR"
+fi
+[ -f "$SEED_BOX" ] && cp -p "$SEED_BOX" "$OUT/deploy/data/seed_caches.json" || echo "warn: no cache seed"

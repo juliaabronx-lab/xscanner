@@ -161,7 +161,7 @@ def highlights(posts, paid, c=None, n=2):
     for p in posts:
         h = (p.get("handle") or "").lower()
         if not h or h in paid or SPAM.search(p["text"]): continue
-        if len({m.lower() for m in re.findall(r"\$[A-Za-z]{2,}", p["text"])}) >= 3: continue     # list posts are not about one coin
+        if len({m.lower() for m in re.findall(r"\$[A-Za-z]{2,}", p["text"])}) >= 2: continue     # list posts are not about one coin
         t = _excerpt(p["text"], pats, None)
         if not t or len(t) < 25 or sum(ch.isascii() for ch in t) < 0.9 * len(t): continue   # English, names the coin
         good.append((p["eng"], p.get("followers") or 0, p, t))

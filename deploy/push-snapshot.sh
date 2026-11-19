@@ -16,6 +16,7 @@ grep -qxF '.ingest_token' .gitignore 2>/dev/null || echo '.ingest_token' >> .git
 for bad in .ssh .venv bin supervise.pid tunnel.log public.url .ingest_token deploy/.ingest_token; do [ -e "$bad" ] && { echo "ABORT: $bad in bundle"; exit 1; }; done
 git add -A
 if git diff --cached --quiet; then echo "snapshot unchanged, nothing to push"; exit 0; fi
-git commit -q -m "snapshot $(date '+%Y-%m-%d %H:%M %Z')"
+# [skip render]: Render must never auto-deploy a commit; deploys are explicit (trigger_deploy) and data commits never restart the service
+git commit -q -m "snapshot $(date '+%Y-%m-%d %H:%M %Z') [skip render]"
 git push -q origin HEAD
 echo "pushed; now trigger a Render deploy for srv-dbsfsc0n74is739ojmkg (no auto-deploy)"
