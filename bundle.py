@@ -105,6 +105,7 @@ def analyze(rep):
            "freeze_auth": (rep.get("token") or {}).get("freezeAuthority") or rep.get("freezeAuthority"),
            "lp_locked_pct": lpd.get("lpLockedPct") if lpd else None, "market_type": top_mkt.get("marketType"),
            "detected_at": detected, "rugged": rep.get("rugged"), "creator": rep.get("creator"),
+           "meta_desc": ((rep.get("fileMeta") or {}).get("description") or "")[:400] or None,
            "top10_raw": round(sum(_num(h.get("pct")) for h in (rep.get("topHolders") or [])[:10] if isinstance(h, dict)), 2)
                         if rep.get("topHolders") else None}
     owners = [[h.get("owner") or h.get("address"), _num(h.get("pct"))] for h in holders[:10] if (h.get("owner") or h.get("address"))]

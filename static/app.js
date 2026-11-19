@@ -95,6 +95,7 @@ function cardHTML(c){
     <div class="trow"><b class="ttick">$${esc(c.symbol)}</b><span class="tca"><code title="${esc(c.mint)}">${esc(shortCa(c.mint))}</code><button class="cpy" data-cp="${esc(c.mint)}" title="Copy CA" aria-label="Copy contract address">⧉</button></span></div>
     <div class="tmc"><span class="muted">MC</span> <b data-n="mcap">${usd(c.mcap)}</b> <span class="muted">· Liq</span> ${usd(c.liq)}</div>
     <div class="tstats"><span>⏱ ${ageTxt(c.age_h)}</span><span>1h <span data-n="pc1">${pct(c.pc1)}</span></span><span>24h <span data-n="pc24">${pct(c.pc24)}</span></span></div>
+    ${c.story_short?`<div class="twhy" title="${esc(c.story_short)}"><b>Why it's moving</b> ${esc(c.story_short)}</div>`:''}
     <div class="tflags">${chips||'<span class="muted" style="font-size:11px">no flags</span>'}</div></div></article>`;
 }
 async function copyCa(ca,btn){try{await navigator.clipboard.writeText(ca)}catch(e){const t=document.createElement('textarea');t.value=ca;document.body.appendChild(t);t.select();try{document.execCommand('copy')}catch(_){}t.remove()}
@@ -147,7 +148,8 @@ async function openCoin(mint,pre){
    ${lk?`<div class="lkbadge ${lk.source==='live'?'live':'rep'}">${lk.source==='live'?'● Live scan':'● From latest report'}${lk.cached?` · cached ${lk.cache_age_s}s ago`:''}${lk.source==='live'&&!lk.x_available?' · X / paid-shill data unavailable':''}</div>`:''}
    ${lk?.copy_of?`<div class="lkbadge warn">Looks like a copycat of $${esc(lk.copy_of.symbol)} (${usd(lk.copy_of.mcap)} mcap)</div>`:''}
    ${chartBlockHTML()}
-   <p>${esc(c.reason||'')}</p>
+   <h3 style="margin-top:12px">The story</h3><p class="story">${esc(c.story||'No story available yet for this coin.')}</p>
+   <h3 style="margin-top:14px">Scores</h3>${c.reason?`<p class="muted" style="font-size:12px;margin:2px 0 6px">Scanner notes: ${esc(c.reason)}</p>`:''}
    ${part('X narrative',p.x,40)}${part('Market',p.market,35)}${part('Safety',p.safety,25)}
    ${bundleHTML(c)}${confHTML(c)}
    <div class="kv"><div><span>MCap</span>${usd(c.mcap)}</div><div><span>Liquidity</span>${usd(c.liq)}</div><div><span>Vol 24h</span>${usd(c.vol24)}</div>

@@ -15,6 +15,7 @@ import chart as ch
 import images as im
 import bundle as bd
 import confidence as cf
+import story as st_
 from fastapi.responses import Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -225,7 +226,7 @@ def normalise_report_coin(c, dash):
         out["tier"] = tier(out["score"])
         out["flags"] = ["DATA: " + "; ".join(issues)] + list(flags)
         if out["status"] in (None, "buy", "watch"): out["status"] = "bad data"
-    return apply_bundle_and_confidence(out)
+    return apply_story(apply_bundle_and_confidence(out))
 
 
 def _scan_age_s():
@@ -316,6 +317,24 @@ def apply_bundle_and_confidence(out):
     ra = dict(out.get("risk") or {})
     ra["bundle"] = 1.0 if st == "flagged" else max(0.6, ra.get("bundle", 0)) if st == "elevated" else 0.5 if st == "unavailable" else ra.get("bundle", 0)
     out["risk"] = ra
+    return out
+
+
+def apply_story(out):
+    """Attach the plain-English coin story (what it is, why it is moving). Cache reads only; any failure -> no story."""
+    try:
+        mint = out.get("mint")
+        e = cf._cache.get(mint) or {}
+        cached, _ = bd.get_cached(mint)
+        rcx = (cached or {}).get("rc") or {}
+        posts, trends = st_.load_x(XFEED, [os.path.join(live.WORK, "x_raw.json"), os.path.join(HERE, "deploy", "data", "x_raw.json"),
+                                           os.path.join(SCANNER, "x_raw.json")])
+        s = st_.build(out, ds=e.get("ds"), gt=e.get("gt"), rc_meta={"desc": rcx.get("meta_desc")}, posts=posts, trends=trends)
+        out["story"], out["story_short"] = s["text"], s["short"]
+        out["story_detail"] = {k: s[k] for k in ("sentences", "theme", "highlights", "x_matches", "catalyst")}
+    except Exception as ex:
+        out["story"] = out["story_short"] = None
+        out["story_error"] = type(ex).__name__
     return out
 
 

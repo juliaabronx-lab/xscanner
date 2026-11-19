@@ -57,8 +57,14 @@ def pull_ds(mint, timeout=8):
         pairs = [p for p in (d.get("pairs") or []) if p.get("chainId") == "solana" and (p.get("baseToken") or {}).get("address") == mint]
         if not pairs: return None
         p = max(pairs, key=lambda p: _num((p.get("liquidity") or {}).get("usd")) or 0)
+        info, tx, vol = p.get("info") or {}, p.get("txns") or {}, p.get("volume") or {}
+        n = lambda k: (_num((tx.get(k) or {}).get("buys")) or 0) + (_num((tx.get(k) or {}).get("sells")) or 0)
         return {"price": _num(p.get("priceUsd")), "liq": _num((p.get("liquidity") or {}).get("usd")),
-                "mcap": _num(p.get("marketCap")) or _num(p.get("fdv")), "created_ms": _num(p.get("pairCreatedAt"))}
+                "mcap": _num(p.get("marketCap")) or _num(p.get("fdv")), "created_ms": _num(p.get("pairCreatedAt")),
+                "websites": [w.get("url") for w in (info.get("websites") or []) if isinstance(w, dict) and w.get("url")][:3],
+                "socials": [s.get("type") for s in (info.get("socials") or []) if isinstance(s, dict) and s.get("type")][:6],
+                "pc6": _num((p.get("priceChange") or {}).get("h6")), "tx_h1": n("h1"), "tx_h24": n("h24"),
+                "vol_h1": _num(vol.get("h1")), "vol_h24": _num(vol.get("h24"))}
     except Exception as e:
         stats["last_error"] = "ds " + type(e).__name__
         return None
@@ -100,7 +106,10 @@ def pull_gt(mint, timeout=8, info=True):
     return {"price": _num(t.get("price_usd")), "fdv": _num(t.get("fdv_usd")), "reserve": _num(t.get("total_reserve_in_usd")),
             "supply_raw": _num(t.get("total_supply")), "decimals": dec,
             "holders": _num(hold.get("count")) if hold else None, "top10": dist,
-            "mint_set": _auth_set(i.get("mint_authority")), "freeze_set": _auth_set(i.get("freeze_authority"))}
+            "mint_set": _auth_set(i.get("mint_authority")), "freeze_set": _auth_set(i.get("freeze_authority")),
+            "desc": (i.get("description") or "")[:400] or None, "websites": (i.get("websites") or [])[:3] or None,
+            "twitter": i.get("twitter_handle") or None, "telegram": i.get("telegram_handle") or None,
+            "completed_at": ((i.get("launchpad_details") or {}).get("completed_at")) or ((t.get("launchpad_details") or {}).get("completed_at"))}
 
 
 def pull_rpc(mint):
