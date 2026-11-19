@@ -89,6 +89,11 @@ def analyze(rep):
     risk_names = [str(r.get("name")) for r in (rep.get("risks") or []) if isinstance(r, dict) and r.get("name")]
     risk_hit = [n for n in risk_names if re.search(r"insider|bundl|sybil|linked|cluster", n, re.I)]
     big = max(zip(shares, sizes), default=(0.0, 0))
+    if sum(shares) > 100.5:
+        # the networks "hold" more than the whole supply (RugCheck double-counts the pool / cumulative amounts): that share is
+        # not credible, so show only what is verifiable - the insider-flagged top holders - instead of "100%" or "110%"
+        net_share = min(100.0, ins_top_pct)
+        big = (min(big[0], net_share), big[1])
     # uniform balances: many top holders with near-identical amounts = sybil / farm wallets (a bundle RugCheck's graph may miss)
     amts = [_num(h.get("amount")) for h in holders[:20]]
     uni_n, uni_pct = 0, 0.0
