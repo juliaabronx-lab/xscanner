@@ -425,11 +425,14 @@ def build_state():
     return coins, summary, dashd, {"report": rmeta, "dashboard_data": dmeta}
 
 
+_BOOT = time.time()
+
+
 @app.get("/api/health")
 def health():
     _, _, _, meta = build_state()
     _, lmeta = load(LEDGER, {})
-    return {"ok": True, "readonly": True, "public_readonly": PUBLIC_READONLY, "sources": {**meta, "ledger": lmeta}, "scan": scan_state_public()}
+    return {"ok": True, "uptime_s": int(time.time() - _BOOT), "started_at": datetime.fromtimestamp(_BOOT, MYT).isoformat(timespec="seconds"), "readonly": True, "public_readonly": PUBLIC_READONLY, "sources": {**meta, "ledger": lmeta}, "scan": scan_state_public()}
 
 
 @app.get("/api/summary")

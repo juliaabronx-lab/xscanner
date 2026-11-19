@@ -187,6 +187,8 @@ def assess_numbers(a, source="rugcheck"):
     if uni_warn: cl.append((uni, a.get("uniform_pct") or 0.0, "near-identical holders"))
     if fund_warn: cl.append((f_n, fd.get("pct") or 0.0, "same funding wallet"))
     cw, cs, cb = max(cl, key=lambda t: (t[0], t[1]))
+    if not cw and t10 >= WARN_TOP10:       # pure concentration: the cluster is the top-10 holders themselves
+        cw, cs, cb = min(10, a.get("n_holders_seen") or 10), t10, "top-10 holders"
     net_flag = share >= FLAG_SHARE or w >= FLAG_WALLETS or one >= FLAG_ONE_NET or fund_flag or uni_flag
     flagged = net_flag or t10 >= FLAG_TOP10
     elevated = (not flagged) and (share >= WARN_SHARE or w >= WARN_WALLETS or t10 >= WARN_TOP10 or t20 >= WARN_TOP20
