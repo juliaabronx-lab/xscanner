@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 B58 = re.compile(r"[1-9A-HJ-NP-Za-km-z]{32,44}")
 URL = re.compile(r"https?://\S+|\bt\.co/\S+|www\.\S+", re.I)
-SPAM = re.compile(r"\b(dm\b|dm me|telegram|\btg\b|vip|signals?|calls?\b|\d+x\b|entry|early entries|join (our|my|the)|follow \+|giveaway|airdrop|gem alert|ca\s*[:>]|is live|just launched|just went live|next 100|moon)", re.I)
+SPAM = re.compile(r"\b(claim report|just claimed|claimed [\d.]+ sol|dm\b|dm me|telegram|\btg\b|vip|signals?|calls?\b|\d+x\b|entry|early entries|join (our|my|the)|follow \+|giveaway|airdrop|gem alert|ca\s*[:>]|is live|just launched|just went live|next 100|moon)", re.I)
 
 THEMES = [  # (regex on name/ticker/description, phrase)
     (r"\b(gta|gta ?6|gta ?vi|grand theft auto|leonida|vice city|rockstar|lucia)\b", "a GTA 6 hype coin"),
@@ -161,6 +161,7 @@ def highlights(posts, paid, c=None, n=2):
     for p in posts:
         h = (p.get("handle") or "").lower()
         if not h or h in paid or SPAM.search(p["text"]): continue
+        if len({m.lower() for m in re.findall(r"\$[A-Za-z]{2,}", p["text"])}) >= 3: continue     # list posts are not about one coin
         t = _excerpt(p["text"], pats, None)
         if not t or len(t) < 25 or sum(ch.isascii() for ch in t) < 0.9 * len(t): continue   # English, names the coin
         good.append((p["eng"], p.get("followers") or 0, p, t))
@@ -182,10 +183,12 @@ def theme_of(c, desc):
 
 
 def match_trend(c, rx, trends):
-    toks = {t.lower() for t in re.findall(r"[A-Za-z0-9]{4,}", (c.get("name") or "") + " " + (c.get("symbol") or ""))}
+    """A trend matches only through the coin's theme words (e.g. GTA 6) or the full ticker / full name, never a shared surname."""
+    sym, name = (c.get("symbol") or "").lower(), (c.get("name") or "").lower().strip()
     for t in trends or []:
-        tl = t.lower().lstrip("#")
-        if (rx and re.search(rx, tl)) or any(k in tl for k in toks): return t
+        tl = re.sub(r"[#\s_]+", "", t.lower())
+        if rx and re.search(rx, t.lower().lstrip("#")): return t
+        if (len(sym) >= 5 and sym in tl) or (len(name) >= 6 and re.sub(r"\s+", "", name) in tl): return t
     return None
 
 
