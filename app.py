@@ -32,7 +32,28 @@ app = FastAPI(title="xScanner", docs_url="/api/docs")
 from fastapi.middleware.gzip import GZipMiddleware
 app.add_middleware(GZipMiddleware, minimum_size=800)  # smaller pages over the tunnel / mobile
 import auth
+import seo
 auth.install(app)  # Google sign-in; no-op for the rest of the app until env vars are set
+# Open to browsers, crawlers and AI tools: GET / HEAD / OPTIONS from any origin, no cookies (so no ambient credentials), nothing
+# can be POSTed cross-origin. Added after auth so it is the outermost layer and even a 401 carries the headers.
+class _HeadAsGet:
+    """Crawlers and uptime tools probe with HEAD. Answer HEAD on the read-only /api GET routes like GET (the server drops the body)."""
+    def __init__(self, inner): self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and scope.get("method") == "HEAD" and scope.get("path", "").startswith("/api/"):
+            scope = {**scope, "method": "GET"}
+            async def send_nobody(msg):
+                if msg.get("type") == "http.response.body": msg = {**msg, "body": b""}
+                await send(msg)
+            return await self.inner(scope, receive, send_nobody)
+        return await self.inner(scope, receive, send)
+
+
+app.add_middleware(_HeadAsGet)
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "HEAD", "OPTIONS"], allow_headers=["*"],
+                   allow_credentials=False, max_age=3600)
 
 
 def load(path, default):
@@ -525,7 +546,7 @@ _BOOT = time.time()
 def health():
     _, _, _, meta = build_state()
     _, lmeta = load(LEDGER, {})
-    return {"ok": True, "uptime_s": int(time.time() - _BOOT), "started_at": datetime.fromtimestamp(_BOOT, MYT).isoformat(timespec="seconds"), "readonly": True, "public_readonly": PUBLIC_READONLY, "sources": {**meta, "ledger": lmeta}, "scan": scan_state_public()}
+    return {"ok": True, "uptime_s": int(time.time() - _BOOT), "started_at": datetime.fromtimestamp(_BOOT, MYT).isoformat(timespec="seconds"), "readonly": True, "public_readonly": PUBLIC_READONLY, "keepalive": dict(_KEEP), "sources": {**meta, "ledger": lmeta}, "scan": scan_state_public()}
 
 
 @app.get("/api/summary")
@@ -838,8 +859,37 @@ def _report_top():
     return out
 
 
+_KEEP = {"pings": 0, "last_at": None, "last_status": None, "interval_s": None}
+
+
+def _keepalive_loop(url, every):
+    """Free Render instances sleep after ~15 min without inbound traffic, and GitHub's cron ping only lands about hourly.
+    Calling our own PUBLIC url (through Render's edge, so it counts as traffic) every few minutes keeps a running instance awake.
+    It cannot wake a sleeping one: the external ping (GitHub keep-awake workflow / a monitor) still does that."""
+    import urllib.request
+    time.sleep(60)
+    while True:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "xScanner-keepalive/1.0"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                _KEEP["last_status"] = r.status
+        except Exception as e:
+            _KEEP["last_status"] = type(e).__name__
+        _KEEP["pings"] += 1; _KEEP["last_at"] = datetime.now(MYT).isoformat(timespec="seconds")
+        time.sleep(every)
+
+
+def _start_keepalive():
+    base = os.environ.get("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
+    if not base.startswith("http") or os.environ.get("SELF_PING", "1") == "0": return
+    every = max(60, min(int(os.environ.get("SELF_PING_S", "420") or 420), 600))      # every 7 min by default, never above 10
+    _KEEP["interval_s"] = every
+    threading.Thread(target=_keepalive_loop, args=(base + "/api/health", every), name="keepalive", daemon=True).start()
+
+
 @app.on_event("startup")
 def _start_live():
+    _start_keepalive()
     try:
         bd._load(); cf._load(); ch._load_store(); ph.load()      # disk store + bundled seed: a restart never resets to 'unavailable'
         ph.price_hint = _price_hint
@@ -972,6 +1022,50 @@ app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
     return FileResponse(os.path.join(HERE, "static", "logo.svg"), media_type="image/svg+xml")
+
+
+def _public_base():
+    """Absolute site URL from configuration only (never the Host header)."""
+    for k in ("PUBLIC_URL", "RENDER_EXTERNAL_URL"):
+        v = os.environ.get(k, "").strip().rstrip("/")
+        if v.startswith("http"): return v
+    v = os.environ.get("AUTH_REDIRECT_URI", "").strip()
+    m = re.match(r"^(https?://[^/]+)", v)
+    return m.group(1) if m else None
+
+
+_PUBLIC_HDRS = {"Cache-Control": "public, max-age=60"}
+
+
+@app.api_route("/robots.txt", methods=["GET", "HEAD"], include_in_schema=False)
+def robots_txt():
+    return Response(seo.robots(_public_base()), media_type="text/plain; charset=utf-8", headers=_PUBLIC_HDRS)
+
+
+@app.api_route("/sitemap.xml", methods=["GET", "HEAD"], include_in_schema=False)
+def sitemap_xml():
+    return Response(seo.sitemap(_public_base()), media_type="application/xml; charset=utf-8", headers=_PUBLIC_HDRS)
+
+
+@app.api_route("/llms.txt", methods=["GET", "HEAD"], include_in_schema=False)
+def llms_txt():
+    return Response(seo.llms(_public_base()), media_type="text/plain; charset=utf-8", headers=_PUBLIC_HDRS)
+
+
+def _pct_s(v):
+    v = num(v)
+    return "n/a" if v is None else f"{v:+.1f}%"
+
+
+@app.api_route("/text", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/snapshot", methods=["GET", "HEAD"], include_in_schema=False)
+def text_view(format: str = "html"):
+    """Server-rendered, JavaScript-free view of the latest scan for crawlers, AI tools and text browsers."""
+    cs, s, _, _ = build_state()
+    s = dict(s)
+    s["tiers"] = {t: sum(1 for c in cs if c.get("tier") == t) for t in ("look", "watch", "skip")}
+    body, ctype = seo.render_text(cs, s, fmt_usd, _pct_s, base=_public_base(), fmt="txt" if str(format).lower() in ("txt", "text", "md", "markdown") else "html")
+    return Response(body, media_type=ctype, headers={"Cache-Control": "public, max-age=30"})
 
 
 @app.api_route("/", methods=["GET", "HEAD"])

@@ -1,17 +1,26 @@
 <!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>xScanner · Solana memecoin CA scanner</title>
-<meta name="description" content="xScanner: free Solana / pump.fun memecoin scanner. Paste any token CA to check score, liquidity, rug risk, copycats, paid X shills and a live chart. Analysis only, no trading.">
+<title>xScanner · Solana memecoin scanner: scores, rug and bundle risk, live charts</title>
+<meta name="description" content="xScanner is a free, read-only Solana / pump.fun memecoin scanner. Every coin gets a 0-100 score, a bundle / insider-cluster check, a data-confidence check and a live chart. Paste any token CA to scan it. Analysis only, no trading. Plain-text view at /text, site guide at /llms.txt.">
 <meta property="og:title" content="xScanner · Solana memecoin CA scanner">
 <meta property="og:description" content="Paste a Solana token CA to scan rug risk, paid shills, copycats and a live chart. Free, read-only.">
+<meta name="robots" content="index,follow">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+<link rel="alternate" type="text/html" href="/text" title="Plain HTML view of the latest scan">
 <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
 <link rel="apple-touch-icon" href="/static/logo.svg">
-<link rel="stylesheet" href="/static/style.css?v=fix6">
-<link rel="stylesheet" href="/static/space.css?v=fix6">
+<link rel="stylesheet" href="/static/style.css?v=fix7">
+<link rel="stylesheet" href="/static/space.css?v=fix7">
 <link rel="modulepreload" href="/static/vendor/three-0.170.0.module.min.js">
 <script>try{var _fx=JSON.parse(localStorage.getItem('xs_fx_v1')||'{}');if(_fx.motion===false||(matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches))document.documentElement.classList.add('fx-off')}catch(e){}</script>
 </head><body>
+<noscript><div style="max-width:760px;margin:24px auto;padding:16px;font:16px/1.5 system-ui,sans-serif;color:#eee;background:#111;border:1px solid #444;border-radius:8px">
+<h1 style="font-size:20px;margin:0 0 8px">xScanner: Solana memecoin scanner</h1>
+<p>This app needs JavaScript. No JavaScript? Read the same data as plain pages:
+<a href="/text" style="color:#8cf">/text</a> (every coin in the latest scan: name, ticker, mint, verdict, score, why it is moving, bundle and data-confidence checks),
+<a href="/text?format=txt" style="color:#8cf">/text?format=txt</a> (markdown), <a href="/llms.txt" style="color:#8cf">/llms.txt</a> (site guide for AI tools)
+and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to everyone, read-only, no login.</p></div></noscript>
 <div id="space" aria-hidden="true"><div class="aur"></div><div class="stars"></div><div id="moonStatic"></div><div class="rails"></div><div class="vig"></div><div class="grain"></div></div>
 <header class="top">
   <div class="brand"><img class="logo" src="/static/logo.svg" alt="xScanner logo" width="34" height="34"><div><h1>x<span class="accent">Scanner</span></h1><small>Solana · pump.fun · analysis &amp; paper trades only</small></div></div>
@@ -122,9 +131,9 @@
 <script src="/static/vendor/lightweight-charts.js?v=4.2.3"></script>
 <script>window.LightweightCharts||document.write('<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"><\/script>')</script>
 <script>window.__h0=location.hash</script>
-<script src="/static/motion.js?v=fix6"></script>
-<script src="/static/chart.js?v=fix6"></script>
-<script src="/static/app.js?v=fix6"></script>
-<script src="/static/xfeed.js?v=fix6"></script>
-<script type="module" src="/static/moon.js?v=fix6"></script>
+<script src="/static/motion.js?v=fix7"></script>
+<script src="/static/chart.js?v=fix7"></script>
+<script src="/static/app.js?v=fix7"></script>
+<script src="/static/xfeed.js?v=fix7"></script>
+<script type="module" src="/static/moon.js?v=fix7"></script>
 </body></html>
