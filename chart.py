@@ -2,7 +2,7 @@
 
 Sources, in order (all keyless, none paid):
   1. fresh cache                     (per pool+timeframe, about a minute)
-  2. GeckoTerminal OHLCV by pool     (real exchange candles). One background worker owns every upstream call: single file,
+  2. Jupiter keyless chart API by mint (real candles + volume, fast) then GeckoTerminal OHLCV by pool (real exchange candles). One background worker owns every upstream call: single file,
                                      >= GAP_S between calls, exponential cool-down after a 429, a per-minute budget, a
                                      priority queue (viewers first, pre-warm after). A request only waits for it for a few
                                      seconds, and only when the queue is short.
@@ -34,6 +34,11 @@ COOLDOWN0, COOLDOWN_MAX = 45, 600
 INLINE_WAIT_S = 6.0      # longest a viewer's request waits for the worker
 PREWARM_TFS = ("5m", "15m", "1h")      # 5m first for every coin (one pool at a time), then the longer frames
 RESAMPLE_FROM = {"15m": 900, "1h": 3600, "4h": 14400}   # built locally from real 5m candles while the direct frame is missing
+JUP_ENABLED = os.environ.get("CHART_JUPITER", "1") != "0"
+JUP_TF = {"1m": "1_MINUTE", "5m": "5_MINUTE", "15m": "15_MINUTE", "1h": "1_HOUR", "4h": "4_HOUR", "1d": "1_DAY"}
+JUP_GAP_S = 0.7          # Jupiter's keyless chart API is fast and per-mint: viewers and the backfill both use it first
+JUP_N, JUP_WIN = 45, 60  # calls per minute budget
+JUP_COOL0, JUP_COOL_MAX = 30, 300
 GAP_LO_S = 8.0           # background backfill: one pool at a time, this far apart (viewers use GAP_S)
 PREWARM_EVERY = 330      # seconds between background refreshes of a pre-warmed chart
 LIMIT = 300
@@ -48,7 +53,9 @@ _q = {"hi": deque(), "lo": deque()}
 _queued = {}                      # key -> Event set when the job finishes
 _cond = threading.Condition()
 _calls = deque()                  # timestamps of upstream calls (budget window)
-_g = {"cool_until": 0.0, "cool_n": 0, "last_call": 0.0, "worker": False, "dirty": False, "last_flush": 0.0,
+_jcalls = deque()
+_g = {"jup_cool_until": 0.0, "jup_cool_n": 0, "jup_last": 0.0, "jup_ok": 0, "jup_429": 0, "jup_err": 0,
+      "cool_until": 0.0, "cool_n": 0, "last_call": 0.0, "worker": False, "dirty": False, "last_flush": 0.0,
       "ok": 0, "429": 0, "err": 0, "last_error": None, "loaded": False}
 
 
@@ -168,6 +175,65 @@ def _gt_call(pool, tf, token):
             "quote": {k: (meta.get("quote") or {}).get(k) for k in ("symbol", "address")}}
 
 
+def _jup_ok():
+    if not JUP_ENABLED: return False
+    now = time.time()
+    if now < _g["jup_cool_until"]: return False
+    while _jcalls and now - _jcalls[0] > JUP_WIN: _jcalls.popleft()
+    return len(_jcalls) < JUP_N
+
+
+def _jup_call(pool, tf, token):
+    """Real candles (with volume) from Jupiter's keyless chart API, by mint. Worker thread only. Raises ChartError."""
+    url = (f"https://datapi.jup.ag/v2/charts/{token}?interval={JUP_TF[tf]}&to={int(time.time() * 1000)}"
+           f"&candles={LIMIT}&type=price")
+    _jcalls.append(time.time()); _g["jup_last"] = time.time()
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={**UA, "User-Agent": "Mozilla/5.0 (xScanner read-only)"}), timeout=10) as r:
+            d = json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            _g["jup_429"] += 1; _g["jup_cool_n"] = min(_g["jup_cool_n"] + 1, 4)
+            _g["jup_cool_until"] = time.time() + min(JUP_COOL0 * 2 ** (_g["jup_cool_n"] - 1), JUP_COOL_MAX)
+        else:
+            _g["jup_err"] += 1; _g["last_error"] = f"jupiter HTTP {e.code}"
+        raise ChartError(502, f"Jupiter chart HTTP {e.code}.")
+    except Exception as e:
+        _g["jup_err"] += 1; _g["last_error"] = "jupiter " + type(e).__name__
+        raise ChartError(502, "Jupiter chart unreachable.")
+    rows = [k for k in (d.get("candles") or []) if isinstance(k, dict)]
+    cs = _norm_candles([[k.get("time"), k.get("open"), k.get("high"), k.get("low"), k.get("close"), k.get("volume") or 0] for k in rows
+                        if k.get("time") is not None])
+    if not cs: raise ChartError(404, "Jupiter has no candles for this token.")
+    _g["jup_cool_n"] = 0; _g["jup_ok"] += 1
+    return {"pool": pool, "tf": tf, "candles": cs, "source": "jupiter", "base": {}, "quote": {}}
+
+
+def _fetch(pool, tf, token, hi):
+    """One job: Jupiter first (fast, by mint), GeckoTerminal when it is free. Waits out cool-downs, but gives up after a while
+    (the next pre-warm queues the job again) so a long GeckoTerminal cool-down never freezes the queue."""
+    deadline = time.time() + (30 if hi else 240)
+    tried_jup = False
+    while time.time() < deadline:
+        if token and not tried_jup and _jup_ok():
+            tried_jup = True
+            wait = _g["jup_last"] + JUP_GAP_S - time.time()
+            if wait > 0: time.sleep(wait)
+            try:
+                return _jup_call(pool, tf, token)
+            except ChartError:
+                pass
+        if _budget_ok():
+            wait = _g["last_call"] + (GAP_S if hi else GAP_LO_S) - time.time()
+            if wait > 0: time.sleep(wait)
+            try:
+                return _gt_call(pool, tf, token)
+            except ChartError:
+                return None
+        time.sleep(1.5)
+    return None
+
+
 def _worker():
     while True:
         job, job_hi = None, True
@@ -183,15 +249,8 @@ def _worker():
             ttl = TTL_BY_TF.get(tf, CACHE_TTL)
             if e and time.time() - e[0] < ttl * 0.8:
                 continue
-            while not _budget_ok():                  # honour cool-down / per-minute budget, never hammer
-                time.sleep(min(max(_g["cool_until"] - time.time(), 1.0), 5.0))
-            wait = _g["last_call"] + (GAP_S if job_hi else GAP_LO_S) - time.time()
-            if wait > 0: time.sleep(wait)
-            try:
-                d = _gt_call(pool, tf, token)
-                if d["candles"]: _remember(pool, tf, token, d)
-            except ChartError:
-                pass
+            d = _fetch(pool, tf, token, job_hi)
+            if d and d["candles"]: _remember(pool, tf, token, d)
         except Exception as ex:
             _g["last_error"] = "worker " + type(ex).__name__
         finally:
@@ -359,8 +418,8 @@ def _get_ohlcv(pool, tf, token=None):
             _enqueue(key, False)
             return {**rs[1], "cached": True, "stale": True, "age_s": round(now - rs[0], 1)}
     ev = _enqueue(key, True)
-    depth = len(_q["hi"]) + len(_q["lo"])
-    if _budget_ok() and depth <= 3:
+    depth = len(_q["hi"])                                # viewers are served before the background backfill
+    if (_budget_ok() or (token and _jup_ok())) and depth <= 3:
         ev.wait(INLINE_WAIT_S)
         with _lock:
             e = _cache.get(key)
@@ -412,5 +471,7 @@ def stats():
     with _lock:
         n = len(_cache)
     return {"cached": n, "ok": _g["ok"], "rate_limited": _g["429"], "errors": _g["err"], "last_error": _g["last_error"],
-            "cooldown_s": max(0, round(_g["cool_until"] - time.time())), "queue": len(_q["hi"]) + len(_q["lo"]),
+            "cooldown_s": max(0, round(_g["cool_until"] - time.time())),
+            "jupiter": {"enabled": JUP_ENABLED, "ok": _g["jup_ok"], "rate_limited": _g["jup_429"], "errors": _g["jup_err"],
+                        "cooldown_s": max(0, round(_g["jup_cool_until"] - time.time()))}, "queue": len(_q["hi"]) + len(_q["lo"]),
             "price_snapshots": ph.status()}

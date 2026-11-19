@@ -119,7 +119,7 @@ async function load(showLoading){
   const winH=(cd[cd.length-1].t-cd[0].t)/3600, winTxt=winH<48?Math.max(1,Math.round(winH))+'h':Math.round(winH/24)+'d';
   document.getElementById('chChg').innerHTML=chg==null?'':`${pct(chg)} <small class="muted">over ${winTxt}</small>`;
   const srcEl=document.getElementById('chSrc');
-  if(srcEl){const nm={geckoterminal:'GeckoTerminal','geckoterminal-direct':'GeckoTerminal (your browser)','geckoterminal+snapshots':'GeckoTerminal + our price snapshots',snapshots:'our own price snapshots (no volume)',derived:'approximate, from DexScreener 5m/1h/24h changes'}[j.source]||j.source||'GeckoTerminal';
+  if(srcEl){const nm={jupiter:'Jupiter (real candles)',geckoterminal:'GeckoTerminal','geckoterminal-direct':'GeckoTerminal (your browser)','geckoterminal+snapshots':'GeckoTerminal + our price snapshots',snapshots:'our own price snapshots (no volume)',derived:'approximate, from DexScreener 5m/1h/24h changes'}[j.source]||j.source||'GeckoTerminal';
     srcEl.textContent='Candles: '+nm+(j.approximate?' · approximate':'')+' · refreshes every 15s while open'}
   const lim=document.getElementById('chLim');
   if(lim){const on=!!j.limited||j.source==='derived'||j.source==='snapshots';lim.classList.toggle('hidden',!on);

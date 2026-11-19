@@ -49,15 +49,22 @@ def _median(xs):
     return None if not n else (s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2)
 
 
-def clean_points(pts, ratio=10.0, win=3):
-    """Drop price points that sit more than `ratio`x away from the median of their neighbours (a bad tick / wrong-unit price)."""
+def clean_points(pts, ratio=10.0, win=3, spike=1.6):
+    """Drop bad price ticks.
+    - one-point spikes: a point more than `spike`x away from the median of the points before it AND the median of the points
+      after it (a real step change agrees with one side, a bad tick agrees with neither), e.g. 0.00898 among ~0.0034
+    - edge points (no neighbours on one side) and anything else more than `ratio`x from the median of all neighbours."""
     n = len(pts)
     if n < 5: return list(pts)
     out = []
     for i, (t, p) in enumerate(pts):
-        nb = [pts[j][1] for j in range(max(0, i - win), min(n, i + win + 1)) if j != i]
-        m = _median(nb)
+        before = [pts[j][1] for j in range(max(0, i - win), i)]
+        after = [pts[j][1] for j in range(i + 1, min(n, i + win + 1))]
+        mb, ma = _median(before), _median(after)
+        m = _median(before + after)
         if m and m > 0 and (p > m * ratio or p < m / ratio): continue
+        if mb and ma and mb > 0 and ma > 0:
+            if (p > mb * spike and p > ma * spike) or (p < mb / spike and p < ma / spike): continue
         out.append([t, p])
     return out
 
