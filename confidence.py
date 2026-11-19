@@ -56,33 +56,44 @@ MCAP_MAX = 1e11          # no memecoin is worth more than $100B
 LIQ_MIN = 100.0          # under $100 of liquidity is a dead pool, not a market
 
 
+def _median(vals):
+    v = sorted(vals); n = len(v)
+    return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
+
+
 def sanity_problems(c, ds=None, gt=None, rc=None):
-    """Impossible or absurd money numbers across every source we hold. Returns {field label: reason}.
-    A zero/negative mcap or liquidity, an mcap above $100B, liquidity under $100, or liquidity above market cap
-    (in any one source, or between the best values) can never be 'high' confidence."""
+    """Impossible or absurd money numbers. Returns (hard, soft), each {field label: reason}.
+    hard (forces LOW confidence): market cap or liquidity is zero / negative in EVERY source that reports it, an absurd
+      market cap (> $100B), liquidity under $100, liquidity above market cap (in one source, or between the medians), or a
+      value missing from every source.
+    soft (field marked 'mismatch', named, but not forced LOW): one source says zero/negative while other sources report a real value
+      (e.g. RugCheck returns $0 for a major token)."""
     ds, gt, rc = ds or {}, gt or {}, rc or {}
     mc = {"scanner": c.get("mcap"), "dexscreener": ds.get("mcap"), "geckoterminal": gt.get("fdv"), "rugcheck": rc.get("mcap")}
     lq = {"scanner": c.get("liq"), "dexscreener": ds.get("liq"), "geckoterminal": gt.get("reserve"), "rugcheck": rc.get("liq")}
     mc = {k: _num(v) for k, v in mc.items() if _num(v) is not None}
     lq = {k: _num(v) for k, v in lq.items() if _num(v) is not None}
-    out = {}
-    zero = [k for k, v in mc.items() if v <= 0]
-    if zero: out["market cap"] = f"market cap is ${_fmt(min(mc[k] for k in zero))} ({zero[0]})"
-    elif mc and max(mc.values()) > MCAP_MAX: out["market cap"] = f"market cap ${_fmt(max(mc.values()))} is absurd"
-    elif not mc: out["market cap"] = "market cap missing from every source"
-    zl = [k for k, v in lq.items() if v <= 0]
-    if zl: out["liquidity"] = f"liquidity is ${_fmt(min(lq[k] for k in zl))} ({zl[0]})"
-    elif lq and max(lq.values()) < LIQ_MIN: out["liquidity"] = f"liquidity ${_fmt(max(lq.values()))} is near zero"
-    elif not lq: out["liquidity"] = "liquidity missing from every source"
+    hard, soft = {}, {}
     pm = {k: v for k, v in mc.items() if v > 0}; pl = {k: v for k, v in lq.items() if v > 0}
-    if "liquidity" not in out or "market cap" not in out:
+    zm = [k for k, v in mc.items() if v <= 0]; zl = [k for k, v in lq.items() if v <= 0]
+    if not pm and zm: hard["market cap"] = f"market cap is ${_fmt(min(mc.values()))} ({', '.join(zm)})"
+    elif zm: soft["market cap"] = f"{zm[0]} reports market cap ${_fmt(mc[zm[0]])} while other sources report a value"
+    elif pm and _median(pm.values()) > MCAP_MAX: hard["market cap"] = f"market cap ${_fmt(_median(pm.values()))} is absurd"
+    elif not mc: hard["market cap"] = "market cap missing from every source"
+    if not pl and zl: hard["liquidity"] = f"liquidity is ${_fmt(min(lq.values()))} ({', '.join(zl)})"
+    elif zl: soft["liquidity"] = f"{zl[0]} reports liquidity ${_fmt(lq[zl[0]])} while other sources report a value"
+    elif pl and max(pl.values()) < LIQ_MIN: hard["liquidity"] = f"liquidity ${_fmt(max(pl.values()))} is near zero"
+    elif not lq: hard["liquidity"] = "liquidity missing from every source"
+    if "liquidity" not in hard:
         bad = [k for k in pl if k in pm and pl[k] > pm[k]]
-        if bad: out.setdefault("liquidity", f"liquidity ${_fmt(pl[bad[0]])} is above market cap ${_fmt(pm[bad[0]])} ({bad[0]})")
-        elif pm and pl and max(pl.values()) > max(pm.values()):
-            out.setdefault("liquidity", f"liquidity ${_fmt(max(pl.values()))} is above market cap ${_fmt(max(pm.values()))}")
-    if "liquidity" in out and "above market cap" in out["liquidity"]:
-        out.setdefault("market cap", "market cap is below the liquidity in the pool")
-    return out
+        if bad: hard["liquidity"] = f"liquidity ${_fmt(pl[bad[0]])} is above market cap ${_fmt(pm[bad[0]])} ({bad[0]})"
+        elif pm and pl and _median(pl.values()) > _median(pm.values()):
+            hard["liquidity"] = f"liquidity ${_fmt(_median(pl.values()))} is above market cap ${_fmt(_median(pm.values()))}"
+    if "liquidity" in hard and "above market cap" in hard["liquidity"]:
+        hard.setdefault("market cap", "market cap is below the liquidity in the pool")
+        soft.pop("market cap", None)
+    for k in hard: soft.pop(k, None)
+    return hard, soft
 
 
 def _get(url, timeout=10):
@@ -321,10 +332,10 @@ def evaluate(c, entry, scan_age_s=None, rc_extra=None):
         age = ("agree" if rc_age >= ds_age - 1.0 else "mismatch", {"dexscreener (pair)": round(ds_age, 1), "rugcheck (detected)": round(rc_age, 1)})
     elif ds_age is not None: age = ("single", {"dexscreener (pair)": round(ds_age, 1)})
     f["age"] = age
-    problems = sanity_problems(c, ds, gt, rc)
+    problems, warnings = sanity_problems(c, ds, gt, rc)
     if not entry:      # nothing fetched yet: "missing everywhere" is just 'pending', not a data problem
         problems = {k: v for k, v in problems.items() if not v.endswith("missing from every source")}
-    for lab, why in problems.items():
+    for lab in list(problems) + list(warnings):
         k = "market_cap" if lab == "market cap" else "liquidity"
         f[k] = ("mismatch", f[k][1])
     # staleness: externally pulled data too old, or the scanner copy itself is old
@@ -336,7 +347,7 @@ def evaluate(c, entry, scan_age_s=None, rc_extra=None):
         if st in ("agree", "single") and stale: st = "stale"
         credit = {"agree": 1.0, "single": 0.5, "stale": 0.5}.get(st, 0.0)
         res[k] = {"status": st, "values": vals, "label": LABEL[k]}
-        pw = problems.get(LABEL[k])
+        pw = problems.get(LABEL[k]) or warnings.get(LABEL[k])
         if pw: res[k]["problem"] = pw
         pts += WEIGHTS[k] * credit
     score = int(round(pts))
@@ -364,7 +375,7 @@ def evaluate(c, entry, scan_age_s=None, rc_extra=None):
             "checked_age_s": int(now - entry["t"]) if entry else None,
             "label": {"high": "Data confidence high", "medium": "Data confidence medium", "low": "Data uncertain",
                       "unchecked": "Data confidence pending"}[level],
-            "scan_stale": scan_stale, "problems": problems}
+            "scan_stale": scan_stale, "problems": problems, "warnings": warnings}
 
 
 def _fmt(x):

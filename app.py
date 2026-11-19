@@ -297,7 +297,7 @@ def apply_bundle_and_confidence(out):
     out["bundle_pct"] = out["bundle"]["share_pct"]
     out["bundle_wallets"] = out["bundle"]["linked_wallets"]
     out["data_confidence"] = {k: conf.get(k) for k in ("score", "level", "label", "uncertain", "notes", "fields", "sources",
-                                                       "n_sources", "checked_age_s", "scan_stale", "cap", "problems")}
+                                                       "n_sources", "checked_age_s", "scan_stale", "cap", "problems", "warnings")}
     # --- score + safety caps (never raise a score)
     sc0 = num(out.get("score"), 0) or 0
     cap = 100
@@ -696,8 +696,16 @@ def _price_hint(mint):
 
 
 def _report_top():
+    """Every coin the UI can show: the report's top list plus the dashboard-only coins."""
     r, _ = load(os.path.join(SCANNER, "report.json"), {})
-    return [c for c in (r.get("top") or []) if isinstance(c, dict)]
+    out = [c for c in (r.get("top") or []) if isinstance(c, dict)]
+    have = {c.get("mint") for c in out}
+    dd, _ = load(os.path.join(SCANNER, "dashboard_data.json"), {})
+    for d in dd.get("coins") or []:
+        if isinstance(d, dict) and d.get("mint") and d["mint"] not in have:
+            out.append({"mint": d["mint"], "pool": d.get("pool"), "mcap": d.get("mcap"), "pc5": d.get("pc5"), "pc1": d.get("pc1"),
+                        "pc24": d.get("pc24"), "age_h": d.get("ageH")})
+    return out
 
 
 @app.on_event("startup")

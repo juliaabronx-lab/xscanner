@@ -134,7 +134,7 @@ function confHTML(c){
   const fmt=v=>typeof v==='boolean'?(v?'set':'none'):typeof v==='number'?(Math.abs(v)>=1000?Math.round(v).toLocaleString():+v.toPrecision(4)):esc(v);
   const rows=Object.values(d.fields||{}).map(f=>`<tr><td>${esc(f.label)}</td><td><span class="pill ${f.status==='agree'?'grn':f.status==='single'?'':'amb'}">${f.status==='agree'?'sources agree':f.status}</span></td><td class="muted" style="font-size:11px">${Object.entries(f.values||{}).map(([k,v])=>esc(k)+' '+fmt(v)).join(' · ')||'no source'}</td></tr>`).join('');
   return `<h3>Data confidence <span class="pill ${lvl}">${esc(d.label)} · ${d.score}/100</span></h3>
-   ${d.problems&&Object.keys(d.problems).length?`<p class="amb-note" style="margin:4px 0;color:#f5a524">⚠ ${Object.entries(d.problems).map(([k,v])=>'<b>'+esc(k)+'</b>: '+esc(v)).join(' · ')}</p>`:''}
+   ${(()=>{const pw={...(d.warnings||{}),...(d.problems||{})};return Object.keys(pw).length?`<p class="amb-note" style="margin:4px 0;color:#f5a524">⚠ ${Object.entries(pw).map(([k,v])=>'<b>'+esc(k)+'</b>: '+esc(v)).join(' · ')}</p>`:''})()}
    <p class="muted" style="margin:4px 0">${d.uncertain&&d.uncertain.length?'Shaky: '+esc(d.uncertain.join(', '))+'.':'Key fields agree across sources.'} Sources: ${esc((d.sources||[]).join(', ')||'none yet')}.</p>
    <table class="conf"><tbody>${rows}</tbody></table>`;
 }

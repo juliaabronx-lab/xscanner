@@ -78,6 +78,11 @@ async function load(showLoading){
     await new Promise(res=>setTimeout(res,1500*(i+1)));
   }
   if(seq!==CH.seq||!CH.cs)return;
+  // the server only had approximate / snapshot candles (its shared IP is rate-limited): try the viewer's own GeckoTerminal quota for real ones
+  if(ok&&(j.source==='derived'||j.source==='snapshots')&&Date.now()>(CH.dgUntil||0)){
+    try{const d=await directGT(c,tf);if(d&&d.candles&&d.candles.length>2){j=d}else CH.dgUntil=Date.now()+60000}catch(e){CH.dgUntil=Date.now()+60000}
+    if(seq!==CH.seq||!CH.cs)return;
+  }
   if(!ok){
     if(CH.lastT){document.getElementById('chUpd').textContent=' · '+(j.detail||'still loading')+' — keeping last data';return}
     if(r&&r.status===404)chMsg(`${esc(j.detail||'No chart data for this pair yet.')} <a href="#" onclick="setMode('dex');return false">Try the DexScreener chart</a>`);
