@@ -283,11 +283,11 @@ def build(c, ds=None, gt=None, rc_meta=None, posts=(), trends=()):
     if cats:
         body = " and ".join(cats[:2]) if len(cats) <= 2 else ", ".join(cats[:-1]) + " and " + cats[-1]
         s3 = body[0].upper() + body[1:] + "."
-    if fade and cats: s3 = s3.rstrip(".") + "; " + fade[0].lower() + fade[1:] + "."
+    if fade and cats: s3 = s3.rstrip(".") + "; " + fade + "."
     if hl: s3 = (s3 + " " if s3 else "") + f"Top post: @{hl[0]['handle']} wrote {_q(hl[0]['text'])}."
     if not clear:
         busy = (b1 is not None and b1 + (sl1 or 0) >= 100) or (vol and liq and vol / max(liq, 1) >= 2)
-        wx = (f", with only {_plural(weak_x, 'X post')} mentioning it" if weak_x else "") + (f"; {fade[0].lower() + fade[1:]}" if fade else "")
+        wx = (f", with only {_plural(weak_x, 'X post')} mentioning it" if weak_x else "") + (f"; {fade}" if fade else "")
         s3 = "No clear news or catalyst found" + ("; the move looks driven by trading volume" if (hot or faded or down or up) and busy else "; trading is quiet and nothing in the data explains a move") + wx + "."
     parts = [p for p in (s1, s2, s3) if p]
     # ---- card line
