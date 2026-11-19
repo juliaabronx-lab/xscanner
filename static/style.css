@@ -368,3 +368,36 @@ html.fx-off .tcard:hover,html.fx-off .tcard:focus-visible,html.fx-off .tcard:act
 .livedot.pulse{animation:livepulse 1.4s ease-out infinite}
 @keyframes livepulse{0%{box-shadow:0 0 0 0 hsl(142 70% 50% / .55)}100%{box-shadow:0 0 0 8px hsl(142 70% 50% / 0)}}
 html.fx-off .livedot.pulse{animation:none}
+
+/* Google sign-in chip in the header (optional; hidden until /api/me paints it) */
+.authbox{display:flex;align-items:center;flex-shrink:0}
+.authbox:empty{display:none}
+.uchip{display:flex;align-items:center;gap:8px;padding:3px 4px 3px 3px;border:1px solid hsl(var(--primary) / .12);border-radius:999px;background:hsl(var(--card) / .7);max-width:220px}
+.uava{width:24px;height:24px;border-radius:999px;object-fit:cover;background:hsl(var(--field));flex-shrink:0}
+.uname{font-size:12px;font-weight:500;color:hsl(var(--primary));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px}
+a.ulogout,a.signin{font-size:12px;font-weight:500;color:var(--mut);text-decoration:none;padding:5px 10px;border-radius:999px}
+a.ulogout:hover,a.signin:hover{color:hsl(var(--primary));background:hsl(var(--background-hover) / .4)}
+a.signin.ghost{padding:6px 12px;font-size:12px}
+
+/* Login page */
+body.login-page{min-height:100vh;display:flex;flex-direction:column}
+.login-top .brand{text-decoration:none;color:inherit}
+.login-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:48px 20px 64px;position:relative}
+.login-card{width:min(420px,100%);padding:32px 28px 28px;border-radius:var(--radius-2xl);text-align:center}
+.login-title{margin:8px 0 10px;font-family:var(--font-display);font-size:clamp(2rem,6vw,2.6rem);font-weight:500;letter-spacing:-.04em;line-height:1.1}
+.login-lead{margin:0 0 22px;font-size:14px}
+.google-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:12px 16px;border:0;border-radius:999px;background:#fff;color:#1f1f1f;font:600 14px/1.2 var(--font-sans);text-decoration:none;cursor:pointer;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.google-btn:hover{background:#f4f4f4}
+.google-btn:disabled,.google-btn[aria-disabled="true"]{opacity:.55;cursor:not-allowed;box-shadow:none}
+.google-btn .gicon{width:18px;height:18px;flex-shrink:0}
+.login-note{margin:16px 0 0;padding:10px 12px;border-radius:var(--radius-xl);border:1px solid hsl(var(--primary) / .1);background:hsl(var(--field) / .55);color:var(--mut);font-size:13px}
+.login-err{margin:0 0 16px;padding:10px 12px;border-radius:var(--radius-xl);background:hsl(var(--error) / .1);border:1px solid hsl(var(--error) / .25);color:var(--red);font-size:13px}
+a.login-back{display:inline-flex;margin-top:18px}
+@media(max-width:640px){
+  .login-wrap{padding:28px 16px 48px}
+  .login-card{padding:24px 18px 20px}
+  .uchip{max-width:100%}
+  .uname{max-width:90px}
+}
+
+.conf{width:100%;border-collapse:collapse;margin:6px 0 12px;font-size:12px}.conf td{padding:5px 6px;border-bottom:1px solid hsl(var(--primary) / .06);vertical-align:top}.conf td:first-child{white-space:nowrap}

@@ -13,6 +13,8 @@ import lookup as lk
 import live
 import chart as ch
 import images as im
+import bundle as bd
+import confidence as cf
 from fastapi.responses import Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -27,6 +29,8 @@ MYT = timezone(timedelta(hours=8))
 app = FastAPI(title="xScanner", docs_url="/api/docs")
 from fastapi.middleware.gzip import GZipMiddleware
 app.add_middleware(GZipMiddleware, minimum_size=800)  # smaller pages over the tunnel / mobile
+import auth
+auth.install(app)  # Google sign-in; no-op for the rest of the app until env vars are set
 
 
 def load(path, default):
@@ -111,8 +115,20 @@ def rewrite_age(text):
     return _AGE.sub(lambda m: "age " + fmt_age(float(m.group(1))), text)
 
 
-def rewrite_text(text):
-    """Apply the shared money and age formatters to scan.py reason/flag strings."""
+def rewrite_text(text, mcap=None, liq=None):
+    """Apply the shared money and age formatters to scan.py reason/flag strings.
+
+    scan.py writes always-K .0f amounts (2393 -> '$2K'). When the raw mcap/liq
+    numbers are available, replace those phrases with fmt_usd so the UI shows
+    '$2.39K'. Remaining always-K amounts still go through rewrite_money.
+    """
+    if not text or not isinstance(text, str):
+        return text
+    if mcap is not None:
+        text = re.sub(r"\bmcap \$[0-9.]+[KMBT]?\b", "mcap " + fmt_usd(mcap), text, count=1, flags=re.I)
+    if liq is not None:
+        text = re.sub(r"\bthin liq \$[0-9.]+[KMBT]?\b", "thin liq " + fmt_usd(liq), text, flags=re.I)
+        text = re.sub(r"\bliq \$[0-9.]+[KMBT]?\b", "liq " + fmt_usd(liq), text, count=1, flags=re.I)
     return rewrite_age(rewrite_money(text))
 
 
@@ -183,7 +199,7 @@ def normalise_report_coin(c, dash):
     x = c.get("x") or {}
     rc = c.get("rugcheck") or {}
     b5, s5 = pair(c.get("m5")); b1, s1 = pair(c.get("h1"))
-    flags = [rewrite_text(f) for f in (c.get("flags") or [])]
+    flags = [rewrite_text(f, mcap=c.get("mcap"), liq=c.get("liq")) for f in (c.get("flags") or [])]
     paid_share = num(x.get("shill_share"))
     out = {
         "source": "report", "score": c.get("score"), "parts": c.get("parts") or {}, "tier": tier(c.get("score")),
@@ -191,7 +207,7 @@ def normalise_report_coin(c, dash):
         "dex": c.get("dex"), "url": c.get("url"), "age_h": c.get("age_h"), "liq": c.get("liq"), "mcap": c.get("mcap"),
         "vol24": c.get("vol24"), "pc5": c.get("pc5"), "pc1": c.get("pc1"), "pc24": c.get("pc24"),
         "buys5": b5, "sells5": s5, "buys1h": b1, "sells1h": s1, "fees_est": c.get("fees_est"), "boosts": c.get("boosts"),
-        "copycats": c.get("copycats"), "reason": rewrite_text(c.get("reason")), "flags": [rewrite_text(f) for f in flags],
+        "copycats": c.get("copycats"), "reason": rewrite_text(c.get("reason"), mcap=c.get("mcap"), liq=c.get("liq")), "flags": flags,
         "pump": is_pump(c), "paid_share": paid_share,
         "paid_shilled": bool((paid_share or 0) >= 0.5 or any("paid shill" in f.lower() for f in flags)),
         "x": x, "vel": c.get("vel") or {}, "rugcheck": rc, "organic_examples": c.get("organic_examples") or [],
@@ -209,6 +225,97 @@ def normalise_report_coin(c, dash):
         out["tier"] = tier(out["score"])
         out["flags"] = ["DATA: " + "; ".join(issues)] + list(flags)
         if out["status"] in (None, "buy", "watch"): out["status"] = "bad data"
+    return apply_bundle_and_confidence(out)
+
+
+def _scan_age_s():
+    """Seconds since the data the scanner copy was built from (last live scan, else the bundled snapshot)."""
+    for raw in (live.status.get("last_scan_at"), live.status.get("snapshot_time"), live.status.get("bundle_snapshot_time")):
+        if not raw: continue
+        try:
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            if dt.tzinfo is None: dt = dt.replace(tzinfo=MYT)
+            return max(0.0, time.time() - dt.timestamp())
+        except Exception:
+            continue
+    return None
+
+
+def _bundle_flag(b):
+    st, why = b.get("status"), b.get("reason") or ""
+    if st == "flagged":
+        head, _, rest = why.partition(": ")
+        return ("BUNDLE: " if head.startswith("Bundled") else "CONCENTRATED: ") + rest
+    if st == "elevated": return "Bundle risk: " + why.split(": ", 1)[-1]
+    if st == "unavailable": return "Bundle check unavailable (not counted as safe)"
+    return None
+
+
+def apply_bundle_and_confidence(out):
+    """Bundle / insider-cluster check + data-confidence cross-check. Both are non-blocking cache reads.
+    Missing data is never safe: an unavailable bundle check caps the score below 'look'; low data confidence caps it
+    below 'watch'; a flagged bundle caps it at 20 and zeroes the safety points."""
+    mint = out.get("mint")
+    rc = out.get("rugcheck") or {}
+    try:
+        b = bd.assess(mint, rc)
+    except Exception as e:
+        b = bd.assess_numbers(None); b["error"] = type(e).__name__
+    try:
+        cached, _ = bd.get_cached(mint)
+    except Exception:
+        cached = None
+    rx = (cached or {}).get("rc") or {}
+    try:
+        conf = cf.assess(out, rc_extra=rx, scan_age_s=_scan_age_s())
+    except Exception as e:
+        conf = cf.evaluate(out, None); conf["error"] = type(e).__name__
+    st = b.get("status")
+    known = st in ("ok", "elevated", "flagged")
+    out["bundle"] = {k: b.get(k) for k in ("status", "level", "flagged", "reason", "source", "wallets", "networks", "net_share",
+                                         "largest_share", "top10_ex_lp", "top20_ex_lp", "insider_top_holders", "uniform_n",
+                                         "uniform_of", "fund", "age_s", "stale", "pending", "partial")}
+    out["bundle"]["linked_wallets"] = b.get("wallets") if known else None
+    out["bundle"]["share_pct"] = b.get("net_share") if known else None
+    out["bundle_pct"] = out["bundle"]["share_pct"]
+    out["bundle_wallets"] = out["bundle"]["linked_wallets"]
+    out["data_confidence"] = {k: conf.get(k) for k in ("score", "level", "label", "uncertain", "notes", "fields", "sources",
+                                                       "n_sources", "checked_age_s", "scan_stale", "cap")}
+    # --- score + safety caps (never raise a score)
+    sc0 = num(out.get("score"), 0) or 0
+    cap = 100
+    if st in bd.CAP: cap = min(cap, bd.CAP[st])
+    cap = min(cap, conf.get("cap", 100))
+    parts = dict(out.get("parts") or {})
+    if parts.get("safety") is not None:
+        scap = bd.SAFETY_CAP.get(st, 25)
+        if conf["level"] == "low": scap = min(scap, 10)
+        elif conf["level"] == "unchecked": scap = min(scap, 18)
+        if num(parts["safety"], 0) > scap: parts["safety"] = scap
+        out["parts"] = parts
+    flags = list(out.get("flags") or [])
+    new = []
+    bf = _bundle_flag(out["bundle"] | {"status": st, "reason": b.get("reason")})
+    if bf: new.append(bf)
+    if conf["level"] in ("low", "unchecked") or conf["uncertain"]:
+        head = "Data uncertain" if conf["level"] != "unchecked" else "Data confidence pending"
+        names = ", ".join(conf["uncertain"][:4]) if conf["uncertain"] else ""
+        new.append(f"{head}: {names}" if names and conf["level"] != "unchecked" else (head if conf["level"] == "unchecked" else f"{head} ({names})"))
+    if cap < sc0:
+        out.setdefault("score_raw", out.get("score"))
+        out["score"] = cap
+        out["tier"] = tier(cap)
+        why = []
+        if st in bd.CAP and bd.CAP[st] < sc0: why.append({"flagged": "bundle detected", "elevated": "bundle risk", "unavailable": "bundle check unavailable"}[st])
+        if conf.get("cap", 100) < sc0: why.append("low data confidence" if conf["level"] == "low" else "data confidence pending")
+        new.append(f"capped at {cap}: " + " + ".join(why))
+    out["flags"] = new + flags
+    if st == "flagged" and out.get("status") != "blocked": out["status"] = "high risk"
+    elif conf["level"] == "low" and out.get("status") in (None, "buy", "watch"): out["status"] = "data uncertain"
+    # --- risk radar: a bundle risk we could not measure is shown as uncertain (0.5), never as zero
+    ra = dict(out.get("risk") or {})
+    ra["bundle"] = 1.0 if st == "flagged" else max(0.6, ra.get("bundle", 0)) if st == "elevated" else 0.5 if st == "unavailable" else ra.get("bundle", 0)
+    out["risk"] = ra
     return out
 
 
@@ -407,6 +514,9 @@ def lookup_coin(mint: str, request: Request):
             r = {**stale, "cached": True, "stale": True, "cache_age_s": sage}
         else:
             raise HTTPException(429, "DexScreener is busy right now. Please try the scan again in a moment.")
+    ts = [threading.Thread(target=fn, args=(mint,), daemon=True) for fn in (lambda m: bd.fetch_now(m, 6), lambda m: cf.fetch_now(m, 6))]
+    for t in ts: t.start()
+    for t in ts: t.join(14)
     x = {k: v for k, v in (r.get("x") or {}).items() if k != "top_organic"}
     raw = {**{k: r.get(k) for k in ("score", "parts", "name", "symbol", "mint", "pool", "dex", "url", "age_h", "liq", "mcap",
                                    "vol24", "m5", "h1", "pc5", "pc1", "pc24", "fees_est", "boosts", "reason", "flags", "copycats")},

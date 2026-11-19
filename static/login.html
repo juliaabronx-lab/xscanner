@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in · xScanner</title>
+<meta name="description" content="Sign in to xScanner with Google. Analysis only, no trading.">
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+<link rel="stylesheet" href="/static/style.css?v=bundle1">
+<link rel="stylesheet" href="/static/space.css?v=bundle1">
+<script>try{var _fx=JSON.parse(localStorage.getItem('xs_fx_v1')||'{}');if(_fx.motion===false||(matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches))document.documentElement.classList.add('fx-off')}catch(e){}</script>
+</head><body class="login-page">
+<div id="space" aria-hidden="true"><div class="aur"></div><div class="stars"></div><div id="moonStatic"></div><div class="rails"></div><div class="vig"></div><div class="grain"></div></div>
+<header class="top login-top">
+  <a class="brand" href="/">
+    <img class="logo" src="/static/logo.svg" alt="xScanner logo" width="34" height="34">
+    <div><h1>x<span class="accent">Scanner</span></h1><small>Solana · pump.fun · analysis &amp; paper trades only</small></div>
+  </a>
+</header>
+<main class="login-wrap">
+  <section class="card login-card" aria-labelledby="loginTitle">
+    <p class="hero-kicker">Welcome back</p>
+    <h2 id="loginTitle" class="login-title">Sign in</h2>
+    <p class="muted login-lead">Use your Google account. xScanner stays read-only — no wallets, keys or trading.</p>
+    {{auth_error}}
+    {{auth_required}}
+    {{auth_button}}
+    {{auth_note}}
+    {{back_link}}
+  </section>
+</main>
+<footer>Read-only. No wallet keys, signing, trading or posting. Juliaa gives the final yes.</footer>
+<script type="module" src="/static/moon.js?v=bundle1"></script>
+</body></html>

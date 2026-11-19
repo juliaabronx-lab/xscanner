@@ -19,9 +19,9 @@ let drawerGen=0;
 function skelCards(n=12){
   return Array.from({length:n},()=>`<article class="tcard skel-card" aria-hidden="true"><div class="tthumb skel"></div><div class="tbody"><div class="skel skel-line"></div><div class="skel skel-line short"></div><div class="skel skel-line mid"></div></div></article>`).join('');
 }
-async function api(p,o){const r=await fetch(p,o);const j=await r.json().catch(()=>({}));if(!r.ok&&r.status!==409)throw new Error(j.detail||r.status);return j}
+async function api(p,o){const r=await fetch(p,o);const j=await r.json().catch(()=>({}));if(r.status===401&&(j.detail==='sign in required'||j.required)){location.replace('/login?next='+encodeURIComponent(location.pathname+location.search+location.hash));throw new Error('sign in required')}if(!r.ok&&r.status!==409)throw new Error(j.detail||r.status);return j}
 function banner(msg,cls=''){const b=$('#banner');if(!msg){b.className='banner hidden';return}b.className='banner '+cls;b.innerHTML=msg;if(window.XS&&cls==='err')XS.err()}
-function flagCls(f){f=f.toLowerCase();return /^data:|dump|rug|blacklist|copycat|bundle:|fading|mint|freeze|paid shill|phish/.test(f)?'red':/thin|weak|no momentum|cooling|boost|capped|copycats/.test(f)?'amb':''}
+function flagCls(f){f=f.toLowerCase();if(/^(data uncertain|data confidence|bundle risk|bundle check)/.test(f))return 'amb';return /^data:|^bundle:|^concentrated:|dump|rug|blacklist|copycat|bundle:|fading|mint|freeze|paid shill|phish/.test(f)?'red':/thin|weak|no momentum|cooling|boost|capped|copycats/.test(f)?'amb':''}
 
 async function loadSummary(){
   const s=await api('/api/summary');
@@ -118,6 +118,25 @@ function spark(series,w=260,h=60){
   return `<svg viewBox="0 0 ${w} ${h+14}" width="100%"><polyline points="0,${h} ${p} ${w},${h}" fill="#9b6bff22" stroke="none"/><polyline points="${p}" fill="none" stroke="#9b6bff" stroke-width="2"/>${series.map((s,i)=>`<text x="${i*st}" y="${h+12}" font-size="9" fill="#8a91a6" text-anchor="${i===0?'start':i===series.length-1?'end':'middle'}">${esc(s.label)}</text>`).join('')}</svg>`;
 }
 
+function bundleHTML(c){
+  const b=c.bundle; if(!b)return '';
+  const lvl=b.status==='flagged'?'red':b.status==='elevated'||b.status==='unavailable'?'amb':'grn';
+  const word={flagged:b.reason&&b.reason.startsWith('Concentrated')?'CONCENTRATED':'BUNDLE',elevated:'Bundle risk',unavailable:'Check unavailable',ok:'Passed'}[b.status]||b.status;
+  const f=b.fund&&b.fund.resolved?`${b.fund.largest} of ${b.fund.resolved} checked top holders share one creator wallet`:'RPC funding check not available';
+  return `<h3>Bundle / insider check <span class="pill ${lvl}">${esc(word)}</span></h3><p class="muted" style="margin:4px 0">${esc(b.reason||'')}${b.status==='unavailable'?' — missing data is never counted as safe.':''}</p>
+   <div class="kv"><div><span>Linked wallets</span>${b.linked_wallets??'—'}</div><div><span>Share held by cluster</span>${b.share_pct!=null?b.share_pct+'%':'—'}</div><div><span>Insider networks</span>${b.networks??'—'}</div>
+   <div><span>Top 10 (ex-pool)</span>${b.top10_ex_lp!=null&&b.status!=='unavailable'?b.top10_ex_lp+'%':'—'}</div><div><span>Insider top holders</span>${b.insider_top_holders??'—'}</div><div><span>On-chain funding</span><small>${esc(f)}</small></div></div>`;
+}
+function confHTML(c){
+  const d=c.data_confidence; if(!d)return '';
+  const lvl=d.level==='high'?'grn':d.level==='medium'?'amb':'red';
+  const fmt=v=>typeof v==='boolean'?(v?'set':'none'):typeof v==='number'?(Math.abs(v)>=1000?Math.round(v).toLocaleString():+v.toPrecision(4)):esc(v);
+  const rows=Object.values(d.fields||{}).map(f=>`<tr><td>${esc(f.label)}</td><td><span class="pill ${f.status==='agree'?'grn':f.status==='single'?'':'amb'}">${f.status==='agree'?'sources agree':f.status}</span></td><td class="muted" style="font-size:11px">${Object.entries(f.values||{}).map(([k,v])=>esc(k)+' '+fmt(v)).join(' · ')||'no source'}</td></tr>`).join('');
+  return `<h3>Data confidence <span class="pill ${lvl}">${esc(d.label)} · ${d.score}/100</span></h3>
+   <p class="muted" style="margin:4px 0">${d.uncertain&&d.uncertain.length?'Shaky: '+esc(d.uncertain.join(', '))+'.':'Key fields agree across sources.'} Sources: ${esc((d.sources||[]).join(', ')||'none yet')}.</p>
+   <table class="conf"><tbody>${rows}</tbody></table>`;
+}
+
 async function openCoin(mint,pre){
   const c=pre||await api('/api/coins/'+encodeURIComponent(mint)); const lk=c.lookup||null; const rc=c.rugcheck||{},x=c.x||{},p=c.parts||{};
   const tierWord=c.score>=65?'Worth a look':c.score>=50?'Watch':'Skip';
@@ -130,6 +149,7 @@ async function openCoin(mint,pre){
    ${chartBlockHTML()}
    <p>${esc(c.reason||'')}</p>
    ${part('X narrative',p.x,40)}${part('Market',p.market,35)}${part('Safety',p.safety,25)}
+   ${bundleHTML(c)}${confHTML(c)}
    <div class="kv"><div><span>MCap</span>${usd(c.mcap)}</div><div><span>Liquidity</span>${usd(c.liq)}</div><div><span>Vol 24h</span>${usd(c.vol24)}</div>
    <div><span>5m / 1h / 24h</span>${pct(c.pc5)} ${pct(c.pc1)} ${pct(c.pc24)}</div><div><span>Buys/sells 5m</span>${c.buys5??'—'} / ${c.sells5??'—'}</div><div><span>Buys/sells 1h</span>${c.buys1h??'—'} / ${c.sells1h??'—'}</div>
    <div><span>Age</span>${ageTxt(c.age_h)}</div><div><span>Fees est (SOL)</span>${c.fees_est??'—'}</div><div><span>Boosts · copycats</span>${c.boosts??0} · ${c.copycats??0}</div></div>
@@ -141,7 +161,7 @@ async function openCoin(mint,pre){
    ${(x.shill_accts||c.paid_accounts||[]).length?`<p class="muted">Paid accounts: ${(x.shill_accts||c.paid_accounts).slice(0,12).map(a=>'@'+esc(typeof a==='string'?a:a.username||JSON.stringify(a))).join(', ')}</p>`:''}
    ${c.narrative?`<h3>Hourly X mentions</h3>${spark(c.narrative.series)}`:''}
    <h3 style="margin-top:14px">RugCheck</h3><div class="kv"><div><span>Score</span>${rc.score??'—'}</div><div><span>Top10 / top1</span>${rc.top10??'—'}% / ${rc.top1??'—'}%</div><div><span>Holders</span>${rc.holders??'—'}</div>
-   <div><span>Bundle</span>${rc.bundle_pct??'—'}% (${rc.bundle_wallets??'—'} wallets)</div><div><span>Insider networks</span>${rc.insider_networks??'—'}</div><div><span>Creator rugged</span>${rc.creator_rugged??'—'}</div>
+   <div><span>RugCheck bundle</span>${rc.bundle_pct??'—'}% (${rc.bundle_wallets??'—'} wallets)</div><div><span>Insider networks</span>${rc.insider_networks??'—'}</div><div><span>Creator rugged</span>${rc.creator_rugged??'—'}</div>
    <div><span>Mint auth</span>${rc.mint_auth?'ON':'off'}</div><div><span>Freeze auth</span>${rc.freeze_auth?'ON':'off'}</div><div><span>Launchpad</span>${esc(rc.launchpad??'—')}</div></div>
    ${(rc.risks||[]).length?`<div>${rc.risks.map(r=>`<span class="pill amb">${esc(typeof r==='string'?r:r.name||JSON.stringify(r))}</span>`).join('')}</div>`:''}
    <h3 style="margin-top:14px">Links</h3><p>${c.url?`<a href="${esc(c.url)}" target="_blank" rel="noopener">DexScreener</a> · `:''}<a href="https://rugcheck.xyz/tokens/${esc(c.mint)}" target="_blank" rel="noopener">RugCheck</a>${(c.organic_examples||[]).map((u,i)=>` · <a href="${esc(u)}" target="_blank" rel="noopener">organic post ${i+1}</a>`).join('')}</p>
@@ -227,6 +247,28 @@ function show(v){
   setTimeout(finish,280);
 }
 
+
+async function loadAuth(){
+  const box=$('#authBox'); if(!box) return;
+  try{
+    const r=await fetch('/api/me'); const d=await r.json().catch(()=>({}));
+    if(r.status===401 && d.required){
+      location.replace('/login?next='+encodeURIComponent(location.pathname+location.search+location.hash));
+      return;
+    }
+    if(d.user){
+      const u=d.user;
+      const av=u.picture?`<img class="uava" src="${esc(u.picture)}" alt="" referrerpolicy="no-referrer" width="24" height="24">`:'';
+      const label=esc(u.name||u.email||'Signed in');
+      box.innerHTML=`<span class="uchip">${av}<span class="uname" title="${esc(u.email||'')}">${label}</span><a class="ulogout" href="/logout">Sign out</a></span>`;
+    }else if(d.configured){
+      box.innerHTML='<a class="ghost signin" href="/login">Sign in</a>';
+    }else{
+      box.innerHTML='';
+    }
+  }catch(e){/* leave the chip empty if /api/me is unreachable */}
+}
+
 async function pollScan(){
   const s=await api('/api/scan');
   publicReadonly=!!s.public_readonly;
@@ -260,7 +302,7 @@ $$('#feed th[data-s]').forEach(th=>th.onclick=()=>{sort={k:th.dataset.s,desc:sor
 $('#fScore').oninput=()=>{$('#fScoreV').textContent=$('#fScore').value;loadFeed()};
 $('#radarSel').onchange=drawRadar; $('#dClose').onclick=closeDrawer; $('#scrim').onclick=closeDrawer;
 document.addEventListener('keydown',e=>e.key==='Escape'&&closeDrawer());
-pollScan(); show((location.hash||'#feed').slice(1) in loaders?(location.hash||'#feed').slice(1):'feed');
+loadAuth(); pollScan(); show((location.hash||'#feed').slice(1) in loaders?(location.hash||'#feed').slice(1):'feed');
 setInterval(()=>{if(publicReadonly||!$('#scanBtn').disabled){refresh();pollScan().catch(()=>{})}},60000);
 // ---- Live-scan indicator ("Last scan: N min ago"), ticks every 15 s between data refreshes
 var liveInfo=null;

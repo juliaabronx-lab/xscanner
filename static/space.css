@@ -35,16 +35,16 @@ body{background:transparent;position:relative}
 @media(max-width:640px){#moonStatic{width:62vw;right:-14vw;top:22vh}#space .aur{filter:blur(48px);opacity:.28}#space .rails{display:none}}
 
 /* glass panels so the moon reads through while text stays crisp */
-.card,.stat,.schip,.verdict-pill,.filters,.searchmsg{background:hsl(0 0% 9% / .62);border-color:hsl(0 0% 100% / .08)}
+.card,.login-card,.stat,.schip,.verdict-pill,.filters,.searchmsg{background:hsl(0 0% 9% / .62);border-color:hsl(0 0% 100% / .08)}
 .tcard,.ncard,.xcard{background:hsl(0 0% 6% / .72);border-color:hsl(0 0% 100% / .08)}
 .search{background:hsl(0 0% 7% / .7);border-color:hsl(0 0% 100% / .12)}
 .top{background:hsl(230 20% 4% / .7)}
 .xtop{background:hsl(230 20% 4% / .78)}
 @media(min-width:641px) and (hover:hover){
-  .card,.stat,.schip,.verdict-pill,.filters,.search,.searchmsg{-webkit-backdrop-filter:blur(14px) saturate(1.15);backdrop-filter:blur(14px) saturate(1.15)}
+  .card,.login-card,.stat,.schip,.verdict-pill,.filters,.search,.searchmsg{-webkit-backdrop-filter:blur(14px) saturate(1.15);backdrop-filter:blur(14px) saturate(1.15)}
 }
 @media(max-width:640px),(hover:none){
-  .card,.stat,.schip,.verdict-pill,.filters,.searchmsg{background:hsl(0 0% 8% / .8)}
+  .card,.login-card,.stat,.schip,.verdict-pill,.filters,.searchmsg{background:hsl(0 0% 8% / .8)}
   .tcard,.ncard,.xcard{background:hsl(0 0% 6% / .84)}
 }
 .hero-title{text-shadow:0 2px 30px rgba(0,0,0,.55)}
