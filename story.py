@@ -105,17 +105,25 @@ def load_x(feed_path=None, raw_paths=()):
     return _state["posts"], _state["trends"]
 
 
-def match_posts(c, posts):
-    mint, sym, name = c.get("mint") or "", (c.get("symbol") or "").strip(), (c.get("name") or "").strip()
+MAJORS = {"SOL", "ETH", "BTC", "DOT", "BNB", "XRP", "DOGE", "USDC", "USDT", "AVAX", "ADA", "LINK", "TRX", "TON", "SHIB", "PEPE", "WIF", "BONK"}
+
+
+def patterns(c):
+    """Regexes that prove a post is about this coin. Short or famous tickers ($UP, $DOT, $SOL) are too ambiguous: mint only."""
+    sym, name = (c.get("symbol") or "").strip(), (c.get("name") or "").strip()
     pats = []
-    if sym: pats.append(re.compile(r"(?<![A-Za-z0-9])\$" + re.escape(sym) + r"(?![A-Za-z0-9])", re.I))
-    if len(name) >= 6: pats.append(re.compile(r"(?<![A-Za-z0-9])" + re.escape(name) + r"(?![A-Za-z0-9])", re.I))
-    if len(sym) >= 5 and sym.isalpha(): pats.append(re.compile(r"(?<![A-Za-z0-9$#@])" + re.escape(sym) + r"(?![A-Za-z0-9])", re.I))
-    out = []
-    for p in posts:
-        t = p["text"]
-        if (mint and mint in t) or any(r.search(t) for r in pats): out.append(p)
-    return out
+    if sym and len(sym) >= 4 and sym.upper() not in MAJORS:
+        pats.append(re.compile(r"(?<![A-Za-z0-9])\$" + re.escape(sym) + r"(?![A-Za-z0-9])", re.I))
+        if sym.isalpha() and len(sym) >= 5: pats.append(re.compile(r"(?<![A-Za-z0-9$#@])" + re.escape(sym) + r"(?![A-Za-z0-9])", re.I))
+    elif sym and len(sym) == 3 and sym.upper() not in MAJORS:       # 3-letter cashtags only when written in capitals
+        pats.append(re.compile(r"(?<![A-Za-z0-9])\$" + re.escape(sym.upper()) + r"(?![A-Za-z0-9])"))
+    if len(name) >= 6 and name.lower() != sym.lower(): pats.append(re.compile(r"(?<![A-Za-z0-9])" + re.escape(name) + r"(?![A-Za-z0-9])", re.I))
+    return pats
+
+
+def match_posts(c, posts):
+    mint, pats = c.get("mint") or "", patterns(c)
+    return [p for p in posts if (mint and mint in p["text"]) or any(r.search(p["text"]) for r in pats)]
 
 
 def _clean(text, limit=95):
@@ -130,14 +138,31 @@ def _clean(text, limit=95):
     return t
 
 
-def highlights(posts, paid, n=2):
+def _excerpt(text, pats, mint, limit=95):
+    """Clean excerpt that starts near, and contains, the mention of the coin (None if the cleaned text no longer names it)."""
+    t = _clean(text, 600)
+    pos = None
+    for r in pats:
+        m = r.search(t)
+        if m and (pos is None or m.start() < pos): pos = m.start()
+    if pos is None: return None
+    start = max([0] + [i + 2 for i in (t.rfind(". ", 0, pos), t.rfind("! ", 0, pos), t.rfind("? ", 0, pos), t.rfind("\n", 0, pos)) if i >= 0])
+    if pos - start > limit - 35:                       # match would be cut off: start a few words before it
+        start = t.rfind(" ", 0, max(0, pos - 30)) + 1
+    t = t[start:].strip()
+    if len(t) > limit: t = t[:limit].rsplit(" ", 1)[0].rstrip(",.;:-") + "…"
+    return t
+
+
+def highlights(posts, paid, c=None, n=2):
     paid = {str(p).lower().lstrip("@") for p in (paid or [])}
+    pats = patterns(c or {})
     good = []
     for p in posts:
         h = (p.get("handle") or "").lower()
         if not h or h in paid or SPAM.search(p["text"]): continue
-        t = _clean(p["text"])
-        if len(t) < 25 or sum(ch.isascii() for ch in t) < 0.9 * len(t): continue   # English excerpts only
+        t = _excerpt(p["text"], pats, None)
+        if not t or len(t) < 25 or sum(ch.isascii() for ch in t) < 0.9 * len(t): continue   # English, names the coin
         good.append((p["eng"], p.get("followers") or 0, p, t))
     good.sort(key=lambda g: (-g[0], -g[1]))
     out, seen = [], set()
@@ -233,22 +258,24 @@ def build(c, ds=None, gt=None, rc_meta=None, posts=(), trends=()):
         s2 += "."
     # ---- sentence 3: catalysts
     matched = match_posts(c, posts)
-    hl = highlights(matched, c.get("paid_accounts") or x.get("shill_accts"), n=1)
+    hl = highlights(matched, c.get("paid_accounts") or x.get("shill_accts"), c=c, n=1)
     boosts = int(_num(c.get("boosts")) or 0)
     ment = _num(x.get("mentions")); vel = c.get("vel") or {}
     vl, va = _num(vel.get("last")), _num(vel.get("prev_avg"))
     trend = match_trend(c, rx, trends)
-    cats, why = [], []
+    cats, why, weak_x, fade = [], [], 0, None
     if boosts > 0: cats.append("a paid DexScreener boost is putting it in front of more traders"); why.append("a paid DexScreener boost")
     n_x = int(ment) if ment else len(matched)
     if n_x:
         if vl is not None and va and va > 0 and vl / va >= 1.3:
             cats.append(f"X chatter is picking up (about {vl:.0f} {'post' if round(vl) == 1 else 'posts'} an hour versus {va:.0f} before)"); why.append("rising X chatter")
         elif vl is not None and va and va > 0 and vl / va <= 0.7:
-            cats.append(f"X chatter is fading (about {vl:.0f} {'post' if round(vl) == 1 else 'posts'} an hour versus {va:.0f} before)")
+            fade = f"X chatter is fading (about {vl:.0f} {'post' if round(vl) == 1 else 'posts'} an hour versus {va:.0f} before)"
+        elif n_x >= 10:
+            cats.append(f"{_plural(n_x, 'X post')} mention it"); why.append(_plural(n_x, "X post"))
         else:
-            cats.append(f"{_plural(n_x, 'X post')} mention{'s' if n_x == 1 else ''} it"); why.append(_plural(n_x, "X post"))
-        if (_num(x.get("shill_share")) or 0) >= 0.5: cats[-1] += ", though most of those accounts look like paid promoters"
+            weak_x = n_x
+        if cats and n_x and (_num(x.get("shill_share")) or 0) >= 0.5 and "X" in cats[-1]: cats[-1] += ", though most of those accounts look like paid promoters"
     if trend: cats.append(f"it overlaps with the X trend \u201c{trend}\u201d"); why.append("a matching X trend")
     clear = bool(cats) or bool(hl)
     if hl and not any("X" in w for w in why): why.append("chatter on X")
@@ -256,10 +283,12 @@ def build(c, ds=None, gt=None, rc_meta=None, posts=(), trends=()):
     if cats:
         body = " and ".join(cats[:2]) if len(cats) <= 2 else ", ".join(cats[:-1]) + " and " + cats[-1]
         s3 = body[0].upper() + body[1:] + "."
+    if fade and cats: s3 = s3.rstrip(".") + "; " + fade[0].lower() + fade[1:] + "."
     if hl: s3 = (s3 + " " if s3 else "") + f"Top post: @{hl[0]['handle']} wrote {_q(hl[0]['text'])}."
     if not clear:
         busy = (b1 is not None and b1 + (sl1 or 0) >= 100) or (vol and liq and vol / max(liq, 1) >= 2)
-        s3 = "No clear news or catalyst found; " + ("the move looks driven by trading volume." if (hot or faded or down or up) and busy else "trading is quiet and nothing in the data explains a move.")
+        wx = (f", with only {_plural(weak_x, 'X post')} mentioning it" if weak_x else "") + (f"; {fade[0].lower() + fade[1:]}" if fade else "")
+        s3 = "No clear news or catalyst found" + ("; the move looks driven by trading volume" if (hot or faded or down or up) and busy else "; trading is quiet and nothing in the data explains a move") + wx + "."
     parts = [p for p in (s1, s2, s3) if p]
     # ---- card line
     if hot: head = "Pumping" + (f": {_pct(pc1)} in 1h" if (pc1 or 0) >= 10 else f": {_pct(pc24)} on the day")
