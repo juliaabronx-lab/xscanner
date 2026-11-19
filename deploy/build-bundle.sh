@@ -6,7 +6,20 @@ set -euo pipefail
 SRC=/workspace/platform
 OUT=${OUT:-/workspace/xscanner-deploy}
 mkdir -p "$OUT/static/vendor" "$OUT/data/img" "$OUT/deploy/data"
-cp -p "$SRC"/{app.py,auth.py,bundle.py,confidence.py,story.py,pricehist.py,sol_rpc.py,live.py,scan_runner.py,lookup.py,chart.py,images.py,xfeed_ingest.py,render.yaml,requirements.txt} "$OUT/"
+cp -p "$SRC"/{app.py,auth.py,bundle.py,confidence.py,story.py,pricehist.py,seo.py,sol_rpc.py,live.py,scan_runner.py,lookup.py,chart.py,images.py,xfeed_ingest.py,render.yaml,requirements.txt} "$OUT/"
+# guard: every local module the app imports must be in the bundle (a missing one crashes the deploy at start-up)
+python3 - "$SRC" "$OUT" <<'PY' || { echo "ABORT: a local module imported by the app is missing from the bundle"; exit 1; }
+import ast, os, sys
+src, out = sys.argv[1:3]
+miss = set()
+for f in os.listdir(out):
+    if not f.endswith(".py"): continue
+    for n in ast.walk(ast.parse(open(os.path.join(out, f), encoding="utf-8").read())):
+        names = [a.name.split(".")[0] for a in n.names] if isinstance(n, ast.Import) else [n.module.split(".")[0]] if isinstance(n, ast.ImportFrom) and n.module and not n.level else []
+        for m in names:
+            if os.path.exists(os.path.join(src, m + ".py")) and not os.path.exists(os.path.join(out, m + ".py")): miss.add(m + ".py")
+if miss: print("missing from bundle:", ", ".join(sorted(miss))); sys.exit(1)
+PY
 rm -rf "$OUT/static" && mkdir -p "$OUT/static"
 cp -rp "$SRC"/static/. "$OUT/static/"   # whole front end (html/js/css/fonts/vendor); no secrets live in static/
 cp -p "$SRC"/data/{x_feed.json,xfeed_queries.json,img_cache.json} "$OUT/data/"
