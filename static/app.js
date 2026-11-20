@@ -255,24 +255,13 @@ function show(v){
 
 
 async function loadAuth(){
-  const box=$('#authBox'); if(!box) return;
+  // The header Sign in / account chip and the watchlist sync live in sync.js. Here we only honour AUTH_REQUIRED.
   try{
     const r=await fetch('/api/me'); const d=await r.json().catch(()=>({}));
     if(r.status===401 && d.required){
       location.replace('/login?next='+encodeURIComponent(location.pathname+location.search+location.hash));
-      return;
     }
-    if(d.user){
-      const u=d.user;
-      const av=u.picture?`<img class="uava" src="${esc(u.picture)}" alt="" referrerpolicy="no-referrer" width="24" height="24">`:'';
-      const label=esc(u.name||u.email||'Signed in');
-      box.innerHTML=`<span class="uchip">${av}<span class="uname" title="${esc(u.email||'')}">${label}</span><a class="ulogout" href="/logout">Sign out</a></span>`;
-    }else if(d.configured){
-      box.innerHTML='<a class="ghost signin" href="/login">Sign in</a>';
-    }else{
-      box.innerHTML='';
-    }
-  }catch(e){/* leave the chip empty if /api/me is unreachable */}
+  }catch(e){/* offline: nothing to do */}
 }
 
 async function pollScan(){

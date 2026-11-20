@@ -1,11 +1,9 @@
-"""Google OAuth 2.0 / OIDC sign-in for xScanner.
+"""Sign-in for xScanner: username + password accounts (accounts.py) as the default, Google OAuth 2.0 / OIDC kept but OFF
+unless GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set.
 
-Authorization code flow with state + PKCE (S256) and a nonce. Sessions live in a
-signed HttpOnly SameSite=Lax cookie (Secure on HTTPS / Render).
-
-Disabled when GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET or SESSION_SECRET is unset:
-the rest of the app keeps working exactly as before and /login explains that
-sign-in is not configured. No wallets, keys, signing or trading.
+Google: authorization code flow with state + PKCE (S256) and a nonce. Sessions live in a signed HttpOnly SameSite=Lax cookie
+(Secure on HTTPS / Render). Local accounts need SESSION_SECRET (and DATABASE_URL for durable storage); without it the rest of the
+app keeps working exactly as before and /login says sign-in is not configured. No wallets, keys, signing or trading.
 """
 from __future__ import annotations
 
@@ -16,6 +14,7 @@ import secrets
 from typing import Any, Optional
 from urllib.parse import urlencode
 
+import accounts as acc
 from authlib.integrations.httpx_client import AsyncOAuth2Client
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -31,7 +30,8 @@ GOOGLE_TOKEN = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO = "https://openidconnect.googleapis.com/userinfo"
 SCOPE = "openid email profile"
 # Auth routes and the endpoints the brief leaves open when AUTH_REQUIRED=true.
-_OPEN_EXACT = {"/login", "/auth/google", "/auth/callback", "/logout", "/favicon.ico", "/api/health"}
+_OPEN_EXACT = {"/login", "/auth/google", "/auth/callback", "/logout", "/favicon.ico", "/api/health",
+               "/api/auth/status", "/api/auth/signup", "/api/auth/login", "/api/auth/logout"}
 _OPEN_PREFIX = ("/static/", "/api/ingest/")
 _NEXT_OK = re.compile(r"^/[^\s\\]*$")
 
@@ -54,8 +54,14 @@ def settings() -> dict[str, Any]:
 
 
 def configured(cfg: Optional[dict[str, Any]] = None) -> bool:
+    """Google sign-in is configured (kept, but off by default)."""
     cfg = cfg or settings()
     return bool(cfg["client_id"] and cfg["client_secret"] and cfg["session_secret"])
+
+
+def gate_ready(cfg: Optional[dict[str, Any]] = None) -> bool:
+    """AUTH_REQUIRED can only lock the site when some way to sign in exists: local accounts or Google."""
+    return configured(cfg) or acc.local_enabled()
 
 
 def https_only() -> bool:
@@ -74,6 +80,15 @@ def current_user(request: Request) -> Optional[dict[str, Any]]:
     except AssertionError:
         return None
     return user if isinstance(user, dict) and user.get("email") else None
+
+
+def request_user(request: Request) -> Optional[dict[str, Any]]:
+    """Signed-in user (local accounts are re-checked against the database)."""
+    u = current_user(request)
+    if not u: return None
+    if u.get("provider") == "local":
+        return u if acc.session_user(request) else None
+    return u
 
 
 def safe_next(value: Optional[str]) -> str:
@@ -122,13 +137,17 @@ def allowed_ok(cfg: dict[str, Any], email: str) -> bool:
 
 def _me_payload(request: Request) -> dict[str, Any]:
     cfg = settings()
-    user = current_user(request)
+    base = acc.status_payload(request)
+    user = request_user(request)
     public = None
     if user:
-        public = {k: user.get(k) for k in ("email", "name", "picture") if user.get(k)}
+        public = {k: user.get(k) for k in ("email", "name", "picture", "provider") if user.get(k)}
+        if user.get("provider") == "local": public["email"] = base["user"]["email"] if base.get("user") else ""
     return {
         "configured": configured(cfg),
-        "required": bool(cfg["required"] and configured(cfg)),
+        "google": configured(cfg),
+        "required": bool(cfg["required"] and gate_ready(cfg)),
+        "local": base["local"], "signup": base["signup"], "storage": base["storage"], "csrf": base["csrf"],
         "user": public,
     }
 
@@ -142,13 +161,13 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         cfg = settings()
-        if not (cfg["required"] and configured(cfg)):
+        if not (cfg["required"] and gate_ready(cfg)):
             return await call_next(request)
         path = request.url.path
         if path in _OPEN_EXACT or path.startswith(_OPEN_PREFIX):
             return await call_next(request)
-        user = current_user(request)
-        if user and allowed_ok(cfg, str(user.get("email") or "").lower()):
+        user = request_user(request)
+        if user and (user.get("provider") == "local" or allowed_ok(cfg, str(user.get("email") or "").lower())):
             return await call_next(request)
         if user:    # signed in, but not (or no longer) on the allow-list: fail closed
             if path.startswith("/api/"):
@@ -169,7 +188,8 @@ def _enc_next(path: str) -> str:
 
 def _login_html(request: Request) -> str:
     cfg = settings()
-    ready = configured(cfg)
+    g_ready = configured(cfg)
+    local = acc.local_enabled()
     nxt = safe_next(request.query_params.get("next"))
     err = (request.query_params.get("error") or "").strip()
     errors = {
@@ -180,33 +200,26 @@ def _login_html(request: Request) -> str:
         "unverified": "That Google account has no verified email.",
     }
     err_html = f'<p class="login-err" role="alert">{errors[err]}</p>' if err in errors else ""
-    if ready:
+    google = ""
+    if g_ready:     # Google stays available but only shows when its credentials are configured
         href = "/auth/google" + (f"?next={_enc_next(nxt)}" if nxt != "/" else "")
-        button = (
-            f'<a class="google-btn" href="{href}">'
-            f'{_GOOGLE_G}<span>Sign in with Google</span></a>'
-        )
-        note = ""
-    else:
-        button = (
-            f'<button type="button" class="google-btn" disabled aria-disabled="true">'
-            f'{_GOOGLE_G}<span>Sign in with Google</span></button>'
-        )
-        note = '<p class="login-note">Google sign-in is not configured on this server.</p>'
-    back = "" if (cfg["required"] and ready) else '<a class="ghost login-back" href="/">Back to the scanner</a>'
-    required_note = (
-        '<p class="muted">This copy of xScanner requires a sign-in to view the scanner.</p>'
-        if (cfg["required"] and ready) else ""
-    )
+        google = (f'<div class="or"><span>or</span></div><a class="google-btn" href="{href}">{_GOOGLE_G}<span>Continue with Google</span></a>')
+    forms = "" if local else '<p class="login-note">Sign-in is not configured on this server.</p>'
+    gated = bool(cfg["required"] and gate_ready(cfg))
+    back = "" if gated else '<a class="ghost login-back" href="/">Continue as guest</a>'
+    required_note = '<p class="muted">This copy of xScanner requires a sign-in to view the scanner.</p>' if gated else ""
     try:
         raw = open(LOGIN_HTML, encoding="utf-8").read()
     except OSError:
         raw = "<!doctype html><title>Sign in · xScanner</title><p>{{auth_note}}</p>"
-    return (raw.replace("{{auth_button}}", button)
-               .replace("{{auth_note}}", note)
+    return (raw.replace("{{auth_google}}", google)
+               .replace("{{auth_note}}", forms)
                .replace("{{auth_error}}", err_html)
                .replace("{{auth_required}}", required_note)
-               .replace("{{back_link}}", back))
+               .replace("{{back_link}}", back)
+               .replace("{{auth_next}}", nxt.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;"))
+               .replace("{{auth_local}}", "1" if local else "0")
+               .replace("{{auth_signup}}", acc.signup_mode() if local else "closed"))
 
 
 # Official multicolour G, inlined so the button works offline.
@@ -323,7 +336,14 @@ def install(app: FastAPI) -> None:
     @app.get("/api/me")
     def me(request: Request):
         # Allowed while signed out so the header chip can render a Sign in link.
-        return _me_payload(request)
+        return JSONResponse(_me_payload(request), headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/auth/status", include_in_schema=False)
+    def auth_status(request: Request):
+        """Open even with AUTH_REQUIRED: the login page needs the CSRF token and the sign-up mode."""
+        return JSONResponse(acc.status_payload(request), headers={"Cache-Control": "no-store"})
+
+    acc.install_routes(app)
 
 
 def _code_challenge(verifier: str) -> str:

@@ -17,7 +17,16 @@ const WSOL='So11111111111111111111111111111111111111112';
 const B58=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const toast=(msg,cls='')=>{let b=document.getElementById('toasts');if(!b){b=document.createElement('div');b.id='toasts';document.body.appendChild(b)}
   const t=document.createElement('div');t.className='toast '+cls;t.innerHTML=msg;b.appendChild(t);setTimeout(()=>t.classList.add('out'),6500);setTimeout(()=>t.remove(),7200)};
+window.toast=toast;
 const symOf=r=>r.s||r.sym||'?';
+const SC=['feed','narr','risk','paper','xfeed'];
+const isP=v=>v==='pulse'||v==='trend';
+function navSync(){const sc=SC.includes(view);const h=$('#scHead');if(h)h.classList.toggle('hidden',!sc);const n=$('#scNav');if(n)n.classList.toggle('on',sc);
+  $$('#subtabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===view))}
+const kvRow=(k,v,extra='')=>`<div class="kvr"><span class="kk">${k}</span><span class="kvv">${v}</span>${extra?`<span class="kx">${extra}</span>`:''}</div>`;
+const addrCell=(a,kind='account')=>a?`<code class="addr" title="${esc(a)}">${esc(a)}</code>`:'—';
+const addrBtns=(a,kind='account')=>a?`<button class="cpy mini" data-cp="${esc(a)}" title="Copy">⧉</button><a class="xl" href="https://solscan.io/${kind}/${esc(a)}" target="_blank" rel="noopener noreferrer" title="Open in Solscan">Solscan ↗</a>`:'';
+const dateS=t=>t?new Date(t*1000).toLocaleString('en-GB',{timeZone:'Asia/Kuala_Lumpur',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',second:'2-digit'})+' MYT':'—';
 const tokImgDirect=(r,cls='pimgi')=>{const u=r.img&&hostOk(r.img)?r.img:imgUrl(r.m,symOf(r));
   return `<img class="${cls}" src="${esc(u)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="if(!this.dataset.f){this.dataset.f=1;this.src='${imgUrl(r.m,symOf(r))}'}else{this.style.visibility='hidden'}">`};
 const jupLink=m=>'https://jup.ag/swap/SOL-'+m;
@@ -143,16 +152,16 @@ function renderCol(c){
     e.textContent=ids.length?'No rows match your filters. Loosen them or press Reset.':(c==='final'?'No tokens in the final stretch right now.':c==='migrated'?'No fresh migrations seen yet. They appear here as they happen.':'Waiting for new tokens…')}
   else list.querySelector('.pempty')?.remove()}
 function skelRows(n){return Array.from({length:n},()=>`<div class="prow skel-row" aria-hidden="true"><div class="pimg"><div class="skel pimgi"></div></div><div class="pmain"><div class="skel skel-line short"></div><div class="skel skel-line"></div><div class="skel skel-line mid"></div></div></div>`).join('')}
-function renderAll(){for(const c of ['new','final','migrated'])renderCol(c);paintStars();P.first=false}
+function renderAll(){if(view==='trend'){trendRender();P.first=false;return}for(const c of ['new','final','migrated'])renderCol(c);paintStars();P.first=false}
 document.addEventListener('click',e=>{const row=e.target.closest('.prow[data-m]');if(!row)return;
   const cp=e.target.closest('[data-cp]');if(cp){e.stopPropagation();copyCa(cp.dataset.cp,cp);return}
   if(e.target.closest('[data-star],[data-noopen],a,.psoc'))return;
   openToken(row.dataset.m)});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.classList&&e.target.classList.contains('prow'))openToken(e.target.dataset.m)});
-setInterval(()=>{if(view!=='pulse'||document.hidden)return;const t=now();$$('.page').forEach(el=>{const cr=+el.dataset.cr;if(cr)el.textContent=ageS(t-cr)});
+setInterval(()=>{if(view==='trend'&&!document.hidden&&P.okAt){const s=Math.round(Date.now()/1000-P.okAt);$('#tLiveTxt').textContent=P.warming?'warming up…':`live · updated ${s<=1?'just now':s+'s ago'}`;$('#tLiveDot').className=s>20?'stale':'on'}if(view!=='pulse'||document.hidden)return;const t=now();$$('.page').forEach(el=>{const cr=+el.dataset.cr;if(cr)el.textContent=ageS(t-cr)});
   if(P.okAt){const s=Math.round(Date.now()/1000-P.okAt);$('#pLiveTxt').textContent=P.warming?'warming up…':`live · updated ${s<=1?'just now':s+'s ago'}`;$('#pLiveDot').className=s>20?'stale':'on'}},1000);
 async function pulsePoll(){
-  if(P.busy||document.hidden||view!=='pulse')return;P.busy=true;
+  if(P.busy||document.hidden||!isP(view))return;P.busy=true;
   try{const j=await api(`/api/pulse?since=${P.ver}&h=${encodeURIComponent(P.h)}`);
     P.okAt=now();P.src=j.sources;P.warming=!!j.warming;P.sol=j.sol_usd;
     for(const r of j.rows||[])P.rows.set(r.m,r);
@@ -165,9 +174,32 @@ async function pulsePoll(){
   }catch(e){$('#pLiveTxt').textContent='offline · retrying';$('#pLiveDot').className='stale'}
   finally{P.busy=false}}
 let pulseTimer=null;
-function pulseStart(){pulseStop();paintFilters();paintPresets();paintSeg();if(P.first)for(const c of ['new','final','migrated'])renderCol(c);pulsePoll();pulseTimer=setInterval(pulsePoll,P.warming?1500:3000)}
+function pulseStart(){pulseStop();if(view==='pulse'){paintFilters();paintPresets();paintSeg();if(P.first)for(const c of ['new','final','migrated'])renderCol(c)}else trendRender();pulsePoll();pulseTimer=setInterval(pulsePoll,P.warming?1500:3000)}
 function pulseStop(){clearInterval(pulseTimer);pulseTimer=null}
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(view==='pulse')pulsePoll();watchPoll(true);if(view==='wallets')walletsRefresh()}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(isP(view))pulsePoll();watchPoll(true);if(view==='wallets')walletsRefresh()}});
+
+// ===================================================================== TRENDING (ranked view of the Pulse universe)
+const TR={k:LS('xs_trend_k_v1','v1'),dust:LS('xs_trend_dust_v1',true)};
+const trVal={v1:r=>r.v1,pc5:r=>r.pc5,pc1:r=>r.pc1,tx:r=>(r.b1==null&&r.s1==null)?null:(r.b1||0)+(r.s1||0),v24:r=>r.v24,mc:r=>r.mc};
+function trendRender(){
+  const body=$('#trBody');if(!body)return;
+  $$('#trSort button').forEach(b=>b.classList.toggle('on',b.dataset.k===TR.k));$('#trDust').checked=!!TR.dust;
+  if(P.warming&&!P.rows.size){body.innerHTML=Array.from({length:8},()=>'<tr class="skel-tr"><td colspan="13"><div class="skel" style="height:22px"></div></td></tr>').join('');return}
+  const f=trVal[TR.k]||trVal.v1;
+  const rows=[...P.rows.values()].filter(r=>r.st&&(!TR.dust||(r.lq||0)>=1000)&&f(r)!=null).sort((a,b)=>f(b)-f(a)).slice(0,50);
+  body.innerHTML=rows.length?rows.map((r,i)=>`<tr class="trr" data-m="${esc(r.m)}"><td class="mono mut">${i+1}</td>
+   <td><span class="tcell">${tokImgDirect(r,'timg')}<span class="tnm"><b>${esc(symOf(r))}</b><small>${esc(r.n||'')}</small></span><button class="cpy mini" data-cp="${esc(r.m)}" title="Copy CA">⧉</button></span></td>
+   <td class="mono">${r.cr?ageS(now()-r.cr):'—'}</td><td class="mono">${r.px?fmtPx(r.px):'—'}</td><td class="mono">${pc1(r.pc5)}</td><td class="mono">${pc1(r.pc1)}</td><td class="mono">${pc1(r.pc24)}</td>
+   <td class="mono">${usd(r.v1)}</td><td class="mono">${usd(r.lq)}</td><td class="mono">${usd(r.mc)}</td>
+   <td class="mono"><span class="up">${r.b1??'—'}</span>/<span class="dn">${r.s1??'—'}</span></td><td class="mono">${r.h!=null?r.h.toLocaleString():'—'}</td>
+   <td class="tact"><button class="star" data-star="${esc(r.m)}" aria-label="Watch"></button><a class="open alt" href="${esc(jupLink(r.m))}" target="_blank" rel="noopener noreferrer" data-noopen>Jupiter ↗</a></td></tr>`).join(''):'<tr><td colspan="13" class="muted" style="padding:18px">Nothing matches yet. The board fills in about a minute after the server wakes up.</td></tr>';
+  paintStars()}
+$('#trSort').onclick=e=>{const b=e.target.closest('button[data-k]');if(!b)return;TR.k=b.dataset.k;LSs('xs_trend_k_v1',TR.k);trendRender()};
+$('#trDust').onchange=e=>{TR.dust=e.target.checked;LSs('xs_trend_dust_v1',TR.dust);trendRender()};
+document.addEventListener('click',e=>{const row=e.target.closest('tr.trr[data-m]');if(!row)return;
+  const cp=e.target.closest('[data-cp]');if(cp){e.stopPropagation();copyCa(cp.dataset.cp,cp);return}
+  if(e.target.closest('[data-star],[data-noopen],a'))return;openToken(row.dataset.m)});
+$$('#subtabs button').forEach(b=>b.onclick=()=>window.show(b.dataset.v));
 
 // ===================================================================== TOKEN PAGE
 const TK={cur:null,mint:null,seq:0,tape:null,tapeTimer:null,detailTimer:null,tab:'trades',lookup:null,seen:new Set()};
@@ -179,8 +211,9 @@ function tokSkeleton(m,r){
     <div class="card tk-chart">${chartBlockHTML()}</div>
     <div class="card tk-tabs"><div class="tfs" id="tkTabs"><button data-t="trades" class="on">Live trades</button><button data-t="holders">Holders</button><button data-t="traders">Top traders</button><button data-t="dev">Dev wallet</button></div><div id="tkPane" class="tk-pane"><div class="skel" style="height:160px"></div></div></div>
     <div class="card" id="tkStory"><h3>Our read</h3><div class="skel" style="height:120px"></div></div>
-   </div><aside class="tk-side"><div class="card" id="tkSec"><h3>Security</h3><div class="skel" style="height:220px"></div></div></aside></div>
+   </div><aside class="tk-side"><div class="card" id="tkInfo"><h3>Token info</h3><div class="skel" style="height:200px"></div></div><div class="card" id="tkSec"><h3>Security</h3><div class="skel" style="height:220px"></div></div></aside></div>
   <div class="disc" role="note"><b>Not financial advice.</b> Data is public and can be wrong or late. xScanner is read-only: the buttons above open other sites in a new tab; we never hold keys or place orders.</div>`}
+const ma0=a=>!a||!a.known?'—':a.disabled?'<span class="up">Disabled</span>':'<b class="dn">ENABLED</b>'+(a.who?' <code class="addr">'+esc(shortCa(a.who))+'</code>':'');
 function stat(l,v,sub){return `<div class="tks"><span>${l}</span><b>${v}</b>${sub?`<small>${sub}</small>`:''}</div>`}
 function tokPaint(d){
   TK.cur=d;const mk=d.market||{},sc=d.security||{},cv=d.curve;
@@ -193,6 +226,20 @@ function tokPaint(d){
     stat('Buys / sells 1h',`<span class="up">${mk.b1??'—'}</span> / <span class="dn">${mk.s1??'—'}</span>`,'5m '+(mk.b5??'—')+' / '+(mk.s5??'—'))+stat('Holders',sc.holders!=null?(+sc.holders).toLocaleString():'—','top-10 '+pTxt(sec,0))+stat('Dev holds',pTxt(sc.dev?.balance_pct,1),sc.dev?.launched!=null?sc.dev.launched+' tokens launched':'')+stat('Age',age,esc(mk.dex||''));
   const cvEl=cv&&cv.progress!=null?`<div class="tkcurve"><div class="cvbar big" title="${esc(cv.note||'')}"><i style="width:${Math.min(100,cv.progress)}%" class="${cv.progress>=70?'hot':''}"></i><span>Bonding curve ${cv.progress.toFixed(1)}%${cv.source==='est'?' (estimated)':cv.complete?' · complete':''}</span></div></div>`:'';
   let ce=$('#tkCurve');if(!ce){ce=document.createElement('div');ce.id='tkCurve';$('#tkStats').after(ce)}ce.innerHTML=cvEl;
+  // Solscan-style key/value card: copyable addresses + explorer links
+  const dv=sc.dev||{};
+  $('#tkInfo').innerHTML=`<h3>Token info</h3><div class="kvl">
+   ${kvRow('Mint address',addrCell(d.mint),addrBtns(d.mint,'token'))}
+   ${d.pool&&d.pool!==d.mint?kvRow(mk.dex==='pumpfun'?'Bonding curve':'Pool',addrCell(d.pool),addrBtns(d.pool,'account')):''}
+   ${dv.wallet?kvRow('Dev / creator',addrCell(dv.wallet),addrBtns(dv.wallet,'account')):''}
+   ${kvRow('Market',esc((mk.dex||'—')+(mk.quote?' · '+mk.quote:'')))}
+   ${kvRow('Created',esc(dateS(mk.created)),mk.created?'<small class="muted">'+ageS(now()-mk.created)+' ago</small>':'')}
+   ${mk.migrated_at?kvRow('Migrated',esc(dateS(mk.migrated_at))):''}
+   ${kvRow('Token program',sc.token2022==null?'—':sc.token2022?'Token-2022':'SPL Token')}
+   ${kvRow('Mint authority',ma0(sc.mint_authority))}${kvRow('Freeze authority',ma0(sc.freeze_authority))}
+   ${kvRow('Holders',sc.holders!=null?(+sc.holders).toLocaleString():'—')}
+   ${kvRow('Explorers',`<a class="xl" href="https://solscan.io/token/${esc(d.mint)}" target="_blank" rel="noopener noreferrer">Solscan ↗</a> <a class="xl" href="https://explorer.solana.com/address/${esc(d.mint)}" target="_blank" rel="noopener noreferrer">Solana Explorer ↗</a> <a class="xl" href="https://rugcheck.xyz/tokens/${esc(d.mint)}" target="_blank" rel="noopener noreferrer">RugCheck ↗</a>`)}
+  </div>`;
   // security
   const ea=d.early,ma=sc.mint_authority||{},fa=sc.freeze_authority||{};
   const bnd=TK.lookup?.bundle;
@@ -290,25 +337,25 @@ window.openToken=function(m,opts){
   tkPane();tokLoad(m);lookupLoad(m)};
 // ===================================================================== views / routing
 function setView(v){
-  const prev=view;if(prev==='pulse'&&v!=='pulse')pulseStop();
+  const prev=view;if(isP(prev)&&!isP(v))pulseStop();
   if(prev==='token'&&v!=='token')leaveToken();
   view=v;$$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
   $$('.view').forEach(s=>{s.classList.toggle('hidden',s.id!=='v-'+v);s.classList.remove('fx-leave','fx-enter-view')});
-  document.documentElement.dataset.view=v;show.ready=true}
+  document.documentElement.dataset.view=v;show.ready=true;navSync()}
 const _show=window.show;
 window.show=function(v){
   if(v==='token'&&TK.mint){openToken(TK.mint);return}
   const wasTok=view==='token'||/^\/token\//.test(location.pathname);
   if(wasTok||location.pathname==='/pulse'){if(view==='token')leaveToken();history.replaceState({},'','/#'+v);document.title='xScanner · Solana memecoin scanner'}
-  if(v==='pulse'||v==='watch'||v==='wallets'){const prev=view;if(prev==='pulse'&&v!=='pulse')pulseStop();view=v;$$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));$$('.view').forEach(s=>s.classList.toggle('hidden',s.id!=='v-'+v));document.documentElement.dataset.view=v;location.hash=v;show.ready=true;enter(v);return}
-  if(view==='pulse')pulseStop();
+  if(v==='pulse'||v==='trend'||v==='watch'||v==='wallets'){const prev=view;if(isP(prev)&&!isP(v))pulseStop();view=v;$$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));$$('.view').forEach(s=>s.classList.toggle('hidden',s.id!=='v-'+v));document.documentElement.dataset.view=v;location.hash=v;show.ready=true;navSync();enter(v);return}
+  if(isP(view))pulseStop();
   document.documentElement.dataset.view=v;
-  _show(v)};
+  _show(v);navSync()};
 function enter(v){
-  if(v==='pulse')pulseStart();
+  if(v==='pulse'||v==='trend')pulseStart();
   if(v==='watch'){W.unseen=0;saveW();renderWatch();watchPoll(true)}
   if(v==='wallets'){wRender();walletsRefresh()}}
-loaders.pulse=async()=>{};loaders.watch=async()=>{};loaders.wallets=async()=>{};
+loaders.pulse=async()=>{};loaders.trend=async()=>{};loaders.watch=async()=>{};loaders.wallets=async()=>{};
 addEventListener('popstate',()=>route());
 function route(){
   const m=location.pathname.match(/^\/token\/([1-9A-HJ-NP-Za-km-z]{32,44})\/?$/);
@@ -330,7 +377,15 @@ $('#wAdd').onsubmit=e=>{e.preventDefault();const v=$('#wIn').value.trim(),box=$(
   if(WL.list.length>=8){box.className='searchmsg warn';box.textContent='Up to 8 wallets (free RPC limits).';return}
   WL.list.push({a:v,l:($('#wLabel').value.trim()||'').slice(0,24)});LSs('xs_wallets_v1',WL.list);$('#wIn').value='';$('#wLabel').value='';box.className='searchmsg hidden';wRender();walletsRefresh()};
 function wRender(){
-  $('#wList').innerHTML=WL.list.length?WL.list.map(w=>{const d=WL.data[w.a];return `<div class="wrow"><div><b>${esc(w.l||shortCa(w.a))}</b> <a href="https://solscan.io/account/${esc(w.a)}" target="_blank" rel="noopener noreferrer"><code>${esc(shortCa(w.a))}</code></a><br><small class="muted">${!d?'checking…':d.status==='pending'&&!d.events?'loading recent swaps…':`${(d.events||[]).length} moves in the last ${d.txs_checked||0} txs`+(d.error?' · RPC partial':'')}</small></div><button class="linkbtn" data-wdel="${esc(w.a)}">remove</button></div>`}).join(''):'<p class="muted">Add a public wallet address above to follow what it buys and sells.</p>';
+  $('#wList').innerHTML=WL.list.length?WL.list.map(w=>{const d=WL.data[w.a];const ev=d?.events||[];
+    const buys=ev.filter(x=>x.side==='buy'),sells=ev.filter(x=>x.side==='sell'),toks=new Set(ev.map(x=>x.mint)).size;
+    const solIn=sells.reduce((a,x)=>a+(+x.sol||0),0),solOut=buys.reduce((a,x)=>a+(+x.sol||0),0);
+    const st=!d?'checking…':d.status==='pending'&&!d.events?'loading recent swaps…':`last ${d.txs_checked||0} txs`+(d.error?' · RPC partial':'');
+    return `<div class="wcard"><div class="wch"><b>${esc(w.l||'Wallet')}</b><button class="linkbtn" data-wdel="${esc(w.a)}">remove</button></div><div class="kvl">
+     ${kvRow('Address',addrCell(w.a),addrBtns(w.a,'account'))}
+     ${kvRow('Moves',`<span class="up">${buys.length} buys</span> · <span class="dn">${sells.length} sells</span> · ${toks} tokens`,'<small class="muted">'+st+'</small>')}
+     ${kvRow('SOL flow',`<span class="dn">−${solOut.toFixed(2)}</span> / <span class="up">+${solIn.toFixed(2)}</span>`,'<small class="muted">in the moves shown</small>')}
+     ${kvRow('Explorers',`<a class="xl" href="https://solscan.io/account/${esc(w.a)}" target="_blank" rel="noopener noreferrer">Solscan ↗</a> <a class="xl" href="https://explorer.solana.com/address/${esc(w.a)}" target="_blank" rel="noopener noreferrer">Solana Explorer ↗</a>`)}</div></div>`}).join(''):'<p class="muted">Add a public wallet address above to follow what it buys and sells.</p>';
   const ev=[];for(const w of WL.list){const d=WL.data[w.a];for(const x of (d?.events||[]))ev.push({...x,wl:w.l||shortCa(w.a)})}
   ev.sort((a,b)=>(b.t||0)-(a.t||0));
   $('#wFeed').innerHTML=ev.length?`<div class="tablewrap"><table class="tkt"><thead><tr><th>When</th><th>Wallet</th><th>Move</th><th>Token</th><th>Amount</th><th>SOL</th></tr></thead><tbody>${ev.slice(0,60).map(x=>`<tr><td>${x.t?ageS(now()-x.t)+' ago':'—'}</td><td>${esc(x.wl)}</td><td class="${x.side==='buy'||x.side==='in'?'up':'dn'}">${x.side==='in'?'received':x.side==='out'?'sent':x.side}</td><td><a href="/token/${esc(x.mint)}" data-tok="${esc(x.mint)}"><b>$${esc(x.sym||shortCa(x.mint))}</b></a></td><td>${x.tokens>=1000?Math.round(x.tokens).toLocaleString():(+x.tokens).toPrecision(3)}${x.now_usd?` <small class="muted">(${usd(x.now_usd)} now)</small>`:''}</td><td>${x.sol!=null?x.sol:'—'}</td></tr>`).join('')}</tbody></table></div><p class="muted" style="font-size:11px">Swaps are inferred from token-balance changes in each wallet’s latest transactions. Transfers with no SOL leg show as received / sent. Read-only.</p>`:
@@ -344,6 +399,11 @@ async function walletsRefresh(){
   $('#wStat').textContent=pend?'loading…':'updated '+new Date().toLocaleTimeString('en-GB',{timeZone:'Asia/Kuala_Lumpur'})+' MYT · refreshes every 45 s';
   WL.timer=setTimeout(walletsRefresh,pend?3500:45000)}
 
+// sync.js writes server data into localStorage then calls this so the in-memory state follows
+window.XS_reload=function(){
+  W.list=LS('xs_watch_v1',[]);W.cfg=LS('xs_watch_cfg_v1',{pct:20,notify:false});WL.list=LS('xs_wallets_v1',[]);presets=LS('xs_pulse_presets_v1',{});
+  paintStars();if(view==='watch'){renderWatch();watchPoll(true)}if(view==='wallets'){wRender();walletsRefresh()}if(view==='pulse')paintPresets()};
+window.XS_changed=function(kind){/* local edits already went through LSs(); sync.js hooks localStorage */};
 // ===================================================================== boot
 paintStars();watchPoll(true);setInterval(()=>watchPoll(false),15000);
 (()=>{const isTok=/^\/token\//.test(location.pathname);

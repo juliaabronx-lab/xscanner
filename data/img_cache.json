@@ -41,6 +41,12 @@
 "ts": 1794647039,
 "url": "https://cdn.dexscreener.com/cms/images/YXWVfisD4EBWS6RI?width=800&height=800&quality=95&format=auto"
 },
+"4V5FEX7JqMzrrQG41ixSw4vQpHZJ6kgFU78oPA4YX9EX": {
+"src": "metadata_uri",
+"sym": "MI",
+"ts": 1795162688,
+"url": "https://gmgn.ai/external-res/37c029bf27ad36164e5ddf8593a8f2b1_v2.webp"
+},
 "4VyQesL9m3QzQurrKXzKVVeVFWAZKPHqPKHHw6mnpump": {
 "src": "metadata_uri",
 "sym": "HOGE",
@@ -88,6 +94,12 @@
 "sym": "SHIT",
 "ts": 1794718621,
 "url": "https://cdn.dexscreener.com/cms/images/3Vl1ifEGVdzEqiQa?width=800&height=800&quality=95&format=auto"
+},
+"71sMD2AZST3PQZhg8gKnf1pA4GRTupzdwwBviaq3JJAq": {
+"src": "metadata_uri",
+"sym": "ty",
+"ts": 1795162614,
+"url": "https://gmgn.ai/external-res/a6c57c9f2b378b05f0486af7a99c6059_v2.webp"
 },
 "72fsyBKsWQNVgzt7oETo435PFuN39iYzzJs6zXq8pump": {
 "src": "metadata_uri",
@@ -376,6 +388,12 @@
 "sym": "SOL",
 "ts": 1794647085,
 "url": "https://cdn.dexscreener.com/cms/images/fcfb87378d3198fe753ca08ba51a5552a84f34cf48cd09d83971aa195bdf00d2?width=800&height=800&quality=95&format=auto"
+},
+"XPCZuyvpZY6SG29HLuTUwcreRfixGS97nkbQ151pump": {
+"src": "geckoterminal",
+"sym": "uinhim",
+"ts": 1795162561,
+"url": "https://assets.geckoterminal.com/5ivvrqaom2e9174dzd03vfiovp4a"
 },
 "bSU2Zy75MJiF25Y1VcV9ARhJv2hfai9w38vW1q6pump": {
 "src": "dexscreener",

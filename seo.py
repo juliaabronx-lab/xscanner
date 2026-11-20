@@ -56,6 +56,7 @@ def llms(base=None):
          "Missing data is never treated as safe: an unavailable bundle check or low data confidence caps the score.", "",
          "## Open to everyone", "",
          "- No login, no API key, GET only. Crawlers and AI tools are welcome (see /robots.txt).",
+         "- Optional accounts (/login: username or email + password) only sync a person's own watchlist and saved wallets across devices. Every page and API listed here stays public; /api/auth/* and /api/user/data are for the web app and are not needed to read data.",
          "- The main page is JavaScript-rendered. Use the plain views below, which need no JavaScript.", "",
          "## Read this first", ""]
     L += [f"- [{_abs(base, '/text')}]({_abs(base, '/text')}): every coin in the latest scan as readable HTML (name, ticker, mint, verdict, score, why it is moving, bundle, confidence).",

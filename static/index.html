@@ -10,11 +10,9 @@
 <link rel="alternate" type="text/html" href="/text" title="Plain HTML view of the latest scan">
 <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
 <link rel="apple-touch-icon" href="/static/logo.svg">
-<link rel="stylesheet" href="/static/style.css?v=fix8">
-<link rel="stylesheet" href="/static/space.css?v=fix8">
-<link rel="stylesheet" href="/static/trader.css?v=fix8">
-<link rel="modulepreload" href="/static/vendor/three-0.170.0.module.min.js">
-<script>try{var _fx=JSON.parse(localStorage.getItem('xs_fx_v1')||'{}');if(_fx.motion===false||(matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches))document.documentElement.classList.add('fx-off')}catch(e){}</script>
+<link rel="stylesheet" href="/static/style.css?v=fix9">
+<link rel="stylesheet" href="/static/trader.css?v=fix9">
+<link rel="stylesheet" href="/static/terminal.css?v=fix9">
 </head><body>
 <noscript><div style="max-width:760px;margin:24px auto;padding:16px;font:16px/1.5 system-ui,sans-serif;color:#eee;background:#111;border:1px solid #444;border-radius:8px">
 <h1 style="font-size:20px;margin:0 0 8px">xScanner: Solana memecoin scanner</h1>
@@ -22,50 +20,40 @@
 <a href="/text" style="color:#8cf">/text</a> (every coin in the latest scan: name, ticker, mint, verdict, score, why it is moving, bundle and data-confidence checks),
 <a href="/text?format=txt" style="color:#8cf">/text?format=txt</a> (markdown), <a href="/llms.txt" style="color:#8cf">/llms.txt</a> (site guide for AI tools)
 and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to everyone, read-only, no login.</p></div></noscript>
-<div id="space" aria-hidden="true"><div class="aur"></div><div class="stars"></div><div id="moonStatic"></div><div class="rails"></div><div class="vig"></div><div class="grain"></div></div>
-<header class="top">
-  <div class="brand"><img class="logo" src="/static/logo.svg" alt="xScanner logo" width="34" height="34"><div><h1>x<span class="accent">Scanner</span></h1><small>Solana · pump.fun · analysis &amp; paper trades only</small></div></div>
-  <nav id="tabs">
+<header class="tbar">
+  <a class="brand" href="/#pulse" aria-label="xScanner home"><img class="logo" src="/static/logo.svg" alt="" width="26" height="26"><h1>x<span class="accent">Scanner</span></h1></a>
+  <nav id="tabs" aria-label="Sections">
     <button data-v="pulse" class="on">Pulse</button>
+    <button data-v="trend">Trending</button>
+    <button data-v="watch" id="wNav">Watchlist <span id="wNavBadge" class="nbadge hidden"></span></button>
+    <button data-v="wallets">Wallets</button>
+    <button data-v="feed" id="scNav">Scanner <span id="xNavBadge" class="nbadge hidden"></span></button>
+  </nav>
+  <form id="searchForm" class="tbsearch" autocomplete="off" role="search">
+    <span class="sicon" aria-hidden="true">⌕</span>
+    <input id="searchIn" type="text" spellcheck="false" placeholder="Search by token CA (mint address)…" aria-label="Token contract address">
+    <button id="pasteBtn" type="button" class="ghost" title="Paste from clipboard">Paste</button>
+    <button id="searchBtn" type="submit" class="primary">Scan</button>
+  </form>
+  <div class="actions">
+    <span id="scanInfo" class="muted"></span>
+    <button id="scanBtn" class="primary">▶ Run scan</button>
+    <span id="syncPill" class="syncpill" title="Watchlist and wallet sync"></span>
+    <div id="authBox" class="authbox"></div>
+  </div>
+</header>
+<div id="searchMsg" class="searchmsg hidden"></div>
+<div id="banner" class="banner hidden"></div>
+<div id="scHead" class="schead hidden">
+  <div id="subtabs" class="subtabs" role="tablist" aria-label="Scanner views">
     <button data-v="feed">Coin feed</button>
     <button data-v="narr">Narratives</button>
     <button data-v="risk">Risk radar</button>
     <button data-v="paper">Paper P&amp;L</button>
-    <button data-v="xfeed" id="xNav">X Live <span id="xNavBadge" class="nbadge hidden"></span></button>
-    <button data-v="watch" id="wNav">Watchlist <span id="wNavBadge" class="nbadge hidden"></span></button>
-    <button data-v="wallets">Wallets</button>
-  </nav>
-  <div class="actions">
-    <div id="authBox" class="authbox"></div>
-    <div class="fxtog" role="group" aria-label="Motion and haptics">
-      <button type="button" id="fxMotion" class="on" aria-pressed="true" title="Smooth motion">Motion</button>
-      <button type="button" id="fxHap" class="on" aria-pressed="true" title="Haptic taps">Haptics</button>
-    </div>
-    <span id="scanInfo" class="muted"></span>
-    <button id="scanBtn" class="primary">▶ Run scan</button>
+    <button data-v="xfeed" id="xNav">X Live</button>
   </div>
-</header>
-<section class="hero" aria-label="Introduction">
-  <p class="hero-kicker">Free Solana memecoin scanner</p>
-  <h2 class="hero-title">
-    <span class="hw" style="--d:0ms">Paste</span>
-    <span class="hw" style="--d:45ms">a</span>
-    <span class="hw" style="--d:90ms">contract.</span>
-    <br>
-    <span class="hw" style="--d:135ms">See</span>
-    <span class="hw" style="--d:180ms">the</span>
-    <span class="hw" style="--d:225ms">risk.</span>
-  </h2>
-</section>
-<form id="searchForm" class="search" autocomplete="off">
-  <span class="sicon">⌕</span>
-  <input id="searchIn" type="text" spellcheck="false" placeholder="Paste a Solana token CA (mint address) to scan…  e.g. 9cmX…pump" aria-label="Token contract address">
-  <button id="pasteBtn" type="button" class="ghost" title="Paste from clipboard">Paste</button>
-  <button id="searchBtn" type="submit" class="primary">Scan CA</button>
-</form>
-<div id="searchMsg" class="searchmsg hidden"></div>
-<div id="banner" class="banner hidden"></div>
-<section id="stats" class="statstrip" aria-label="Scan summary"></section>
+  <section id="stats" class="statstrip" aria-label="Scan summary"></section>
+</div>
 
 <main>
   <section id="v-pulse" class="view">
@@ -98,8 +86,22 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
     <p class="muted pnote">Rows come from free public APIs (GeckoTerminal, DexScreener, Jupiter, the Solana RPC) and are rate limited, so some fields fill in a few seconds after a token appears. <b>—</b> means not available yet, never “safe”. Bundle and sniper flags only show once a token has been checked. Bundle = RugCheck / holder clustering; “4+ in one block” = 4 or more txs in one block near launch; sniper % = supply bought in the first blocks.</p>
   </section>
 
+  <section id="v-trend" class="view hidden">
+    <div class="disc" role="note"><b>Not financial advice.</b> Trending ranks the tokens currently on the Pulse board by the metric you pick. It is a view of public data, not a signal.</div>
+    <div class="pbar-top">
+      <div class="plive"><i id="tLiveDot"></i><span id="tLiveTxt">connecting…</span></div>
+      <div class="tr-sort" id="trSort" role="group" aria-label="Rank by">
+        <button data-k="v1" class="on">Volume 1h</button><button data-k="pc5">5m %</button><button data-k="pc1">1h %</button><button data-k="tx">Txns 1h</button><button data-k="v24">Volume 24h</button><button data-k="mc">Market cap</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="trDust" checked> Hide dust (liq &lt; $1K)</label>
+    </div>
+    <div class="tablewrap"><table id="trTable" class="trtab"><thead><tr><th>#</th><th>Token</th><th>Age</th><th>Price</th><th>5m</th><th>1h</th><th>24h</th><th>Vol 1h</th><th>Liq</th><th>MCap</th><th>Txns 1h</th><th>Hold</th><th></th></tr></thead><tbody id="trBody"></tbody></table></div>
+    <p class="muted pnote">Ranked from the live Pulse universe (up to 600 pump.fun tokens from free public APIs), refreshed every few seconds while this tab is open. <b>—</b> means not available yet.</p>
+  </section>
+
   <section id="v-watch" class="view hidden">
     <div class="disc" role="note"><b>Not financial advice.</b> Alerts are price-move notices from public data, not trade signals. They only run while this page is open.</div>
+    <div class="syncnote" data-sync-note></div>
     <div class="wl-head">
       <form id="wlAdd" class="wl-add" autocomplete="off"><input id="wlIn" type="text" spellcheck="false" placeholder="Add a token by CA (mint address)…" aria-label="Token contract address"><button class="primary" type="submit">★ Watch</button></form>
       <label>Alert when price moves <select id="wlPct"><option value="5">±5%</option><option value="10">±10%</option><option value="20" selected>±20%</option><option value="35">±35%</option><option value="50">±50%</option><option value="100">±100%</option></select></label>
@@ -111,6 +113,7 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
   </section>
 
   <section id="v-wallets" class="view hidden">
+    <div class="syncnote" data-sync-note></div>
     <div class="disc" role="note"><b>Watch-only.</b> Paste public wallet addresses only. Never paste a private key or seed phrase anywhere. xScanner reads public on-chain data and holds no keys. Not financial advice.</div>
     <div class="wl-head">
       <form id="wAdd" class="wl-add" autocomplete="off"><input id="wIn" type="text" spellcheck="false" placeholder="Public wallet address…" aria-label="Wallet address"><input id="wLabel" type="text" maxlength="24" placeholder="Label (optional)" aria-label="Label"><button class="primary" type="submit">Track</button></form>
@@ -190,10 +193,10 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
 <script src="/static/vendor/lightweight-charts.js?v=4.2.3"></script>
 <script>window.LightweightCharts||document.write('<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"><\/script>')</script>
 <script>window.__h0=location.hash</script>
-<script src="/static/motion.js?v=fix8"></script>
-<script src="/static/chart.js?v=fix8"></script>
-<script src="/static/app.js?v=fix8"></script>
-<script src="/static/xfeed.js?v=fix8"></script>
-<script src="/static/trader.js?v=fix8"></script>
-<script type="module" src="/static/moon.js?v=fix8"></script>
+<script src="/static/motion.js?v=fix9"></script>
+<script src="/static/chart.js?v=fix9"></script>
+<script src="/static/app.js?v=fix9"></script>
+<script src="/static/xfeed.js?v=fix9"></script>
+<script src="/static/trader.js?v=fix9"></script>
+<script src="/static/sync.js?v=fix9"></script>
 </body></html>

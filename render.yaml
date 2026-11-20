@@ -19,7 +19,12 @@ services:
         value: "1"            # server-side scan loop every LIVE_SCAN_INTERVAL s (default 120); snapshot until first scan
       # Optional, set in the Render dashboard only (never in this repo): X_BEARER_TOKEN enables the live X feed.
 
-      # Optional Google sign-in — set these in the Render dashboard only, never in this repo:
+      # Accounts (fix9): username/email + password, hashed with argon2id. Set in the Render dashboard only, never here:
+      #   DATABASE_URL   internal connection string of the Render Postgres (durable accounts + synced lists); without it accounts use a temporary SQLite file
+      #   SESSION_SECRET random 32+ chars; signs the HttpOnly session cookie and enables local accounts
+      #   SIGNUP_MODE    open (default) | invite | closed ; INVITE_CODES=comma,separated (for invite mode)
+      #   RL_* limits (optional): RL_LOGIN_IP, RL_LOGIN_IP_FAIL, RL_LOGIN_ACCT_FAIL, RL_SIGNUP_IP, RL_SIGNUP_ALL, RL_SYNC_USER
+      # Optional Google sign-in (code kept, OFF unless these are set) — set these in the Render dashboard only, never in this repo:
       #   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET
       #   AUTH_REQUIRED=false (default; true requires a signed-in session)
       #   ALLOWED_EMAILS=comma-separated allow-list (optional)

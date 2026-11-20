@@ -2,32 +2,67 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sign in · xScanner</title>
-<meta name="description" content="Sign in to xScanner with Google. Analysis only, no trading.">
+<meta name="description" content="Sign in or create an xScanner account to sync your watchlist and wallets. Analysis only, no trading.">
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
-<link rel="stylesheet" href="/static/style.css?v=fix8">
-<link rel="stylesheet" href="/static/space.css?v=fix8">
+<link rel="stylesheet" href="/static/style.css?v=fix9">
+<link rel="stylesheet" href="/static/space.css?v=fix9">
+<link rel="stylesheet" href="/static/login.css?v=fix9">
 <script>try{var _fx=JSON.parse(localStorage.getItem('xs_fx_v1')||'{}');if(_fx.motion===false||(matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches))document.documentElement.classList.add('fx-off')}catch(e){}</script>
-</head><body class="login-page">
+</head><body class="login-page" data-local="{{auth_local}}" data-signup="{{auth_signup}}" data-next="{{auth_next}}">
 <div id="space" aria-hidden="true"><div class="aur"></div><div class="stars"></div><div id="moonStatic"></div><div class="rails"></div><div class="vig"></div><div class="grain"></div></div>
-<header class="top login-top">
-  <a class="brand" href="/">
-    <img class="logo" src="/static/logo.svg" alt="xScanner logo" width="34" height="34">
-    <div><h1>x<span class="accent">Scanner</span></h1><small>Solana · pump.fun · analysis &amp; paper trades only</small></div>
+<main class="lg-wrap">
+  <a class="lg-brand" href="/" aria-label="xScanner home">
+    <img class="logo" src="/static/logo.svg" alt="" width="36" height="36">
+    <span><b>x<i>Scanner</i></b><small>Solana memecoin terminal · read-only</small></span>
   </a>
-</header>
-<main class="login-wrap">
-  <section class="card login-card" aria-labelledby="loginTitle">
-    <p class="hero-kicker">Welcome back</p>
-    <h2 id="loginTitle" class="login-title">Sign in</h2>
-    <p class="muted login-lead">Use your Google account. xScanner stays read-only — no wallets, keys or trading.</p>
+  <section class="lg-card" aria-labelledby="lgTitle">
+    <div class="lg-tabs" role="tablist" id="lgTabs">
+      <button type="button" role="tab" id="tabIn" data-t="in" class="on" aria-selected="true">Sign in</button>
+      <button type="button" role="tab" id="tabUp" data-t="up" aria-selected="false">Create account</button>
+    </div>
+    <h1 id="lgTitle" class="lg-title">Welcome back</h1>
+    <p class="lg-lead" id="lgLead">Sign in to sync your watchlist, saved wallets and Pulse presets across devices.</p>
     {{auth_error}}
     {{auth_required}}
-    {{auth_button}}
     {{auth_note}}
-    {{back_link}}
+    <div id="lgMsg" class="lg-msg hidden" role="alert"></div>
+
+    <form id="formIn" class="lg-form" autocomplete="on" novalidate>
+      <label>Username or email
+        <input name="id" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="200" required autofocus>
+      </label>
+      <label>Password
+        <span class="pw"><input name="password" type="password" autocomplete="current-password" maxlength="128" required><button type="button" class="eye" aria-label="Show password" data-eye>Show</button></span>
+      </label>
+      <button class="lg-go" type="submit">Sign in</button>
+    </form>
+
+    <form id="formUp" class="lg-form hidden" autocomplete="on" novalidate>
+      <label>Username
+        <input name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="24" required>
+        <small>3-24 letters, digits, . - _ . This is your ID.</small>
+      </label>
+      <label>Email <em>(optional)</em>
+        <input name="email" type="email" autocomplete="email" maxlength="254">
+        <small>Only used to sign in with. We cannot reset passwords by email yet, so keep your password safe.</small>
+      </label>
+      <label>Password
+        <span class="pw"><input name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required><button type="button" class="eye" aria-label="Show password" data-eye>Show</button></span>
+        <small id="pwHint">At least 8 characters. Common passwords are rejected.</small>
+        <span class="meter" aria-hidden="true"><i id="pwBar"></i></span>
+      </label>
+      <label id="inviteRow" class="hidden">Invite code
+        <input name="invite" type="text" autocomplete="off" spellcheck="false" maxlength="80">
+      </label>
+      <button class="lg-go" type="submit">Create account</button>
+    </form>
+
+    {{auth_google}}
+    <div class="lg-foot">{{back_link}}</div>
   </section>
+  <p class="lg-fine">Read-only. No wallet keys, signing, trading or posting. <b>Not financial advice.</b></p>
 </main>
-<footer>Read-only. No wallet keys, signing, trading or posting. Juliaa gives the final yes.</footer>
-<script type="module" src="/static/moon.js?v=fix8"></script>
+<script src="/static/login.js?v=fix9"></script>
+<script type="module" src="/static/moon.js?v=fix9"></script>
 </body></html>
