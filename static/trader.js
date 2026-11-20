@@ -179,18 +179,18 @@ async function pulsePoll(){
   finally{P.busy=false}}
 // Live board: one server-sent-events stream (/api/pulse/stream) instead of a poll every few seconds.
 // Polling stays as the fallback: no EventSource, the server refuses a stream (cap reached), or the stream keeps failing.
-let pulseTimer=null,pulseES=null,pulseMiss=0,pulseErr=0;
+let pulseTimer=null,pulseES=null,pulseMiss=0,pulseErr=0,pulseGen=0;
 function pulsePollStart(){if(pulseTimer)return;pulsePoll();pulseTimer=setInterval(pulsePoll,P.warming?1500:3000)}
-function pulseConnect(){
+function pulseOpen(){
   if(pulseES||pulseTimer||document.hidden||!isP(view))return;
-  if(!window.EventSource||pulseErr>=3){pulsePollStart();return}
-  const es=pulseES=new EventSource('/api/pulse/stream');
+  // start from what we already hold (one compressed GET first), so the stream only sends changes
+  const es=pulseES=new EventSource('/api/pulse/stream?since='+(P.ver||0)+'&h='+encodeURIComponent(P.h||''));
   es.onmessage=ev=>{
     try{
       pulseErr=0;
       const missing=applyPulse(JSON.parse(ev.data));
       if(!missing){pulseMiss=0;return}
-      if(++pulseMiss<=2){pulseStop();pulseConnect()}        // a row we never received: reconnect for a full snapshot
+      if(++pulseMiss<=2){P.ver=0;pulseStop();pulseConnect()}   // a row we never received: reconnect from a full snapshot
       else{pulseStop();P.ver=0;pulsePollStart()}
     }catch(e){liveMsg('offline · retrying','stale')}
   };
@@ -200,8 +200,14 @@ function pulseConnect(){
     if(es.readyState===2||pulseErr>=3){pulseStop();P.ver=0;pulsePollStart()}   // refused (503) or unreliable: poll instead
   };
 }
+function pulseConnect(){
+  if(pulseES||pulseTimer||document.hidden||!isP(view))return;
+  if(!window.EventSource||pulseErr>=3){pulsePollStart();return}
+  if(P.ver){pulseOpen();return}
+  const g=++pulseGen;pulsePoll().then(()=>{if(g===pulseGen)pulseOpen()},()=>{if(g===pulseGen)pulseOpen()})
+}
 function pulseStart(){pulseStop();if(view==='pulse'){paintFilters();paintPresets();paintSeg();if(P.first)for(const c of ['new','final','migrated'])renderCol(c)}else trendRender();pulseConnect()}
-function pulseStop(){clearInterval(pulseTimer);pulseTimer=null;if(pulseES){pulseES.close();pulseES=null}}
+function pulseStop(){pulseGen++;clearInterval(pulseTimer);pulseTimer=null;if(pulseES){pulseES.close();pulseES=null}}
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){if(isP(view))pulseStop();return}
   if(isP(view))pulseConnect();

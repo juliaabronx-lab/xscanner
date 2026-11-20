@@ -18,6 +18,8 @@ _lock = threading.Lock()
 _text = {}          # url -> (fetched_at, status, text)
 _cool = {}          # host -> (until_epoch, strikes)
 _flight = {}        # url -> (Event, box)
+_tls = threading.local()   # cooldown scope of the call that is fetching right now (keeps _fetch's signature)
+USER_COOL_MAX_S = 12       # a person waiting on a lookup is never locked out for long
 stats = {"fetches": 0, "hits": 0, "joined": 0, "cooldowns": 0, "errors": 0}
 
 
@@ -48,23 +50,31 @@ def _remember(url, status, text):
             _text.pop(k, None)
 
 
-def _cool_for(host, headers):
+def _ckey(host, scope):
+    return (host, scope or "")
+
+
+def _cool_for(host, headers, scope=""):
     ra = None
     try:
         if headers is not None and headers.get("Retry-After"):
             ra = float(headers.get("Retry-After"))
     except (TypeError, ValueError):
         ra = None
-    prev = _cool.get(host, (0, 0))[1] + 1
+    k = _ckey(host, scope)
+    prev = _cool.get(k, (0, 0))[1] + 1
     delay = ra if ra is not None and 0 < ra < 120 else min(4 * (2 ** (prev - 1)), 60)
-    _cool[host] = (time.time() + delay, min(prev, 6))
+    if scope == "user": delay = min(delay, USER_COOL_MAX_S)
+    _cool[k] = (time.time() + delay, min(prev, 6))
 
 
-def get_json(url, timeout=8, headers=None, fresh_s=FRESH_S, errors="dict"):
+def get_json(url, timeout=8, headers=None, fresh_s=FRESH_S, errors="dict", scope=""):
     """GET JSON.
 
     errors='dict' matches scan.py: failures are {"_error": "..."}.
     errors='raise' raises UpstreamError so callers can keep their own 429 back-off.
+    scope='user' is for a person waiting on a lookup: it has its own cooldown clock (capped at USER_COOL_MAX_S), so a 429 that
+    the background workers hit does not lock a user out, and the other way round. Scope '' is the background / shared clock.
     """
     now = time.time()
     host = _host(url)
@@ -73,7 +83,7 @@ def get_json(url, timeout=8, headers=None, fresh_s=FRESH_S, errors="dict"):
         if hit and hit[1] == 200 and now - hit[0] < fresh_s:
             stats["hits"] += 1
             return _parse(hit[2])
-        until = _cool.get(host, (0, 0))[0]
+        until = _cool.get(_ckey(host, scope), (0, 0))[0]
         if now < until:
             stats["cooldowns"] += 1
             cooled = True
@@ -101,6 +111,7 @@ def get_json(url, timeout=8, headers=None, fresh_s=FRESH_S, errors="dict"):
         return {"_error": box.get("err") or "upstream failed"}
     data, code, err = None, None, None
     try:
+        _tls.scope = scope
         data, code = _fetch(url, timeout, headers)
     except UpstreamError as e:
         code, err = e.code, str(e)
@@ -132,7 +143,7 @@ def _fetch(url, timeout, headers):
         with _lock:
             stats["errors"] += 1
             if e.code in (429, 503):
-                _cool_for(_host(url), e.headers)
+                _cool_for(_host(url), e.headers, getattr(_tls, "scope", ""))
         raise UpstreamError(e.code, "HTTP %s" % e.code)
     except URLError:
         with _lock:
@@ -150,5 +161,5 @@ def _fetch(url, timeout, headers):
     if code == 200:
         with _lock:
             _remember(url, 200, text)
-            _cool.pop(_host(url), None)
+            _cool.pop(_ckey(_host(url), getattr(_tls, "scope", "")), None)
     return parsed, code

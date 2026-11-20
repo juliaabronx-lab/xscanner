@@ -98,15 +98,15 @@ def sanity_problems(c, ds=None, gt=None, rc=None):
     return hard, soft
 
 
-def _get(url, timeout=10):
+def _get(url, timeout=10, scope=""):
     # Same cache and single-flight as the live lookup, so this pull does not repeat a call just made.
-    return net.get_json(url, timeout=timeout, headers=UA, errors="raise")
+    return net.get_json(url, timeout=timeout, headers=UA, errors="raise", scope=scope)
 
 
 # ------------------------------------------------------------------ fetchers (each returns a dict or None; never raises)
-def pull_ds(mint, timeout=8):
+def pull_ds(mint, timeout=8, scope=""):
     try:
-        d = _get(f"https://api.dexscreener.com/latest/dex/tokens/{mint}", timeout)
+        d = _get(f"https://api.dexscreener.com/latest/dex/tokens/{mint}", timeout, scope)
         pairs = [p for p in (d.get("pairs") or []) if p.get("chainId") == "solana" and (p.get("baseToken") or {}).get("address") == mint]
         if not pairs: return None
         p = max(pairs, key=lambda p: _num((p.get("liquidity") or {}).get("usd")) or 0)
@@ -141,8 +141,8 @@ def _gt_note_error(e):
     return False
 
 
-def _gt_one(mint, suffix, timeout):
-    return (_get(f"https://api.geckoterminal.com/api/v2/networks/solana/tokens/{mint}{suffix}", timeout).get("data") or {}).get("attributes") or {}
+def _gt_one(mint, suffix, timeout, scope=""):
+    return (_get(f"https://api.geckoterminal.com/api/v2/networks/solana/tokens/{mint}{suffix}", timeout, scope).get("data") or {}).get("attributes") or {}
 
 
 def pull_gt(mint, timeout=8, info=True, pace=True):
@@ -158,7 +158,7 @@ def pull_gt(mint, timeout=8, info=True, pace=True):
         box, err = {}, {}
         def grab(suffix, key):
             try:
-                box[key] = _gt_one(mint, suffix, timeout)
+                box[key] = _gt_one(mint, suffix, timeout, "user")
             except (urllib.error.HTTPError, net.UpstreamError) as e:
                 err[key] = e
             except Exception as e:
@@ -253,7 +253,7 @@ def _do_fetch(mint, timeout=8, gt=True, fast=False):
         def job(name, fn):
             try: box[name] = fn()
             except Exception: box[name] = None
-        ths = [threading.Thread(target=job, args=("ds", lambda: pull_ds(mint, timeout)), daemon=True),
+        ths = [threading.Thread(target=job, args=("ds", lambda: pull_ds(mint, timeout, "user")), daemon=True),
                threading.Thread(target=job, args=("rpc", lambda: pull_rpc(mint)), daemon=True)]
         if gt: ths.append(threading.Thread(target=job, args=("gt", lambda: pull_gt(mint, timeout, pace=False)), daemon=True))
         for th in ths: th.start()

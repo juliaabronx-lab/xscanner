@@ -63,11 +63,21 @@ def load_scan_module():
     return mod
 
 
+def _retryable(err):
+    e = str(err or "")
+    return not ("429" in e or "rate limited" in e or "HTTP 503" in e or e.startswith("HTTP 4") or e == "bad json")
+
+
 def _use_net(S):
-    """Point scan.get at the shared cache. One attempt: a 429 must cool down, not retry in a loop."""
+    """Point scan.get at the shared cache. A 429/503 cools the host down (no retry loop); a timeout or 5xx is retried like scan.get's
+    tries=N did. Lookups use their own cooldown scope so the background workers' 429s cannot block a person waiting."""
     ua = getattr(S, "UA", None)
     def get(url, timeout=8, tries=1):
-        return net.get_json(url, timeout=timeout, headers=ua)
+        r = None
+        for _ in range(max(1, min(int(tries or 1), 2))):
+            r = net.get_json(url, timeout=timeout, headers=ua, scope="user")
+            if not (isinstance(r, dict) and "_error" in r) or not _retryable(r.get("_error")): break
+        return r
     S.get = get
 
 

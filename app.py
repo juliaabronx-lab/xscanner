@@ -1162,7 +1162,7 @@ def _sse_release(ip):
 
 
 @app.get("/api/pulse/stream")
-async def api_pulse_stream(request: Request):
+async def api_pulse_stream(request: Request, since: int = 0, h: str = ""):
     """Server-sent events for the Pulse board: one connection instead of a poll every few seconds.
     Each `data` event is the same JSON as GET /api/pulse (public market data, identical for everyone: no cookies, no per-user content).
     Bounded: at most PULSE_SSE_MAX streams and PULSE_SSE_PER_IP per address (503 + Retry-After beyond that; the page falls back to polling),
@@ -1175,7 +1175,10 @@ async def api_pulse_stream(request: Request):
     async def gen():
         try:
             yield "retry: 4000\n\n"
-            last_ver, last_h, last_emit, born = -1, "", 0.0, time.time()
+            # `since` / `h` let a page that already holds the board (from one gzip'd GET /api/pulse) start with deltas only;
+            # SSE is not compressed, so a full snapshot per connection would cost about 3x the bytes
+            last_ver, last_h = (since, h[:32]) if since > 0 else (-1, "")
+            last_emit, born = 0.0, time.time()
             while time.time() - born < SSE_LIFETIME_S:
                 if await request.is_disconnected(): break
                 now = time.time()

@@ -355,9 +355,9 @@ def get_raw(mint):
     return (v[1], time.time() - v[0]) if v else (None, None)
 
 
-def _http(mint, timeout=15):
+def _http(mint, timeout=15, scope=""):
     # Shared with the live lookup: if that scan already asked RugCheck for this mint, this is a cache hit.
-    return net.get_json(URL.format(mint=mint), timeout=timeout, headers=UA, errors="raise")
+    return net.get_json(URL.format(mint=mint), timeout=timeout, headers=UA, errors="raise", scope=scope)
 
 
 def _do_fetch(mint, timeout=15, gap=True):
@@ -371,7 +371,7 @@ def _do_fetch(mint, timeout=15, gap=True):
         _last_call = time.time() + max(0, wait)
     if wait > 0: time.sleep(wait)
     try:
-        rep = _http(mint, timeout)
+        rep = _http(mint, timeout, scope="" if gap else "user")
         if not isinstance(rep, dict) or "mint" not in rep: raise ValueError("unexpected report")
         a = analyze(rep)
         try:
