@@ -29,15 +29,19 @@ def endpoints():
     return eps
 
 
-def call(method, params, timeout=8):
+def call(method, params, timeout=8, gap=None):
+    """gap overrides the polite spacing for this call only. The background scan keeps the default.
+    A user-facing lookup passes gap=0 and limits its own concurrency instead of sleeping 0.12s
+    between every signature read."""
     global _last
     last_err = "no endpoint available"
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
+    spacing = GAP_S if gap is None else gap
     for url in endpoints():
         with _lock:
             until, n = _down.get(url, (0, 0))
             if time.time() < until: continue
-            wait = _last + GAP_S - time.time()
+            wait = _last + spacing - time.time()
             _last = time.time() + max(0.0, wait)
         if wait > 0: time.sleep(wait)
         try:
@@ -100,13 +104,13 @@ def token_balances(accounts):
     return out
 
 
-def first_funding(owner, max_sigs=150):
+def first_funding(owner, max_sigs=150, gap=None):
     """Who created/funded this wallet: look at its OLDEST transaction. Returns (funder, slot) or None when the wallet has
     more history than max_sigs (an old, active wallet is not a fresh bundler wallet)."""
-    sigs = call("getSignaturesForAddress", [owner, {"limit": max_sigs}]) or []
+    sigs = call("getSignaturesForAddress", [owner, {"limit": max_sigs}], gap=gap) or []
     if not sigs or len(sigs) >= max_sigs: return None
     old = sigs[-1]
-    tx = call("getTransaction", [old["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
+    tx = call("getTransaction", [old["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}], gap=gap)
     if not tx: return None
     msg = (tx.get("transaction") or {}).get("message") or {}
     keys = [k.get("pubkey") if isinstance(k, dict) else k for k in (msg.get("accountKeys") or [])]

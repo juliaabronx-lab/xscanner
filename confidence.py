@@ -15,6 +15,8 @@ call (user-initiated single-coin lookup, short timeouts).
 """
 import json, os, re, threading, time, urllib.error, urllib.request
 
+import net
+
 UA = {"User-Agent": "Mozilla/5.0 (xScanner read-only; +https://xscanner-c8jo.onrender.com)", "Accept": "application/json"}
 CACHE_S = int(os.environ.get("CONF_CACHE_S", "600"))
 STALE_S = int(os.environ.get("CONF_STALE_S", "1800"))      # external pulls older than this count as stale
@@ -97,8 +99,8 @@ def sanity_problems(c, ds=None, gt=None, rc=None):
 
 
 def _get(url, timeout=10):
-    with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=timeout) as r:
-        return json.loads(r.read().decode())
+    # Same cache and single-flight as the live lookup, so this pull does not repeat a call just made.
+    return net.get_json(url, timeout=timeout, headers=UA, errors="raise")
 
 
 # ------------------------------------------------------------------ fetchers (each returns a dict or None; never raises)
@@ -128,27 +130,63 @@ def _auth_set(v):
     return False if s in ("no", "false", "none", "revoked", "") else True
 
 
-def pull_gt(mint, timeout=8, info=True):
-    """GeckoTerminal token + info endpoints, paced at GT_GAP_S, with shared back-off on 429."""
-    out = {}
-    for suffix, key in (("", "tok"), ("/info", "info")):
-        if suffix and not info: continue
+def _gt_note_error(e):
+    code = getattr(e, "code", 0) or 0
+    stats["last_error"] = f"gt HTTP {code}"
+    if code == 429 or code >= 500:
         with _lock:
-            if time.time() < _state["gt_until"]: break
-            wait = _state["gt_last"] + GT_GAP_S - time.time()
-            _state["gt_last"] = time.time() + max(0.0, wait)
-        if wait > 0: time.sleep(wait)
-        try:
-            out[key] = (_get(f"https://api.geckoterminal.com/api/v2/networks/solana/tokens/{mint}{suffix}", timeout).get("data") or {}).get("attributes") or {}
-            _state["gt_n"] = 0
-        except urllib.error.HTTPError as e:
-            stats["last_error"] = f"gt HTTP {e.code}"
-            if e.code == 429 or e.code >= 500:
-                with _lock:
-                    _state["gt_n"] = min(_state["gt_n"] + 1, 5); _state["gt_until"] = time.time() + min(30 * 2 ** (_state["gt_n"] - 1), 600)
-                break
-        except Exception as e:
-            stats["last_error"] = "gt " + type(e).__name__
+            _state["gt_n"] = min(_state["gt_n"] + 1, 5)
+            _state["gt_until"] = time.time() + min(30 * 2 ** (_state["gt_n"] - 1), 600)
+        return True
+    return False
+
+
+def _gt_one(mint, suffix, timeout):
+    return (_get(f"https://api.geckoterminal.com/api/v2/networks/solana/tokens/{mint}{suffix}", timeout).get("data") or {}).get("attributes") or {}
+
+
+def pull_gt(mint, timeout=8, info=True, pace=True):
+    """GeckoTerminal token + info endpoints, with shared back-off on 429.
+
+    pace=True (background scan) keeps GT_GAP_S between the two calls so a full sweep stays under
+    the free-tier budget. pace=False is the one-coin lookup: both calls go together, no inserted sleep.
+    The fields that come back are the same either way."""
+    out = {}
+    if not pace:
+        with _lock:
+            if time.time() < _state["gt_until"]: return None
+        box, err = {}, {}
+        def grab(suffix, key):
+            try:
+                box[key] = _gt_one(mint, suffix, timeout)
+            except (urllib.error.HTTPError, net.UpstreamError) as e:
+                err[key] = e
+            except Exception as e:
+                stats["last_error"] = "gt " + type(e).__name__
+        ths = [threading.Thread(target=grab, args=("", "tok"), daemon=True)]
+        if info: ths.append(threading.Thread(target=grab, args=("/info", "info"), daemon=True))
+        for t in ths: t.start()
+        for t in ths: t.join(max(0.2, timeout))
+        for e in err.values():
+            if _gt_note_error(e): break
+        if box:
+            with _lock: _state["gt_n"] = 0
+        out = box
+    else:
+        for suffix, key in (("", "tok"), ("/info", "info")):
+            if suffix and not info: continue
+            with _lock:
+                if time.time() < _state["gt_until"]: break
+                wait = _state["gt_last"] + GT_GAP_S - time.time()
+                _state["gt_last"] = time.time() + max(0.0, wait)
+            if wait > 0: time.sleep(wait)
+            try:
+                out[key] = _gt_one(mint, suffix, timeout)
+                _state["gt_n"] = 0
+            except (urllib.error.HTTPError, net.UpstreamError) as e:
+                if _gt_note_error(e): break
+            except Exception as e:
+                stats["last_error"] = "gt " + type(e).__name__
     if not out: return None
     t, i = out.get("tok") or {}, out.get("info") or {}
     hold = i.get("holders") or {}
@@ -204,9 +242,24 @@ def _save():
         pass
 
 
-def _do_fetch(mint, timeout=8, gt=True):
-    new = {"t": time.time(), "ds": pull_ds(mint, timeout), "rpc": pull_rpc(mint),
-           "gt": pull_gt(mint, timeout) if gt else None}
+def _do_fetch(mint, timeout=8, gt=True, fast=False):
+    if not fast:
+        # Background worker: one source after another, GeckoTerminal paced.
+        new = {"t": time.time(), "ds": pull_ds(mint, timeout), "rpc": pull_rpc(mint),
+               "gt": pull_gt(mint, timeout) if gt else None}
+    else:
+        # User is waiting. The three sources do not depend on each other.
+        box = {}
+        def job(name, fn):
+            try: box[name] = fn()
+            except Exception: box[name] = None
+        ths = [threading.Thread(target=job, args=("ds", lambda: pull_ds(mint, timeout)), daemon=True),
+               threading.Thread(target=job, args=("rpc", lambda: pull_rpc(mint)), daemon=True)]
+        if gt: ths.append(threading.Thread(target=job, args=("gt", lambda: pull_gt(mint, timeout, pace=False)), daemon=True))
+        for th in ths: th.start()
+        for th in ths: th.join(max(0.2, timeout))
+        new = {"t": time.time(), "ds": box.get("ds"), "rpc": box.get("rpc"),
+               "gt": box.get("gt") if gt else None}
     with _lock:
         old = _cache.get(mint) or {}
         for k in ("ds", "gt", "rpc"):          # keep last-good for a source that failed this time (kept with its own age)
@@ -250,7 +303,7 @@ def fetch_now(mint, timeout=6):
     if not mint or not MINT_RE.match(mint): return False
     v = _cache.get(mint)
     if v and time.time() - v["t"] < CACHE_S: return True
-    return _do_fetch(mint, timeout=timeout)
+    return _do_fetch(mint, timeout=timeout, fast=True)
 
 
 # ------------------------------------------------------------------ comparison

@@ -160,23 +160,52 @@ document.addEventListener('click',e=>{const row=e.target.closest('.prow[data-m]'
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.classList&&e.target.classList.contains('prow'))openToken(e.target.dataset.m)});
 setInterval(()=>{if(view==='trend'&&!document.hidden&&P.okAt){const s=Math.round(Date.now()/1000-P.okAt);$('#tLiveTxt').textContent=P.warming?'warming up…':`live · updated ${s<=1?'just now':s+'s ago'}`;$('#tLiveDot').className=s>20?'stale':'on'}if(view!=='pulse'||document.hidden)return;const t=now();$$('.page').forEach(el=>{const cr=+el.dataset.cr;if(cr)el.textContent=ageS(t-cr)});
   if(P.okAt){const s=Math.round(Date.now()/1000-P.okAt);$('#pLiveTxt').textContent=P.warming?'warming up…':`live · updated ${s<=1?'just now':s+'s ago'}`;$('#pLiveDot').className=s>20?'stale':'on'}},1000);
+function applyPulse(j){
+  P.okAt=now();P.src=j.sources;P.warming=!!j.warming;P.sol=j.sol_usd;
+  for(const r of j.rows||[])P.rows.set(r.m,r);
+  if(j.cols){P.cols=j.cols;P.h=j.h}
+  P.ver=j.ver;
+  const missing=Object.values(P.cols).flat().some(m=>!P.rows.has(m));
+  if((j.rows&&j.rows.length)||j.cols||P.first)renderAll();
+  if(!$('#pSrcBox').classList.contains('hidden'))paintSrc();
+  return missing}
+const liveMsg=(t,cls)=>{const a=$('#pLiveTxt'),b=$('#tLiveTxt'),d=$('#pLiveDot'),e=$('#tLiveDot');if(a)a.textContent=t;if(b)b.textContent=t;if(d)d.className=cls;if(e)e.className=cls};
 async function pulsePoll(){
   if(P.busy||document.hidden||!isP(view))return;P.busy=true;
   try{const j=await api(`/api/pulse?since=${P.ver}&h=${encodeURIComponent(P.h)}`);
-    P.okAt=now();P.src=j.sources;P.warming=!!j.warming;P.sol=j.sol_usd;
-    for(const r of j.rows||[])P.rows.set(r.m,r);
-    if(j.cols){P.cols=j.cols;P.h=j.h}
-    P.ver=j.ver;
-    const missing=Object.values(P.cols).flat().some(m=>!P.rows.has(m));
-    if(missing&&P.ver){P.ver=0}
-    if((j.rows&&j.rows.length)||j.cols||P.first)renderAll();
-    if(!$('#pSrcBox').classList.contains('hidden'))paintSrc();
-  }catch(e){$('#pLiveTxt').textContent='offline · retrying';$('#pLiveDot').className='stale'}
+    const missing=applyPulse(j);
+    if(missing&&P.ver)P.ver=0;
+  }catch(e){liveMsg('offline · retrying','stale')}
   finally{P.busy=false}}
-let pulseTimer=null;
-function pulseStart(){pulseStop();if(view==='pulse'){paintFilters();paintPresets();paintSeg();if(P.first)for(const c of ['new','final','migrated'])renderCol(c)}else trendRender();pulsePoll();pulseTimer=setInterval(pulsePoll,P.warming?1500:3000)}
-function pulseStop(){clearInterval(pulseTimer);pulseTimer=null}
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(isP(view))pulsePoll();watchPoll(true);if(view==='wallets')walletsRefresh()}});
+// Live board: one server-sent-events stream (/api/pulse/stream) instead of a poll every few seconds.
+// Polling stays as the fallback: no EventSource, the server refuses a stream (cap reached), or the stream keeps failing.
+let pulseTimer=null,pulseES=null,pulseMiss=0,pulseErr=0;
+function pulsePollStart(){if(pulseTimer)return;pulsePoll();pulseTimer=setInterval(pulsePoll,P.warming?1500:3000)}
+function pulseConnect(){
+  if(pulseES||pulseTimer||document.hidden||!isP(view))return;
+  if(!window.EventSource||pulseErr>=3){pulsePollStart();return}
+  const es=pulseES=new EventSource('/api/pulse/stream');
+  es.onmessage=ev=>{
+    try{
+      pulseErr=0;
+      const missing=applyPulse(JSON.parse(ev.data));
+      if(!missing){pulseMiss=0;return}
+      if(++pulseMiss<=2){pulseStop();pulseConnect()}        // a row we never received: reconnect for a full snapshot
+      else{pulseStop();P.ver=0;pulsePollStart()}
+    }catch(e){liveMsg('offline · retrying','stale')}
+  };
+  es.onerror=()=>{
+    liveMsg('reconnecting…','stale');
+    pulseErr++;
+    if(es.readyState===2||pulseErr>=3){pulseStop();P.ver=0;pulsePollStart()}   // refused (503) or unreliable: poll instead
+  };
+}
+function pulseStart(){pulseStop();if(view==='pulse'){paintFilters();paintPresets();paintSeg();if(P.first)for(const c of ['new','final','migrated'])renderCol(c)}else trendRender();pulseConnect()}
+function pulseStop(){clearInterval(pulseTimer);pulseTimer=null;if(pulseES){pulseES.close();pulseES=null}}
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){if(isP(view))pulseStop();return}
+  if(isP(view))pulseConnect();
+  watchPoll(true);if(view==='wallets')walletsRefresh()});
 
 // ===================================================================== TRENDING (ranked view of the Pulse universe)
 const TR={k:LS('xs_trend_k_v1','v1'),dust:LS('xs_trend_dust_v1',true)};

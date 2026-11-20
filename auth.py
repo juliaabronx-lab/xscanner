@@ -152,6 +152,9 @@ def _me_payload(request: Request) -> dict[str, Any]:
     }
 
 
+_PRIVATE = ("/api/auth/", "/api/user/", "/api/me", "/login", "/logout", "/auth/")
+
+
 class AuthGateMiddleware(BaseHTTPMiddleware):
     """When AUTH_REQUIRED=true and Google is configured, demand a signed-in session.
 
@@ -160,6 +163,14 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
+        resp = await self._gate(request, call_next)
+        p = request.url.path
+        if p.startswith(_PRIVATE):      # per-user / session responses: never stored by a browser cache, proxy or CDN
+            resp.headers["Cache-Control"] = "no-store"
+            resp.headers["Vary"] = "Cookie"
+        return resp
+
+    async def _gate(self, request: Request, call_next):
         cfg = settings()
         if not (cfg["required"] and gate_ready(cfg)):
             return await call_next(request)

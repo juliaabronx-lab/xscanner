@@ -18,6 +18,9 @@ fetch_now() is the only blocking call, used for a user-initiated single-coin loo
 No wallets, keys, signing, trading or posting.
 """
 import json, os, re, threading, time, urllib.error, urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import net
 
 UA = {"User-Agent": "Mozilla/5.0 (xScanner read-only; +https://xscanner-c8jo.onrender.com)", "Accept": "application/json"}
 URL = "https://api.rugcheck.xyz/v1/tokens/{mint}/report"
@@ -148,19 +151,46 @@ FUND_CACHE_S = 3600
 FUND_FLAG_N, FUND_FLAG_FRAC, FUND_WARN_N, FUND_WARN_FRAC, FUND_MIN_RESOLVED = 5, 0.5, 3, 0.3, 6
 
 
-def funding_check(a, budget_s=25.0):
+def funding_check(a, budget_s=25.0, workers=1):
     """Public-RPC check: which wallet created/funded each of the top holders (oldest transaction), and in which slot.
-    Many top holders created by ONE wallet in the same few slots = a bundle. Best-effort; failures leave a['fund']=None."""
+    Many top holders created by ONE wallet in the same few slots = a bundle. Best-effort; failures leave a['fund']=None.
+
+    workers=1 (the background scan) stays strictly serial and keeps the global RPC gap.
+    A user waiting on a lookup passes workers>1: those calls skip the gap and run together,
+    so ten holders do not add ten round trips end to end. The verdict math below is unchanged."""
     import sol_rpc
     t0, res, errs = time.time(), [], 0
-    for owner, pct in (a.get("owners") or [])[:10]:
-        if time.time() - t0 > budget_s or errs >= 3: break
-        try:
-            r = sol_rpc.first_funding(owner)
-        except sol_rpc.RpcError:
-            errs += 1
-            continue
-        if r: res.append((owner, pct, r[0], r[1]))
+    owners = (a.get("owners") or [])[:10]
+    if workers <= 1:
+        for owner, pct in owners:
+            if time.time() - t0 > budget_s or errs >= 3: break
+            try:
+                r = sol_rpc.first_funding(owner)
+            except sol_rpc.RpcError:
+                errs += 1
+                continue
+            if r: res.append((owner, pct, r[0], r[1]))
+    else:
+        lock = threading.Lock()
+        def one(item):
+            nonlocal errs
+            owner, pct = item
+            if time.time() - t0 > budget_s: return
+            with lock:
+                if errs >= 3: return
+            try:
+                r = sol_rpc.first_funding(owner, gap=0.0)
+            except sol_rpc.RpcError:
+                with lock: errs += 1
+                return
+            if r:
+                with lock: res.append((owner, pct, r[0], r[1]))
+        n_workers = max(1, min(int(workers), 4, len(owners) or 1))
+        with ThreadPoolExecutor(max_workers=n_workers) as ex:
+            futs = [ex.submit(one, it) for it in owners]
+            for f in as_completed(futs):
+                if time.time() - t0 > budget_s: break
+                f.result()
     n = len(res)
     if n < 3:
         a["fund"] = {"resolved": n, "checked_at": time.time(), "largest": 0}
@@ -317,7 +347,7 @@ def fetch_raw(mint, timeout=6):
     v = RAW.get(mint)
     if v and time.time() - v[0] < CACHE_S: return True
     if not mint or not MINT_RE.match(mint): return False
-    return _do_fetch(mint, timeout=timeout)
+    return _do_fetch(mint, timeout=timeout, gap=False)
 
 
 def get_raw(mint):
@@ -326,17 +356,18 @@ def get_raw(mint):
 
 
 def _http(mint, timeout=15):
-    req = urllib.request.Request(URL.format(mint=mint), headers=UA)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode())
+    # Shared with the live lookup: if that scan already asked RugCheck for this mint, this is a cache hit.
+    return net.get_json(URL.format(mint=mint), timeout=timeout, headers=UA, errors="raise")
 
 
-def _do_fetch(mint, timeout=15):
-    """One upstream call. Returns True on success. Sets the shared backoff on 429/5xx."""
+def _do_fetch(mint, timeout=15, gap=True):
+    """One upstream call. Returns True on success. Sets the shared backoff on 429/5xx.
+    gap=False skips the inter-call sleep. The background worker keeps the gap; a person waiting
+    on Paste-CA does not sit through it."""
     global _backoff_until, _backoff_n, _last_call
     with _lock:
         if time.time() < _backoff_until: return False
-        wait = _last_call + GAP_S - time.time()
+        wait = (_last_call + GAP_S - time.time()) if gap else 0
         _last_call = time.time() + max(0, wait)
     if wait > 0: time.sleep(wait)
     try:
@@ -358,11 +389,12 @@ def _do_fetch(mint, timeout=15):
             stats["fetched"] += 1
         _save()
         return True
-    except urllib.error.HTTPError as e:
+    except (urllib.error.HTTPError, net.UpstreamError) as e:
+        code = getattr(e, "code", None) or 0
         with _lock:
-            _fail[mint] = time.time(); stats["failed"] += 1; stats["last_error"] = f"HTTP {e.code}"
-            if e.code == 429 or e.code >= 500:
-                if e.code == 429: stats["rate_limited"] += 1
+            _fail[mint] = time.time(); stats["failed"] += 1; stats["last_error"] = f"HTTP {code}"
+            if code == 429 or code >= 500:
+                if code == 429: stats["rate_limited"] += 1
                 _backoff_n = min(_backoff_n + 1, 5)
                 _backoff_until = time.time() + min(30 * 2 ** (_backoff_n - 1), 600)
     except Exception as e:
@@ -371,7 +403,7 @@ def _do_fetch(mint, timeout=15):
     return False
 
 
-def ensure_funding(mint, budget_s=25.0):
+def ensure_funding(mint, budget_s=25.0, workers=1):
     """Run the RPC funding check for a cached report if it has none (or an old one). Never raises."""
     v = _cache.get(mint)
     if not v: return
@@ -379,7 +411,7 @@ def ensure_funding(mint, budget_s=25.0):
     if fd and time.time() - (fd.get("checked_at") or 0) < FUND_CACHE_S and (fd.get("resolved") or 0) >= 3: return
     if fd and time.time() - (fd.get("checked_at") or 0) < 120: return
     try:
-        funding_check(a, budget_s)
+        funding_check(a, budget_s, workers=workers)
         _save()
     except Exception as e:
         stats["last_error"] = "funding " + type(e).__name__
@@ -464,13 +496,15 @@ def assess(mint, rc=None, queue=True):
 
 
 def fetch_now(mint, timeout=6):
-    """Blocking, short-timeout fetch for a user-initiated lookup. Falls back silently to the cache."""
+    """Blocking, short-timeout fetch for a user-initiated lookup. Falls back silently to the cache.
+    The background worker stays serial; this path overlaps the holder-funding reads and skips the
+    inter-call gap so the HTTP response is not stuck behind the scan loop's politeness delay."""
     _load()
     if not mint or not MINT_RE.match(mint): return False
     a, age = get_cached(mint)
     if a and age < CACHE_S:
-        ensure_funding(mint, 5.0); return True
+        ensure_funding(mint, 5.0, workers=4); return True
     if time.time() < _backoff_until: return False
-    ok = _do_fetch(mint, timeout=timeout)
-    if ok: ensure_funding(mint, 5.0)
+    ok = _do_fetch(mint, timeout=timeout, gap=False)
+    if ok: ensure_funding(mint, 5.0, workers=4)
     return ok
