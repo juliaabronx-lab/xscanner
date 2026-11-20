@@ -13,6 +13,7 @@ GAP_S = float(os.environ.get("SOL_RPC_GAP_S", "0.12"))
 _lock = threading.Lock()
 _last = 0.0
 _down = {}      # url -> (until_epoch, n)
+MAX_ACCOUNTS = 10     # free endpoints: publicnode answers 403 (-32602) above 10 accounts per getMultipleAccounts
 stats = {"calls": 0, "errors": 0, "last_error": None, "last_ok_url": None}
 
 
@@ -55,6 +56,10 @@ def call(method, params, timeout=8):
             return d.get("result")
         except urllib.error.HTTPError as e:
             last_err = f"HTTP {e.code}"
+            try: body_txt = e.read().decode("utf-8", "ignore")[:300] if hasattr(e, "read") and e.fp else ""
+            except Exception: body_txt = ""
+            if e.code == 403 and "-32602" in body_txt:        # our request was malformed for this endpoint: not an outage
+                last_err = "invalid request (" + body_txt[60:120] + ")"; continue
             if e.code in (429, 403) or e.code >= 500:
                 with _lock:
                     n = min(n + 1, 5); _down[url] = (time.time() + min(30 * 2 ** (n - 1), 600), n)
@@ -84,12 +89,14 @@ def token_balances(accounts):
     source reported instead of discovering our own.)"""
     accounts = list(accounts)[:100]
     if not accounts: return {}
-    r = call("getMultipleAccounts", [accounts, {"encoding": "jsonParsed"}])
     out = {}
-    for addr, v in zip(accounts, (r or {}).get("value") or []):
-        info = (((v or {}).get("data") or {}).get("parsed") or {}).get("info") or {}
-        ta = info.get("tokenAmount") or {}
-        if "amount" in ta: out[addr] = float(ta["amount"])
+    for i in range(0, len(accounts), MAX_ACCOUNTS):           # publicnode refuses more than 10 accounts per call
+        chunk = accounts[i:i + MAX_ACCOUNTS]
+        r = call("getMultipleAccounts", [chunk, {"encoding": "jsonParsed"}])
+        for addr, v in zip(chunk, (r or {}).get("value") or []):
+            info = (((v or {}).get("data") or {}).get("parsed") or {}).get("info") or {}
+            ta = info.get("tokenAmount") or {}
+            if "amount" in ta: out[addr] = float(ta["amount"])
     return out
 
 
@@ -99,7 +106,7 @@ def first_funding(owner, max_sigs=150):
     sigs = call("getSignaturesForAddress", [owner, {"limit": max_sigs}]) or []
     if not sigs or len(sigs) >= max_sigs: return None
     old = sigs[-1]
-    tx = call("getTransaction", [old["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}])
+    tx = call("getTransaction", [old["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
     if not tx: return None
     msg = (tx.get("transaction") or {}).get("message") or {}
     keys = [k.get("pubkey") if isinstance(k, dict) else k for k in (msg.get("accountKeys") or [])]

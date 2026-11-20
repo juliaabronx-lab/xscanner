@@ -16,6 +16,13 @@ ENDPOINTS = [
     ("/api/coins/{mint}", "JSON: one coin from the latest scan with story, bundle detail, data-confidence detail, RugCheck and X data."),
     ("/api/lookup/{mint}", "JSON: score any Solana token by its mint address (live scan if it is not in the feed; rate limited to about 10 per minute)."),
     ("/api/ohlcv/{pool}?tf=5m&token={mint}", "JSON: candles for a pool. tf = 1m, 5m, 15m, 1h, 4h, 1d. Fields: candles[{t,o,h,l,c,v}], source, limited, n_candles."),
+    ("/pulse", "Pulse board (JavaScript): live New pairs / Final stretch / Migrated columns for pump.fun tokens with filters and presets. Token pages live at /token/{mint}."),
+    ("/api/pulse?since={ver}&h={hash}", "JSON: the Pulse board, incremental (rows changed since `ver`). Fields per row: mint m, symbol s, name n, mcap mc, liquidity lq, volume v1/v24, buys/sells b1/s1, holders h, top-10 % t10, dev % dv, curve % cv (cvs = chain or est), stage st = new / final / migrated, bundle bd, sniper % sn. Missing fields are unknown, not safe."),
+    ("/api/token/{mint}", "JSON: trader token page data: market, security (mint / freeze authority, LP, top-10, dev, insiders), holders table, bonding curve %, early-block snipers / same-block bundle, deep links (Jupiter / Axiom / Photon open the other site; xScanner never trades)."),
+    ("/api/trades/{pool}", "JSON: last trades of a pool (live tape) and top traders summed from them."),
+    ("/api/dev/{wallet}", "JSON: other pump.fun tokens a dev wallet launched and how they ended (background job: poll while status is pending)."),
+    ("/api/wallet/{addr}", "JSON: watch-only recent token buys and sells of a public wallet (poll while status is pending)."),
+    ("/api/quotes?mints=a,b", "JSON: prices for up to 30 mints (watchlist)."),
     ("/api/narratives", "JSON: X narratives and themes for the coins in the scan."),
     ("/api/risk", "JSON: risk-radar axes (paid shill, copycat, bundle, dump, rug, thin liquidity) per coin."),
     ("/api/health", "JSON: liveness, uptime, scan loop status."),
@@ -36,7 +43,7 @@ def robots(base=None):
 
 def sitemap(base=None):
     now = datetime.now(MYT).strftime("%Y-%m-%d")
-    urls = ["/", "/text", "/llms.txt"]
+    urls = ["/", "/pulse", "/text", "/llms.txt"]
     rows = "".join(f"<url><loc>{html.escape(_abs(base, u))}</loc><lastmod>{now}</lastmod><changefreq>hourly</changefreq></url>" for u in urls)
     return f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{rows}</urlset>\n'
 

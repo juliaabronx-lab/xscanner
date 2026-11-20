@@ -17,6 +17,9 @@ import images as im
 import bundle as bd
 import confidence as cf
 import story as st_
+import pulse
+import trader as trd
+import tokenpage as tkp
 from fastapi.responses import Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -891,6 +894,10 @@ def _start_keepalive():
 def _start_live():
     _start_keepalive()
     try:
+        pulse.start()        # Pulse board worker: viewer-driven, slow trickle while nobody watches
+    except Exception:
+        pass
+    try:
         bd._load(); cf._load(); ch._load_store(); ph.load()      # disk store + bundled seed: a restart never resets to 'unavailable'
         ph.price_hint = _price_hint
         ph.start(_report_top)                                     # one price snapshot per coin per minute (feeds the charts)
@@ -1068,7 +1075,77 @@ def text_view(format: str = "html"):
     return Response(body, media_type=ctype, headers={"Cache-Control": "public, max-age=30"})
 
 
+
+# ---------------------------------------------------------------- Pulse board + trader token page (read-only, free public data)
+_NOSTORE = {"Cache-Control": "no-store"}
+_tok_builds = []
+
+
+@app.get("/api/pulse")
+def api_pulse(since: int = 0, h: str = ""):
+    """Incremental board: only the rows that changed since `since`, plus the column order when `h` is stale. Poll every few seconds."""
+    return JSONResponse(pulse.payload(max(0, since), h[:32]), headers=_NOSTORE)
+
+
+@app.get("/api/pulse/status")
+def api_pulse_status():
+    return JSONResponse(pulse.status(), headers=_NOSTORE)
+
+
+def _valid_mint_or_400(m):
+    m = (m or "").strip()
+    if not lk.valid_mint(m): raise HTTPException(400, "That is not a valid Solana address.")
+    return m
+
+
+@app.get("/api/token/{mint}")
+def api_token(mint: str):
+    """Everything the trader token page needs except our score / story (those come from /api/lookup/{mint})."""
+    mint = _valid_mint_or_400(mint)
+    now = time.time()
+    while _tok_builds and now - _tok_builds[0] > 60: _tok_builds.pop(0)
+    if len(_tok_builds) >= 45 and not tkp._tok_cache.get(mint):
+        raise HTTPException(429, "The token page is busy right now. Try again in a few seconds.")
+    _tok_builds.append(now)
+    try:
+        return JSONResponse(tkp.detail(mint), headers=_NOSTORE)
+    except Exception as e:
+        raise HTTPException(502, "Token data is unavailable right now (%s). Try again in a moment." % type(e).__name__)
+
+
+@app.get("/api/trades/{pool}")
+def api_trades(pool: str, token: str = ""):
+    """Live trades tape of a pool (GeckoTerminal) plus top traders summed from it."""
+    pool = _valid_mint_or_400(pool)
+    return JSONResponse(trd.trades(pool, token or None), headers=_NOSTORE)
+
+
+@app.get("/api/dev/{wallet}")
+def api_dev(wallet: str, mint: str = ""):
+    """Other pump.fun tokens a dev wallet launched and how they ended. Runs in the background: poll until status is not 'pending'."""
+    wallet = _valid_mint_or_400(wallet)
+    return JSONResponse(trd.dev_history(wallet, mint or None), headers=_NOSTORE)
+
+
+@app.get("/api/wallet/{addr}")
+def api_wallet(addr: str):
+    """Watch-only: recent token buys / sells of a public wallet. No keys. Poll until status is not 'pending'."""
+    addr = _valid_mint_or_400(addr)
+    return JSONResponse(trd.wallet_activity(addr), headers=_NOSTORE)
+
+
+@app.get("/api/quotes")
+def api_quotes(mints: str = ""):
+    """Prices for a watchlist (up to 30 mints, comma separated)."""
+    ms = [m.strip() for m in (mints or "").split(",") if m.strip()][:30]
+    ms = [m for m in ms if lk.valid_mint(m)]
+    if not ms: return JSONResponse({"quotes": {}, "t": int(time.time())}, headers=_NOSTORE)
+    return JSONResponse({"quotes": trd.quotes(ms, ready=pulse.ready_rows()), "t": int(time.time())}, headers=_NOSTORE)
+
+
+@app.api_route("/token/{mint}", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/pulse", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/", methods=["GET", "HEAD"])
-def index():
+def index(mint: str = ""):
     # no-cache so phones always pick up the latest page after a fix
     return FileResponse(os.path.join(HERE, "static", "index.html"), headers={"Cache-Control": "no-cache"})

@@ -165,13 +165,14 @@ async function openCoin(mint,pre){
    ${x.shill_reasons&&Object.keys(x.shill_reasons).length?`<div>${Object.entries(x.shill_reasons).map(([k,v])=>`<span class="pill red">${esc(k)}: ${v}</span>`).join('')}</div>`:''}
    ${(x.shill_accts||c.paid_accounts||[]).length?`<p class="muted">Paid accounts: ${(x.shill_accts||c.paid_accounts).slice(0,12).map(a=>'@'+esc(typeof a==='string'?a:a.username||JSON.stringify(a))).join(', ')}</p>`:''}
    ${c.narrative?`<h3>Hourly X mentions</h3>${spark(c.narrative.series)}`:''}
+   <p style="margin:10px 0"><a class="primary" style="display:inline-block;text-decoration:none" href="/token/${esc(c.mint)}" onclick="if(window.openToken){closeDrawer();openToken('${esc(c.mint)}');return false}">Open trader page →</a></p>
    <h3 style="margin-top:14px">RugCheck</h3><div class="kv"><div><span>Score</span>${rc.score??'—'}</div><div><span>Top10 / top1</span>${rc.top10??'—'}% / ${rc.top1??'—'}%</div><div><span>Holders</span>${rc.holders??'—'}</div>
    <div><span>RugCheck bundle</span>${rc.bundle_pct??'—'}% (${rc.bundle_wallets??'—'} wallets)</div><div><span>Insider networks</span>${rc.insider_networks??'—'}</div><div><span>Creator rugged</span>${rc.creator_rugged??'—'}</div>
    <div><span>Mint auth</span>${rc.mint_auth?'ON':'off'}</div><div><span>Freeze auth</span>${rc.freeze_auth?'ON':'off'}</div><div><span>Launchpad</span>${esc(rc.launchpad??'—')}</div></div>
    ${(rc.risks||[]).length?`<div>${rc.risks.map(r=>`<span class="pill amb">${esc(typeof r==='string'?r:r.name||JSON.stringify(r))}</span>`).join('')}</div>`:''}
    <h3 style="margin-top:14px">Links</h3><p>${c.url?`<a href="${esc(c.url)}" target="_blank" rel="noopener">DexScreener</a> · `:''}<a href="https://rugcheck.xyz/tokens/${esc(c.mint)}" target="_blank" rel="noopener">RugCheck</a>${(c.organic_examples||[]).map((u,i)=>` · <a href="${esc(u)}" target="_blank" rel="noopener">organic post ${i+1}</a>`).join('')}</p>
    <p class="muted" style="font-size:11px;word-break:break-all">Mint ${esc(c.mint)}<br>Pool ${esc(c.pool)}</p>`;
-  drawerGen++;
+  drawerGen++;if(typeof CH!=='undefined')CH.h=0;
   $('#drawer').classList.add('open');$('#scrim').classList.add('on');$('#scrim').classList.remove('hidden');
   mountChart(c);
 }
@@ -235,7 +236,7 @@ async function loadPaper(){
     (d.candidates_seen||[]).map(c=>`<tr><td>${dt(c.time)}</td><td><b>${esc(c.ticker)}</b></td><td><span class="pill ${/buy/.test(c.decision)?'grn':/sell/.test(c.decision)?'pur':''}">${esc(c.decision)}</span></td><td class="muted" style="white-space:normal;min-width:320px">${esc((c.reason||'').slice(0,220))}</td></tr>`).join('')+'</tbody>';
 }
 
-const loaders={feed:loadFeed,narr:loadNarr,risk:loadRisk,paper:loadPaper};
+const loaders={feed:loadFeed,narr:loadNarr,risk:loadRisk,paper:loadPaper,pulse:async()=>{},watch:async()=>{},wallets:async()=>{},token:async()=>{}};
 async function refresh(){try{await loadSummary();await loaders[view]()}catch(e){banner('Failed to load: '+esc(e.message),'err')}}
 function show(v){
   const prev=view, first=!show.ready;
@@ -307,7 +308,7 @@ $$('#feed th[data-s]').forEach(th=>th.onclick=()=>{sort={k:th.dataset.s,desc:sor
 $('#fScore').oninput=()=>{$('#fScoreV').textContent=$('#fScore').value;loadFeed()};
 $('#radarSel').onchange=drawRadar; $('#dClose').onclick=closeDrawer; $('#scrim').onclick=closeDrawer;
 document.addEventListener('keydown',e=>e.key==='Escape'&&closeDrawer());
-loadAuth(); pollScan(); show((location.hash||'#feed').slice(1) in loaders?(location.hash||'#feed').slice(1):'feed');
+loadAuth(); pollScan(); show((location.hash||'#pulse').slice(1) in loaders?(location.hash||'#pulse').slice(1):'pulse');
 setInterval(()=>{if(publicReadonly||!$('#scanBtn').disabled){refresh();pollScan().catch(()=>{})}},60000);
 // ---- Live-scan indicator ("Last scan: N min ago"), ticks every 15 s between data refreshes
 var liveInfo=null;

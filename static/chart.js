@@ -43,7 +43,7 @@ function mountChart(c){
   const el=document.getElementById('chNative');
   if(!window.LightweightCharts){chMsg('Chart library failed to load. Showing the DexScreener chart instead.');setMode('dex');return}
   const LC=window.LightweightCharts;
-  CH.chart=LC.createChart(el,{width:el.clientWidth,height:300,layout:{background:{type:'solid',color:'#0a0a0a'},textColor:'#7d8187',fontFamily:'Geist, system-ui, sans-serif',fontSize:11},
+  CH.chart=LC.createChart(el,{width:el.clientWidth,height:CH.h||300,layout:{background:{type:'solid',color:'#0a0a0a'},textColor:'#7d8187',fontFamily:'Geist, system-ui, sans-serif',fontSize:11},
     grid:{vertLines:{color:'#1f2228'},horzLines:{color:'#1f2228'}},rightPriceScale:{borderColor:'#1f2228'},
     timeScale:{borderColor:'#1f2228',timeVisible:true,secondsVisible:false},crosshair:{mode:0},
     localization:{priceFormatter:fmtAxis,timeFormatter:t=>new Date(t*1000).toLocaleString('en-GB',{timeZone:'Asia/Kuala_Lumpur',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}});

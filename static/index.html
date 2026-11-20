@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>xScanner · Solana memecoin scanner: scores, rug and bundle risk, live charts</title>
-<meta name="description" content="xScanner is a free, read-only Solana / pump.fun memecoin scanner. Every coin gets a 0-100 score, a bundle / insider-cluster check, a data-confidence check and a live chart. Paste any token CA to scan it. Analysis only, no trading. Plain-text view at /text, site guide at /llms.txt.">
+<title>xScanner · Solana memecoin Pulse board and scanner: new pairs, final stretch, migrated, rug and bundle risk</title>
+<meta name="description" content="xScanner is a free, read-only Solana / pump.fun memecoin terminal: a live Pulse board (new pairs, final stretch, migrated), token pages with chart, trades, holders, dev history and security, a watchlist and a watch-only wallet tracker. Rug and bundle checks. Analysis only, not financial advice.">
 <meta property="og:title" content="xScanner · Solana memecoin CA scanner">
 <meta property="og:description" content="Paste a Solana token CA to scan rug risk, paid shills, copycats and a live chart. Free, read-only.">
 <meta name="robots" content="index,follow">
@@ -10,8 +10,9 @@
 <link rel="alternate" type="text/html" href="/text" title="Plain HTML view of the latest scan">
 <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
 <link rel="apple-touch-icon" href="/static/logo.svg">
-<link rel="stylesheet" href="/static/style.css?v=fix7">
-<link rel="stylesheet" href="/static/space.css?v=fix7">
+<link rel="stylesheet" href="/static/style.css?v=fix8">
+<link rel="stylesheet" href="/static/space.css?v=fix8">
+<link rel="stylesheet" href="/static/trader.css?v=fix8">
 <link rel="modulepreload" href="/static/vendor/three-0.170.0.module.min.js">
 <script>try{var _fx=JSON.parse(localStorage.getItem('xs_fx_v1')||'{}');if(_fx.motion===false||(matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches))document.documentElement.classList.add('fx-off')}catch(e){}</script>
 </head><body>
@@ -25,11 +26,14 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
 <header class="top">
   <div class="brand"><img class="logo" src="/static/logo.svg" alt="xScanner logo" width="34" height="34"><div><h1>x<span class="accent">Scanner</span></h1><small>Solana · pump.fun · analysis &amp; paper trades only</small></div></div>
   <nav id="tabs">
-    <button data-v="feed" class="on">Coin feed</button>
+    <button data-v="pulse" class="on">Pulse</button>
+    <button data-v="feed">Coin feed</button>
     <button data-v="narr">Narratives</button>
     <button data-v="risk">Risk radar</button>
     <button data-v="paper">Paper P&amp;L</button>
     <button data-v="xfeed" id="xNav">X Live <span id="xNavBadge" class="nbadge hidden"></span></button>
+    <button data-v="watch" id="wNav">Watchlist <span id="wNavBadge" class="nbadge hidden"></span></button>
+    <button data-v="wallets">Wallets</button>
   </nav>
   <div class="actions">
     <div id="authBox" class="authbox"></div>
@@ -64,7 +68,62 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
 <section id="stats" class="statstrip" aria-label="Scan summary"></section>
 
 <main>
-  <section id="v-feed" class="view">
+  <section id="v-pulse" class="view">
+    <div class="disc" role="note"><b>Not financial advice.</b> xScanner is read-only analysis of public data: it holds no keys and cannot buy or sell. Memecoins are extremely risky and most go to zero. “Open in Jupiter / Axiom / Photon” links leave this site.</div>
+    <div class="pbar-top">
+      <div class="plive"><i id="pLiveDot"></i><span id="pLiveTxt">connecting…</span><button class="linkbtn" id="pSrcBtn" type="button" title="Data sources">sources</button></div>
+      <div class="ppresets" id="pPresets" role="group" aria-label="Presets"></div>
+      <button class="ghost" id="pFiltBtn" type="button" aria-expanded="false">Filters <span id="pFiltN" class="nbadge hidden"></span></button>
+    </div>
+    <div id="pSrcBox" class="srcbox hidden"></div>
+    <form id="pFilters" class="pfilters hidden" autocomplete="off">
+      <label>Min liq $<input type="number" name="minLiq" min="0" step="500" placeholder="0"></label>
+      <label>Min mcap $<input type="number" name="minMc" min="0" step="1000" placeholder="0"></label>
+      <label>Max mcap $<input type="number" name="maxMc" min="0" step="1000" placeholder="any"></label>
+      <label>Max top-10 %<input type="number" name="maxTop10" min="0" max="100" step="1" placeholder="any"></label>
+      <label>Max dev %<input type="number" name="maxDev" min="0" max="100" step="0.5" placeholder="any"></label>
+      <label>Max age (min)<input type="number" name="maxAge" min="0" step="1" placeholder="any"></label>
+      <label>Min holders<input type="number" name="minHolders" min="0" step="5" placeholder="0"></label>
+      <label>Min txns 1h<input type="number" name="minTx" min="0" step="5" placeholder="0"></label>
+      <label class="chk"><input type="checkbox" name="hideBundled"> Hide bundled</label>
+      <label class="chk"><input type="checkbox" name="hasSocials"> Has socials</label>
+      <span class="pf-actions"><button type="button" class="ghost" id="pFReset">Reset</button><button type="button" class="ghost" id="pFSave">Save preset…</button></span>
+    </form>
+    <div class="pseg" id="pSeg" role="tablist"><button data-c="new" class="on">New pairs <b></b></button><button data-c="final">Final stretch <b></b></button><button data-c="migrated">Migrated <b></b></button></div>
+    <div class="pboard" id="pBoard">
+      <section class="pcol on" data-c="new"><header><h3>New pairs <b class="pcnt"></b></h3><small>Just created on a bonding curve (under 70%)</small></header><div class="plist"></div></section>
+      <section class="pcol" data-c="final"><header><h3>Final stretch <b class="pcnt"></b></h3><small>On the curve at 70-100%, close to migrating</small></header><div class="plist"></div></section>
+      <section class="pcol" data-c="migrated"><header><h3>Migrated <b class="pcnt"></b></h3><small>Moved to an AMM pool (PumpSwap / Raydium) in the last 24 h</small></header><div class="plist"></div></section>
+    </div>
+    <p class="muted pnote">Rows come from free public APIs (GeckoTerminal, DexScreener, Jupiter, the Solana RPC) and are rate limited, so some fields fill in a few seconds after a token appears. <b>—</b> means not available yet, never “safe”. Bundle and sniper flags only show once a token has been checked. Bundle = RugCheck / holder clustering; “4+ in one block” = 4 or more txs in one block near launch; sniper % = supply bought in the first blocks.</p>
+  </section>
+
+  <section id="v-watch" class="view hidden">
+    <div class="disc" role="note"><b>Not financial advice.</b> Alerts are price-move notices from public data, not trade signals. They only run while this page is open.</div>
+    <div class="wl-head">
+      <form id="wlAdd" class="wl-add" autocomplete="off"><input id="wlIn" type="text" spellcheck="false" placeholder="Add a token by CA (mint address)…" aria-label="Token contract address"><button class="primary" type="submit">★ Watch</button></form>
+      <label>Alert when price moves <select id="wlPct"><option value="5">±5%</option><option value="10">±10%</option><option value="20" selected>±20%</option><option value="35">±35%</option><option value="50">±50%</option><option value="100">±100%</option></select></label>
+      <label class="chk"><input type="checkbox" id="wlNotif"> Browser notifications</label>
+    </div>
+    <div id="wlMsg" class="searchmsg hidden"></div>
+    <div class="grid2 wl-grid"><div class="card"><h3>Watching <span id="wlCount" class="muted" style="font-size:13px"></span></h3><div id="wlList"></div></div>
+    <div class="card"><h3>Alerts <button class="linkbtn" id="wlClear" type="button">clear</button></h3><div id="wlAlerts"></div></div></div>
+  </section>
+
+  <section id="v-wallets" class="view hidden">
+    <div class="disc" role="note"><b>Watch-only.</b> Paste public wallet addresses only. Never paste a private key or seed phrase anywhere. xScanner reads public on-chain data and holds no keys. Not financial advice.</div>
+    <div class="wl-head">
+      <form id="wAdd" class="wl-add" autocomplete="off"><input id="wIn" type="text" spellcheck="false" placeholder="Public wallet address…" aria-label="Wallet address"><input id="wLabel" type="text" maxlength="24" placeholder="Label (optional)" aria-label="Label"><button class="primary" type="submit">Track</button></form>
+      <span id="wStat" class="muted"></span>
+    </div>
+    <div id="wMsg" class="searchmsg hidden"></div>
+    <div class="grid2 wl-grid"><div class="card"><h3>Tracked wallets</h3><div id="wList"></div></div>
+    <div class="card"><h3>Recent activity</h3><div id="wFeed"></div></div></div>
+  </section>
+
+  <section id="v-token" class="view hidden"><div id="tokBody"></div></section>
+
+  <section id="v-feed" class="view hidden">
     <div class="filters">
       <label>Min score <input type="range" id="fScore" min="0" max="100" value="0"><b id="fScoreV">0</b></label>
       <label>Min liquidity $ <input type="number" id="fLiq" min="0" step="1000" value="0"></label>
@@ -127,13 +186,14 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
 
 <aside id="drawer" class="drawer"><button id="dClose" class="x">✕</button><div id="dBody"></div></aside>
 <div id="scrim" class="scrim"></div>
-<footer>Read-only. No wallet keys, signing, trading or posting. Score ≥65 worth a look · 50–64 watch · &lt;50 skip. Juliaa gives the final yes.</footer>
+<footer><b>Not financial advice.</b> Read-only. No wallet keys, signing, trading or posting. Score ≥65 worth a look · 50–64 watch · &lt;50 skip. Juliaa gives the final yes.</footer>
 <script src="/static/vendor/lightweight-charts.js?v=4.2.3"></script>
 <script>window.LightweightCharts||document.write('<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"><\/script>')</script>
 <script>window.__h0=location.hash</script>
-<script src="/static/motion.js?v=fix7"></script>
-<script src="/static/chart.js?v=fix7"></script>
-<script src="/static/app.js?v=fix7"></script>
-<script src="/static/xfeed.js?v=fix7"></script>
-<script type="module" src="/static/moon.js?v=fix7"></script>
+<script src="/static/motion.js?v=fix8"></script>
+<script src="/static/chart.js?v=fix8"></script>
+<script src="/static/app.js?v=fix8"></script>
+<script src="/static/xfeed.js?v=fix8"></script>
+<script src="/static/trader.js?v=fix8"></script>
+<script type="module" src="/static/moon.js?v=fix8"></script>
 </body></html>

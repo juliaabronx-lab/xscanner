@@ -38,6 +38,7 @@ SAFETY_CAP = {"flagged": 0, "elevated": 8, "unavailable": 15}   # out of 25
 
 _lock = threading.Lock()
 _cache = {}            # mint -> {"t": epoch, "a": analysis dict}
+RAW = {}               # mint -> (epoch, slim raw RugCheck report): top holders, LP lock, insiders. Memory only, bounded.
 _fail = {}             # mint -> epoch of the last failed attempt
 _queue = []            # mints waiting for the worker
 _queued = set()
@@ -285,6 +286,45 @@ def _save():
         pass
 
 
+def _slim_raw(rep):
+    """The parts of a RugCheck report the token page shows (holders table, LP lock, insiders, risks). Small, no secrets."""
+    markets, lp_accts = [], set()
+    for m in rep.get("markets") or []:
+        if not isinstance(m, dict): continue
+        for k in ("pubkey", "liquidityA", "liquidityB"):
+            if m.get(k): lp_accts.add(m[k])
+        lp = m.get("lp") or {}
+        markets.append({"type": m.get("marketType"), "pubkey": m.get("pubkey"),
+                        "lp": {k: lp.get(k) for k in ("lpLockedPct", "lpLockedUSD", "lpLocked", "lpUnlocked", "quoteUSD", "baseUSD", "lpTotalSupply") if k in lp}})
+    top = [{"address": h.get("address"), "owner": h.get("owner"), "pct": _num(h.get("pct")), "insider": bool(h.get("insider"))}
+           for h in (rep.get("topHolders") or [])[:20] if isinstance(h, dict)]
+    nets = [{"size": n.get("size"), "type": n.get("type"), "tokenAmount": n.get("tokenAmount"), "activeAccounts": n.get("activeAccounts")}
+            for n in (rep.get("insiderNetworks") or [])[:6] if isinstance(n, dict)]
+    risks = [{"name": r.get("name"), "level": r.get("level"), "description": r.get("description")}
+             for r in (rep.get("risks") or [])[:10] if isinstance(r, dict)]
+    return {"creator": rep.get("creator"), "creator_balance": rep.get("creatorBalance"), "creator_tokens": rep.get("creatorTokens"),
+            "rugged": rep.get("rugged"), "launchpad": (rep.get("launchpad") or {}).get("name") if isinstance(rep.get("launchpad"), dict) else rep.get("launchpad"),
+            "transfer_fee": rep.get("transferFee"), "holders": rep.get("totalHolders"), "markets": markets, "lp_accts": sorted(lp_accts), "top": top,
+            "insider_networks": nets, "insiders_detected": rep.get("graphInsidersDetected"), "risks": risks,
+            "score": rep.get("score_normalised") if rep.get("score_normalised") is not None else rep.get("score"),
+            "mint_auth": (rep.get("token") or {}).get("mintAuthority") or rep.get("mintAuthority"),
+            "freeze_auth": (rep.get("token") or {}).get("freezeAuthority") or rep.get("freezeAuthority"),
+            "total_liq": rep.get("totalMarketLiquidity"), "price": rep.get("price")}
+
+
+def fetch_raw(mint, timeout=6):
+    """Make sure the slim raw report (holders table, LP lock) is fresh: one RugCheck call unless we have it already."""
+    v = RAW.get(mint)
+    if v and time.time() - v[0] < CACHE_S: return True
+    if not mint or not MINT_RE.match(mint): return False
+    return _do_fetch(mint, timeout=timeout)
+
+
+def get_raw(mint):
+    v = RAW.get(mint)
+    return (v[1], time.time() - v[0]) if v else (None, None)
+
+
 def _http(mint, timeout=15):
     req = urllib.request.Request(URL.format(mint=mint), headers=UA)
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -303,6 +343,12 @@ def _do_fetch(mint, timeout=15):
         rep = _http(mint, timeout)
         if not isinstance(rep, dict) or "mint" not in rep: raise ValueError("unexpected report")
         a = analyze(rep)
+        try:
+            RAW[mint] = (time.time(), _slim_raw(rep))
+            if len(RAW) > 150:
+                for k in sorted(RAW, key=lambda k: RAW[k][0])[:50]: RAW.pop(k, None)
+        except Exception:
+            pass
         with _lock:
             old = (_cache.get(mint) or {}).get("a") or {}
             if old.get("fund") and time.time() - (old["fund"].get("checked_at") or 0) < FUND_CACHE_S:
