@@ -1,0 +1,194 @@
+{
+  "measured_at": "2026-11-20",
+  "note": "Live numbers are read-only GETs against https://xscanner-c8jo.onrender.com. Nothing was deployed. After numbers are from this working tree on the same machine, same mint, same harness as the local before.",
+  "live_warm": {
+    "label": "measured",
+    "instance_uptime_s_at_first_hit": 7234,
+    "first_health_s": 0.272,
+    "cold_start_this_session": "not measured; process was already awake. Forcing a sleep was not attempted.",
+    "historical_cold_start_s": {
+      "value": 24.7,
+      "label": "measured in the 19 Nov 2026 audit (keep-awake log), not re-measured here"
+    },
+    "lookup_unseen_AMC": {
+      "mint": "Ghb5t7554q3JhpokcTSfBwSnDPjaQz4qZ8DR6PTEzwCe",
+      "ttfb_s": 7.646,
+      "total_s": 7.646,
+      "status": 200,
+      "cached": false,
+      "score": 6
+    },
+    "lookup_same_mint_cached": {
+      "ttfb_s": 0.244,
+      "total_s": 0.244,
+      "cached": true,
+      "cache_age_s": 8,
+      "score": 6
+    }
+  },
+  "local_lookup_PIPI": {
+    "mint": "6MKD1NkLvWRqdbFtqmgACBwUV5o6GJpZry8HkNgzpump",
+    "symbol": "PIPI",
+    "harness": "lookup_live then bundle.fetch_now + confidence.fetch_now. Before: those two ran after the scan and the request waited up to 14s. After: they start when the scan is allowed and the request waits for whichever finishes last.",
+    "before_s": {
+      "lookup_live": 1.491,
+      "enrich_after": 6.082,
+      "total": 7.573,
+      "label": "measured, one sample"
+    },
+    "after_s": {
+      "lookup_return": 1.939,
+      "total_including_enrich": 2.955,
+      "upstream_calls": 21,
+      "bundle_status": "flagged",
+      "partial": false,
+      "label": "measured, one sample, same mint, caches empty"
+    },
+    "speedup_total": 2.56
+  },
+  "microbenchmarks": {
+    "label": "measured, fake upstreams with fixed sleeps, not the live network",
+    "funding_8_holders_s": {
+      "serial": 0.961,
+      "parallel_workers_4": 0.243,
+      "speedup": 3.95
+    }
+  },
+  "first_load_bytes": {
+    "label": "measured file sizes. JS/CSS/HTML are gzip level 6 (matches the live compressed three.js wire size of 170790). JPEG sizes are raw.",
+    "before_desktop_critical": 738210,
+    "after_desktop_critical": 57670,
+    "removed_from_critical_path": [
+      "three.js",
+      "moon.js",
+      "moon-2k.jpg",
+      "moon-bump-1k.jpg",
+      "lightweight-charts.js"
+    ],
+    "ratio": 12.8,
+    "per_file_before": {
+      "index.html": {
+        "gzip6": 5222,
+        "raw": 16254
+      },
+      "style.css": {
+        "gzip6": 7909,
+        "raw": 34489
+      },
+      "space.css": {
+        "gzip6": 1857,
+        "raw": 4322
+      },
+      "trader.css": {
+        "gzip6": 3556,
+        "raw": 14507
+      },
+      "app.js": {
+        "gzip6": 12786,
+        "raw": 35267
+      },
+      "chart.js": {
+        "gzip6": 4865,
+        "raw": 11391
+      },
+      "motion.js": {
+        "gzip6": 1744,
+        "raw": 4712
+      },
+      "xfeed.js": {
+        "gzip6": 4104,
+        "raw": 9856
+      },
+      "trader.js": {
+        "gzip6": 15048,
+        "raw": 43550
+      },
+      "moon.js": {
+        "gzip6": 4356,
+        "raw": 10503
+      },
+      "lightweight-charts.js": {
+        "gzip6": 51106,
+        "raw": 163684
+      },
+      "three.js": {
+        "gzip6": 171496,
+        "raw": 691648
+      },
+      "moon-2k.jpg": {
+        "gzip6": 340965,
+        "raw": 341749
+      },
+      "moon-bump-1k.jpg": {
+        "gzip6": 112465,
+        "raw": 112412
+      }
+    },
+    "per_file_after": {
+      "index.html": {
+        "gzip6": 5303,
+        "raw": 16299
+      },
+      "style.css": {
+        "gzip6": 7909,
+        "raw": 34489
+      },
+      "space.css": {
+        "gzip6": 1857,
+        "raw": 4322
+      },
+      "trader.css": {
+        "gzip6": 3556,
+        "raw": 14507
+      },
+      "app.js": {
+        "gzip6": 12786,
+        "raw": 35267
+      },
+      "chart.js": {
+        "gzip6": 5124,
+        "raw": 12111
+      },
+      "motion.js": {
+        "gzip6": 1744,
+        "raw": 4712
+      },
+      "xfeed.js": {
+        "gzip6": 4104,
+        "raw": 9856
+      },
+      "trader.js": {
+        "gzip6": 15287,
+        "raw": 44415
+      },
+      "moon.js": {
+        "gzip6": 4356,
+        "raw": 10503
+      },
+      "lightweight-charts.js": {
+        "gzip6": 51106,
+        "raw": 163684
+      },
+      "three.js": {
+        "gzip6": 171496,
+        "raw": 691648
+      },
+      "moon-2k.jpg": {
+        "gzip6": 340965,
+        "raw": 341749
+      },
+      "moon-bump-1k.jpg": {
+        "gzip6": 112465,
+        "raw": 112412
+      }
+    }
+  },
+  "estimated_not_measured": {
+    "download_time_at_1_5_mbit": {
+      "before_s": 3.94,
+      "after_s": 0.31,
+      "assumption": "A 1.5 Mbit/s link, no HTTP overhead, desktop critical bytes only. This bandwidth was not measured."
+    },
+    "cold_start_if_external_pinger_keeps_process_awake": "Would be the warm TTFB (about 0.25-0.33s) instead of the historical 24.7s. Not measured: no pinger was attached and nothing was deployed."
+  }
+}

@@ -34,6 +34,14 @@ function setMode(mode){
     if(!dex.firstChild&&CH.coin?.pool)dex.innerHTML=`<iframe src="https://dexscreener.com/solana/${encodeURIComponent(CH.coin.pool)}?embed=1&theme=dark&info=0&trades=0" loading="lazy" allow="clipboard-write"></iframe>`;
   }else{dex.classList.add('off');dex.classList.remove('hidden');nat.classList.remove('off','hidden');load(true)}
 }
+let _lcLoad=null;
+function loadScript(src){return new Promise(res=>{const s=document.createElement('script');s.src=src;s.onload=()=>res(!!window.LightweightCharts);s.onerror=()=>res(false);document.head.appendChild(s)})}
+function ensureCharts(){
+  if(window.LightweightCharts) return Promise.resolve(true);
+  if(_lcLoad) return _lcLoad;
+  _lcLoad=loadScript('/static/vendor/lightweight-charts.js?v=4.2.3').then(ok=>ok?true:loadScript('https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js'));
+  return _lcLoad;
+}
 function mountChart(c){
   unmountChart();CH.coin=c;CH.lastT=null;CH.lastPx=null;CH.fit=true;
   document.querySelectorAll('.chartcard [data-tf]').forEach(b=>b.onclick=()=>{CH.tf=b.dataset.tf;localStorage.setItem('chartTf',CH.tf);
@@ -41,7 +49,7 @@ function mountChart(c){
   document.querySelectorAll('.chartcard [data-mode]').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
   if(!c.pool){chMsg('No trading pair known for this coin, so there is no chart yet.');return}
   const el=document.getElementById('chNative');
-  if(!window.LightweightCharts){chMsg('Chart library failed to load. Showing the DexScreener chart instead.');setMode('dex');return}
+  if(!window.LightweightCharts){chMsg('<span class="spin"></span> Loading chart…');ensureCharts().then(ok=>{if(CH.coin!==c)return;if(!ok||!window.LightweightCharts){chMsg('Chart library failed to load. Showing the DexScreener chart instead.');setMode('dex');return}mountChart(c)});return}
   const LC=window.LightweightCharts;
   CH.chart=LC.createChart(el,{width:el.clientWidth,height:CH.h||300,layout:{background:{type:'solid',color:'#0a0a0a'},textColor:'#7d8187',fontFamily:'Geist, system-ui, sans-serif',fontSize:11},
     grid:{vertLines:{color:'#1f2228'},horzLines:{color:'#1f2228'}},rightPriceScale:{borderColor:'#1f2228'},

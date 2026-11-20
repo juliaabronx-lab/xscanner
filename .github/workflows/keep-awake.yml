@@ -1,5 +1,10 @@
 # Keeps the free Render instance (and its live scan loop) awake: Render sleeps after ~15 min idle.
 # Read-only GET of the public health endpoint; no secrets used.
+#
+# GitHub's free cron is delayed (often 40-80 min between runs), so this file alone does not beat
+# the 15-minute sleep. Once the process is up it also pings itself (SELF_PING, default 7 min);
+# that cannot wake a sleeping instance. A reliable wake needs an external monitor every 5 minutes.
+# See README, "Keeping the free instance awake".
 name: keep-awake
 on:
   schedule:

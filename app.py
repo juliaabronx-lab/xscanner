@@ -6,7 +6,7 @@ The only side effect is POST /api/scan, which runs `python3 scan.py` (disabled w
 DexScreener + RugCheck refresh, reusing the last x_raw.json; scan.py itself never calls X).
 No wallets, keys, signing, trading or posting anywhere.
 """
-import json, os, re, subprocess, sys, threading, time
+import asyncio, json, os, re, subprocess, sys, threading, time
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request
 import lookup as lk
@@ -21,7 +21,7 @@ import pulse
 import trader as trd
 import tokenpage as tkp
 from fastapi.responses import Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 SCANNER = os.environ.get("SCANNER_DIR", "/workspace/scanner")
@@ -664,6 +664,38 @@ def _client_ip(request: Request):
     return request.client.host if request.client else "unknown"
 
 
+_ENRICH = {}
+_ENRICH_LOCK = threading.Lock()
+
+
+def _start_enrich(mint):
+    """Bundle + confidence do not need the score. Start them when a live lookup is allowed so they
+    overlap DexScreener / RugCheck instead of being added on afterwards (that tail was most of the wait)."""
+    def run(fn, slot):
+        try: slot.append(bool(fn()))
+        except Exception: slot.append(False)
+    slots = {"bd": [], "cf": []}
+    ts = [
+        threading.Thread(target=run, args=(lambda: bd.fetch_now(mint, 6), slots["bd"]), name="enrich-bd", daemon=True),
+        threading.Thread(target=run, args=(lambda: cf.fetch_now(mint, 6), slots["cf"]), name="enrich-cf", daemon=True),
+    ]
+    with _ENRICH_LOCK:
+        _ENRICH[mint] = (time.time(), ts)
+    for t in ts: t.start()
+
+
+def _join_enrich(mint, budget=6.0):
+    with _ENRICH_LOCK:
+        pair = _ENRICH.pop(mint, None)
+    if not pair: return
+    start, ts = pair
+    for t in ts:
+        t.join(max(0.0, budget - (time.time() - start)))
+
+
+lk.ON_MISS.append(_start_enrich)
+
+
 def _recent_lookup(mint):
     """A coin that was in the feed within the last day: serve its last scan instead of failing when DexScreener is busy."""
     _recent_load()
@@ -688,7 +720,9 @@ def lookup_coin(mint: str, request: Request):
                     "note": "Found in the latest scan report."}}
     try:
         r = lk.lookup_live(mint, _client_ip(request))
+        _join_enrich(mint)
     except lk.LookupError_ as e:
+        _join_enrich(mint, budget=0.2)
         stale, sage = lk.stale_cached(mint)
         rec = _recent_lookup(mint)
         if stale:
@@ -700,6 +734,7 @@ def lookup_coin(mint: str, request: Request):
             raise HTTPException(code, e.msg if code != 429 else (
                 e.msg if e.status in (429, 503) else "DexScreener is busy right now. Please try the scan again in a moment."))
     except Exception as e:
+        _join_enrich(mint, budget=0.2)
         stale, sage = lk.stale_cached(mint)
         rec = _recent_lookup(mint)
         if stale:
@@ -708,9 +743,6 @@ def lookup_coin(mint: str, request: Request):
             return rec
         else:
             raise HTTPException(429, "DexScreener is busy right now. Please try the scan again in a moment.")
-    ts = [threading.Thread(target=fn, args=(mint,), daemon=True) for fn in (lambda m: bd.fetch_now(m, 6), lambda m: cf.fetch_now(m, 6))]
-    for t in ts: t.start()
-    for t in ts: t.join(14)
     x = {k: v for k, v in (r.get("x") or {}).items() if k != "top_organic"}
     raw = {**{k: r.get(k) for k in ("score", "parts", "name", "symbol", "mint", "pool", "dex", "url", "age_h", "liq", "mcap",
                                    "vol24", "m5", "h1", "pc5", "pc1", "pc24", "fees_est", "boosts", "reason", "flags", "copycats")},
@@ -900,7 +932,8 @@ def _start_live():
     try:
         bd._load(); cf._load(); ch._load_store(); ph.load()      # disk store + bundled seed: a restart never resets to 'unavailable'
         ph.price_hint = _price_hint
-        ph.start(_report_top)                                     # one price snapshot per coin per minute (feeds the charts)
+        if os.environ.get("PRICEHIST", "1") != "0":
+            ph.start(_report_top)                                 # one price snapshot per coin per minute (feeds the charts)
     except Exception:
         pass
     live.start(XFEED, XQUERIES)   # no-op unless LIVE_SCAN=1; first scan runs immediately
@@ -1023,7 +1056,21 @@ def xfeed_heads(n: int = 60):
             "live_api": bool(live.status["x"]["live"])}
 
 
-app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
+class CachedStaticFiles(StaticFiles):
+    """Versioned URLs (?v= or /vendor/) can be cached for a year. The HTML shell stays no-cache,
+    so a deploy that bumps ?v= is picked up immediately and the old JS is not downloaded again."""
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        resp = super().file_response(full_path, stat_result, scope, status_code)
+        qs = (scope.get("query_string") or b"").decode()
+        path = scope.get("path") or ""
+        if "v=" in qs or "/vendor/" in path:
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            resp.headers["Cache-Control"] = "public, max-age=86400"
+        return resp
+
+
+app.mount("/static", CachedStaticFiles(directory=os.path.join(HERE, "static")), name="static")
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -1083,8 +1130,36 @@ _tok_builds = []
 
 @app.get("/api/pulse")
 def api_pulse(since: int = 0, h: str = ""):
-    """Incremental board: only the rows that changed since `since`, plus the column order when `h` is stale. Poll every few seconds."""
+    """Incremental board: only the rows that changed since `since`, plus the column order when `h` is stale.
+    Still the contract for clients that poll. The page itself uses /api/pulse/stream."""
     return JSONResponse(pulse.payload(max(0, since), h[:32]), headers=_NOSTORE)
+
+
+@app.get("/api/pulse/stream")
+async def api_pulse_stream(request: Request):
+    """Server-sent events for the Pulse board. One connection replaces a poll every few seconds.
+    Each `data` event is the same JSON as GET /api/pulse. Comment lines are keep-alives.
+    Polling stays available for clients that cannot hold a stream."""
+    async def gen():
+        last_ver, last_h = -1, ""
+        while True:
+            if await request.is_disconnected():
+                break
+            since = 0 if last_ver < 0 else last_ver
+            snap = await asyncio.to_thread(pulse.payload, since, last_h)
+            changed = last_ver < 0 or snap.get("ver") != last_ver or snap.get("rows") or snap.get("cols")
+            if changed:
+                yield "data: " + json.dumps(snap, separators=(",", ":")) + "\n\n"
+                last_ver = snap.get("ver") or 0
+                last_h = snap.get("h") or ""
+            else:
+                yield ": ping\n\n"
+            await asyncio.sleep(1.0)
+    return StreamingResponse(gen(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    })
 
 
 @app.get("/api/pulse/status")

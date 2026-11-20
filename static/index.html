@@ -13,7 +13,6 @@
 <link rel="stylesheet" href="/static/style.css?v=fix8">
 <link rel="stylesheet" href="/static/space.css?v=fix8">
 <link rel="stylesheet" href="/static/trader.css?v=fix8">
-<link rel="modulepreload" href="/static/vendor/three-0.170.0.module.min.js">
 <script>try{var _fx=JSON.parse(localStorage.getItem('xs_fx_v1')||'{}');if(_fx.motion===false||(matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches))document.documentElement.classList.add('fx-off')}catch(e){}</script>
 </head><body>
 <noscript><div style="max-width:760px;margin:24px auto;padding:16px;font:16px/1.5 system-ui,sans-serif;color:#eee;background:#111;border:1px solid #444;border-radius:8px">
@@ -187,13 +186,23 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
 <aside id="drawer" class="drawer"><button id="dClose" class="x">✕</button><div id="dBody"></div></aside>
 <div id="scrim" class="scrim"></div>
 <footer><b>Not financial advice.</b> Read-only. No wallet keys, signing, trading or posting. Score ≥65 worth a look · 50–64 watch · &lt;50 skip. Juliaa gives the final yes.</footer>
-<script src="/static/vendor/lightweight-charts.js?v=4.2.3"></script>
-<script>window.LightweightCharts||document.write('<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"><\/script>')</script>
 <script>window.__h0=location.hash</script>
 <script src="/static/motion.js?v=fix8"></script>
-<script src="/static/chart.js?v=fix8"></script>
+<script src="/static/chart.js?v=perf1"></script>
 <script src="/static/app.js?v=fix8"></script>
 <script src="/static/xfeed.js?v=fix8"></script>
-<script src="/static/trader.js?v=fix8"></script>
-<script type="module" src="/static/moon.js?v=fix8"></script>
+<script src="/static/trader.js?v=perf1"></script>
+<script>
+/* The 3D moon (three.js + two textures, ~600KB) is decoration. Load it after the board can paint. */
+addEventListener('load', function () {
+  var go = function () {
+    var s = document.createElement('script');
+    s.type = 'module';
+    s.src = '/static/moon.js?v=fix8';
+    document.body.appendChild(s);
+  };
+  if (window.requestIdleCallback) requestIdleCallback(go, {timeout: 2000});
+  else setTimeout(go, 800);
+});
+</script>
 </body></html>

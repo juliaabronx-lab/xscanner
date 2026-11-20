@@ -1,0 +1,88 @@
+===== sample 1 08:17:24 =====
+200 ttfb=0.319302 total=0.319441 size=5219 speed=16337
+PATH / ENC gzip content-encoding: gzip | cache-control: no-cache | cf-cache-status: DYNAMIC
+200 ttfb=0.262931 total=0.263018 size=866 speed=3292
+PATH /api/health ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.249495 total=0.249581 size=662 speed=2652
+PATH /api/live ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.239938 total=0.240040 size=997 speed=4153
+PATH /api/summary ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=2.840834 total=2.840958 size=6584 speed=2317
+PATH /api/coins ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.257689 total=0.359648 size=38496 speed=107037
+PATH /api/pulse ENC gzip content-encoding: gzip | cache-control: no-store | cf-cache-status: DYNAMIC
+200 ttfb=0.244362 total=0.244561 size=5132 speed=20984
+PATH /api/paper ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.242086 total=0.242213 size=1440 speed=5945
+PATH /api/narratives ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.241813 total=0.244309 size=12776 speed=52294
+PATH /static/app.js?v=fix8 ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.632768 total=0.632882 size=7873 speed=12439
+PATH /static/style.css?v=fix8 ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.265484 total=0.269513 size=15033 speed=55778
+PATH /static/trader.js?v=fix8 ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+===== sample 2 08:17:35 =====
+200 ttfb=0.601538 total=0.601661 size=5219 speed=8674
+PATH / ENC gzip content-encoding: gzip | cache-control: no-cache | cf-cache-status: DYNAMIC
+200 ttfb=0.224956 total=0.225068 size=865 speed=3843
+PATH /api/health ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.243474 total=0.243579 size=661 speed=2713
+PATH /api/live ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.252940 total=0.253112 size=996 speed=3935
+PATH /api/summary ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.275746 total=0.275868 size=6584 speed=23866
+PATH /api/coins ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.329224 total=0.330276 size=38507 speed=116590
+PATH /api/pulse ENC gzip content-encoding: gzip | cache-control: no-store | cf-cache-status: DYNAMIC
+200 ttfb=0.238579 total=0.238700 size=5132 speed=21499
+PATH /api/paper ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.232899 total=0.233010 size=1440 speed=6179
+PATH /api/narratives ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.334628 total=0.338703 size=12776 speed=37720
+PATH /static/app.js?v=fix8 ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.730460 total=0.730587 size=7873 speed=10776
+PATH /static/style.css?v=fix8 ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.582668 total=0.739603 size=15033 speed=20325
+PATH /static/trader.js?v=fix8 ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+===== sample 3 08:17:44 =====
+200 ttfb=0.242667 total=0.242813 size=5219 speed=21493
+PATH / ENC gzip content-encoding: gzip | cache-control: no-cache | cf-cache-status: DYNAMIC
+200 ttfb=0.575152 total=0.575819 size=866 speed=1503
+PATH /api/health ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.563905 total=0.564016 size=662 speed=1173
+PATH /api/live ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.231284 total=0.231394 size=996 speed=4304
+PATH /api/summary ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.645694 total=0.645825 size=6584 speed=10194
+PATH /api/coins ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.332798 total=0.545653 size=38577 speed=70698
+PATH /api/pulse ENC gzip content-encoding: gzip | cache-control: no-store | cf-cache-status: DYNAMIC
+200 ttfb=0.235585 total=0.235719 size=5132 speed=21771
+PATH /api/paper ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.694568 total=0.694677 size=1440 speed=2072
+PATH /api/narratives ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.234838 total=0.238174 size=12776 speed=53641
+PATH /static/app.js?v=fix8 ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.236678 total=0.236818 size=7873 speed=33244
+PATH /static/style.css?v=fix8 ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.237872 total=0.243951 size=15033 speed=61623
+PATH /static/trader.js?v=fix8 ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+===== once large / identity =====
+200 ttfb=0.228267 total=0.724496 size=170790 speed=235736
+PATH /static/vendor/three-0.170.0.module.min.js ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.243336 total=0.255312 size=50922 speed=199450
+PATH /static/vendor/lightweight-charts.js?v=4.2.3 ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.258839 total=0.268717 size=113080 speed=420814
+PATH /static/img/moon-1k.jpg ENC gzip  |  | cf-cache-status: DYNAMIC
+200 ttfb=0.243348 total=0.438482 size=341749 speed=779391
+PATH /static/img/moon-2k.jpg ENC gzip  |  | cf-cache-status: DYNAMIC
+200 ttfb=0.672695 total=1.243383 size=112412 speed=90408
+PATH /static/img/moon-bump-1k.jpg ENC gzip  |  | cf-cache-status: DYNAMIC
+200 ttfb=0.232553 total=0.232682 size=4356 speed=18720
+PATH /static/moon.js?v=fix8 ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.474826 total=0.671142 size=39559 speed=58942
+PATH /api/xfeed ENC gzip content-encoding: gzip |  | cf-cache-status: DYNAMIC
+200 ttfb=0.227169 total=0.227331 size=2076 speed=9132
+PATH /llms.txt ENC gzip content-encoding: gzip | cache-control: public, max-age=60 | cf-cache-status: DYNAMIC
+200 ttfb=0.231195 total=0.231311 size=5132 speed=22186
+PATH /text ENC gzip content-encoding: gzip | cache-control: public, max-age=30 | cf-cache-status: DYNAMIC

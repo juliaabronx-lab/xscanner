@@ -8,6 +8,9 @@ No wallets, keys, signing or trading.
 """
 import json, os, re, threading, time, types
 from collections import defaultdict, deque
+from datetime import datetime, timezone
+
+import net
 
 SCANNER = os.environ.get("SCANNER_DIR", "/workspace/scanner")
 SCAN_PY = os.path.join(SCANNER, "scan.py")
@@ -22,6 +25,12 @@ STORE = os.environ.get("LOOKUP_CACHE", "/tmp/xscanner-live/lookup_last.json")
 _cache, _cache_lock = {}, threading.Lock()
 _hits, _global, _rate_lock = defaultdict(deque), deque(), threading.Lock()
 _inflight = defaultdict(threading.Lock)
+_scan_mod = {"mod": None, "sig": None}
+_xcache = {"sig": None, "raw": None, "enriched": None}
+# Fired once per cache miss, after the rate limit allows the scan and before upstream calls.
+# The app uses this to start bundle + confidence fetches so they overlap the score, instead of
+# running only after it. Callbacks must not raise.
+ON_MISS = []
 
 
 class LookupError_(Exception):
@@ -34,12 +43,54 @@ def valid_mint(s):
 
 
 def load_scan_module():
-    """Fresh namespace each call so scan.NOW / config are current. Never writes bytecode."""
+    """Compiled scan.py, reused until scan.py or config.json changes. NOW is refreshed every call
+    so age math stays current. Never writes bytecode. Re-execing the module on every lookup was
+    pure overhead (config parse + compile) on the way to the network."""
+    cfg = os.path.join(os.path.dirname(SCAN_PY), "config.json")
+    try:
+        sig = (os.path.getmtime(SCAN_PY), os.path.getmtime(cfg) if os.path.exists(cfg) else 0)
+    except OSError:
+        sig = None
+    mod = _scan_mod["mod"]
+    if mod is not None and sig == _scan_mod["sig"]:
+        mod.NOW = datetime.now(timezone.utc)
+        return mod
     src = open(SCAN_PY, encoding="utf-8").read()
     mod = types.ModuleType("scan_lookup")
     mod.__file__ = SCAN_PY
     exec(compile(src, SCAN_PY, "exec"), mod.__dict__)   # __name__ != "__main__" -> main() not run
+    _scan_mod["mod"], _scan_mod["sig"] = mod, sig
     return mod
+
+
+def _use_net(S):
+    """Point scan.get at the shared cache. One attempt: a 429 must cool down, not retry in a loop."""
+    ua = getattr(S, "UA", None)
+    def get(url, timeout=8, tries=1):
+        return net.get_json(url, timeout=timeout, headers=ua)
+    S.get = get
+
+
+def _x_parts(S):
+    """analyse_x walks every stored post. The file changes about hourly; reuse the result until then."""
+    path = os.path.join(os.path.dirname(getattr(S, "__file__", "") or SCAN_PY), "x_raw.json")
+    try:
+        st = os.stat(path)
+        sig = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        sig = None
+    if _xcache["sig"] == sig and _xcache["enriched"] is not None:
+        return _xcache["raw"], _xcache["enriched"]
+    try:
+        raw = S.load_x()
+    except Exception:
+        raw = {"posts": {}, "users": {}, "counts": {}, "trends": []}
+    try:
+        enriched = S.analyse_x(raw)
+    except Exception:
+        enriched = {"posts": []}
+    _xcache.update(sig=sig, raw=raw, enriched=enriched)
+    return raw, enriched
 
 
 def rate_check(ip):
@@ -147,8 +198,13 @@ def _fast_get(S, deadline, default_timeout=5, default_tries=2):
 
 def live_scan(mint, deadline=None):
     S = load_scan_module()
+    _use_net(S)
     if deadline:
         _fast_get(S, deadline)
+    # RugCheck does not need the pair list to start. Kick it off now so it overlaps DexScreener
+    # and the copycat search; scan.rugcheck() hits the same URL and joins this request.
+    rc_url = f"https://api.rugcheck.xyz/v1/tokens/{mint}/report"
+    threading.Thread(target=lambda: S.get(rc_url, timeout=6, tries=1), name="lookup-rc", daemon=True).start()
     left = (deadline or (time.time() + 20)) - time.time()
     pairs, ds_err = _ds_pairs(S, mint, timeout=min(5, max(2, left / 2)), tries=2 if left > 6 else 1)
     if not pairs and ds_err:
@@ -193,11 +249,7 @@ def live_scan(mint, deadline=None):
         partial.append("copycat check skipped (slow upstream)")
 
     # X: no live X search here (needs agent MCP tools). Reuse last scan's stored posts read-only.
-    try:
-        raw = S.load_x()
-    except Exception:
-        raw = {"posts": {}, "users": {}, "counts": {}, "trends": []}
-    enriched = S.analyse_x(raw)
+    raw, enriched = _x_parts(S)
     c["x"] = S.x_stats(enriched, {mint}, c["symbol"] if c["primary"] else None, c["name"] if c["primary"] else None)
     c["vel"] = S.velocity(raw.get("counts", {}), mint)
     c["trend"] = S.trend_match(c, raw.get("trends", []))
@@ -255,6 +307,9 @@ def lookup_live(mint, ip):
             if stale:
                 return {**stale, "cached": True, "stale": True, "cache_age_s": sage}
             raise _busy(e.msg) if e.status >= 500 or e.status == 503 else e
+        for cb in list(ON_MISS):
+            try: cb(mint)
+            except Exception: pass
         deadline = time.time() + LOOKUP_BUDGET_S
         try:
             c = live_scan(mint, deadline=deadline)

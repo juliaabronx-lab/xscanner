@@ -1,0 +1,136 @@
+{
+  "mint": "6MKD1NkLvWRqdbFtqmgACBwUV5o6GJpZry8HkNgzpump",
+  "symbol": "PIPI",
+  "lookup_s": 1.491,
+  "extra_s": 6.082,
+  "total_s": 7.573,
+  "trace": [
+    {
+      "url": "https://api.dexscreener.com/tokens/v1/solana/6MKD1NkLvWRqdbFtqmgACBwUV5o6GJpZry8HkNgzpump",
+      "s": 0.14,
+      "ok": true,
+      "timeout": 5
+    },
+    {
+      "url": "https://api.dexscreener.com/latest/dex/search?q=PIPI",
+      "s": 0.188,
+      "ok": true,
+      "timeout": 5
+    },
+    {
+      "url": "https://api.rugcheck.xyz/v1/tokens/6MKD1NkLvWRqdbFtqmgACBwUV5o6GJpZry8HkNgzpump/report",
+      "s": 1.046,
+      "ok": true,
+      "timeout": 11.356207656860352
+    },
+    {
+      "url": "https://api.dexscreener.com/latest/dex/tokens/6MKD1NkLvWRqdbFtqmgACBwUV5o6GJpZry8HkNgzpump",
+      "s": 0.048,
+      "ok": true,
+      "timeout": 6
+    },
+    {
+      "url": "https://solana-rpc.publicnode.com",
+      "s": 0.143,
+      "ok": true,
+      "timeout": 8
+    },
+    {
+      "url": "https://api.geckoterminal.com/api/v2/networks/solana/tokens/6MKD1NkLvWRqdbFtqmgACBwUV5o6GJpZry8HkNgzpump",
+      "s": 0.14,
+      "ok": true,
+      "timeout": 6
+    },
+    {
+      "url": "https://api.rugcheck.xyz/v1/tokens/6MKD1NkLvWRqdbFtqmgACBwUV5o6GJpZry8HkNgzpump/report",
+      "s": 0.65,
+      "ok": true,
+      "timeout": 6
+    },
+    {
+      "url": "https://solana-rpc.publicnode.com",
+      "s": 0.186,
+      "ok": true,
+      "timeout": 8
+    },
+    {
+      "url": "https://solana-rpc.publicnode.com",
+      "s": 0.161,
+      "ok": true,
+      "timeout": 8
+    },
+    {
+      "url": "https://api.geckoterminal.com/api/v2/networks/solana/tokens/6MKD1NkLvWRqdbFtqmgACBwUV5o6GJpZry8HkNgzpump/info",
+      "s": 0.306,
+      "ok": true,
+      "timeout": 6
+    },
+    {
+      "url": "https://solana-rpc.publicnode.com",
+      "s": 2.316,
+      "ok": true,
+      "timeout": 8
+    },
+    {
+      "url": "https://solana-rpc.publicnode.com",
+      "s": 0.169,
+      "ok": true,
+      "timeout": 8
+    },
+    {
+      "url": "https://solana-rpc.publicnode.com",
+      "s": 0.169,
+      "ok": true,
+      "timeout": 8
+    },
+    {
+      "url": "https://solana-rpc.publicnode.com",
+      "s": 0.154,
+      "ok": true,
+      "timeout": 8
+    },
+    {
+      "url": "https://solana-rpc.publicnode.com",
+      "s": 0.148,
+      "ok": true,
+      "timeout": 8
+    },
+    {
+      "url": "https://solana-rpc.publicnode.com",
+      "s": 0.175,
+      "ok": true,
+      "timeout": 8
+    },
+    {
+      "url": "https://solana-rpc.publicnode.com",
+      "s": 0.176,
+      "ok": true,
+      "timeout": 8
+    },
+    {
+      "url": "https://solana-rpc.publicnode.com",
+      "s": 0.183,
+      "ok": true,
+      "timeout": 8
+    },
+    {
+      "url": "https://solana-rpc.publicnode.com",
+      "s": 0.157,
+      "ok": true,
+      "timeout": 8
+    },
+    {
+      "url": "https://solana-rpc.publicnode.com",
+      "s": 0.148,
+      "ok": true,
+      "timeout": 8
+    },
+    {
+      "url": "https://solana-rpc.publicnode.com",
+      "s": 0.171,
+      "ok": true,
+      "timeout": 8
+    }
+  ],
+  "score": 18
+}

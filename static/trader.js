@@ -151,23 +151,55 @@ document.addEventListener('click',e=>{const row=e.target.closest('.prow[data-m]'
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.classList&&e.target.classList.contains('prow'))openToken(e.target.dataset.m)});
 setInterval(()=>{if(view!=='pulse'||document.hidden)return;const t=now();$$('.page').forEach(el=>{const cr=+el.dataset.cr;if(cr)el.textContent=ageS(t-cr)});
   if(P.okAt){const s=Math.round(Date.now()/1000-P.okAt);$('#pLiveTxt').textContent=P.warming?'warming up…':`live · updated ${s<=1?'just now':s+'s ago'}`;$('#pLiveDot').className=s>20?'stale':'on'}},1000);
+function applyPulse(j){
+  P.okAt=now();P.src=j.sources;P.warming=!!j.warming;P.sol=j.sol_usd;
+  for(const r of j.rows||[])P.rows.set(r.m,r);
+  if(j.cols){P.cols=j.cols;P.h=j.h}
+  P.ver=j.ver;
+  const missing=Object.values(P.cols).flat().some(m=>!P.rows.has(m));
+  if((j.rows&&j.rows.length)||j.cols||P.first)renderAll();
+  if(!$('#pSrcBox').classList.contains('hidden'))paintSrc();
+  return missing}
 async function pulsePoll(){
   if(P.busy||document.hidden||view!=='pulse')return;P.busy=true;
   try{const j=await api(`/api/pulse?since=${P.ver}&h=${encodeURIComponent(P.h)}`);
-    P.okAt=now();P.src=j.sources;P.warming=!!j.warming;P.sol=j.sol_usd;
-    for(const r of j.rows||[])P.rows.set(r.m,r);
-    if(j.cols){P.cols=j.cols;P.h=j.h}
-    P.ver=j.ver;
-    const missing=Object.values(P.cols).flat().some(m=>!P.rows.has(m));
-    if(missing&&P.ver){P.ver=0}
-    if((j.rows&&j.rows.length)||j.cols||P.first)renderAll();
-    if(!$('#pSrcBox').classList.contains('hidden'))paintSrc();
+    const missing=applyPulse(j);
+    if(missing&&P.ver)P.ver=0;
   }catch(e){$('#pLiveTxt').textContent='offline · retrying';$('#pLiveDot').className='stale'}
   finally{P.busy=false}}
-let pulseTimer=null;
-function pulseStart(){pulseStop();paintFilters();paintPresets();paintSeg();if(P.first)for(const c of ['new','final','migrated'])renderCol(c);pulsePoll();pulseTimer=setInterval(pulsePoll,P.warming?1500:3000)}
-function pulseStop(){clearInterval(pulseTimer);pulseTimer=null}
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(view==='pulse')pulsePoll();watchPoll(true);if(view==='wallets')walletsRefresh()}});
+let pulseTimer=null,pulseES=null,pulseMiss=0;
+function pulseConnect(){
+  if(pulseES||pulseTimer||document.hidden||view!=='pulse')return;
+  if(window.EventSource){
+    pulseES=new EventSource('/api/pulse/stream');
+    pulseES.onmessage=function(ev){
+      try{
+        const missing=applyPulse(JSON.parse(ev.data));
+        if(!missing){pulseMiss=0;return}
+        pulseMiss++;
+        if(pulseMiss<=2){pulseStop();pulseConnect()}
+      }catch(e){
+        $('#pLiveTxt').textContent='offline · retrying';
+        $('#pLiveDot').className='stale';
+      }
+    };
+    pulseES.onerror=function(){
+      $('#pLiveTxt').textContent='reconnecting…';
+      $('#pLiveDot').className='stale';
+    };
+    return;
+  }
+  pulsePoll();
+  pulseTimer=setInterval(pulsePoll,P.warming?1500:3000);
+}
+function pulseStart(){pulseStop();paintFilters();paintPresets();paintSeg();if(P.first)for(const c of ['new','final','migrated'])renderCol(c);pulseConnect()}
+function pulseStop(){clearInterval(pulseTimer);pulseTimer=null;if(pulseES){pulseES.close();pulseES=null}}
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){if(view==='pulse')pulseStop();return}
+  if(view==='pulse')pulseConnect();
+  watchPoll(true);
+  if(view==='wallets')walletsRefresh();
+});
 
 // ===================================================================== TOKEN PAGE
 const TK={cur:null,mint:null,seq:0,tape:null,tapeTimer:null,detailTimer:null,tab:'trades',lookup:null,seen:new Set()};
