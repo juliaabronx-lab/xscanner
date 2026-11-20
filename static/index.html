@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="/static/style.css?v=fix8">
 <link rel="stylesheet" href="/static/space.css?v=fix8">
 <link rel="stylesheet" href="/static/trader.css?v=fix8">
+<link rel="stylesheet" href="/static/paper.css?v=paper2">
 <link rel="modulepreload" href="/static/vendor/three-0.170.0.module.min.js">
 <script>try{var _fx=JSON.parse(localStorage.getItem('xs_fx_v1')||'{}');if(_fx.motion===false||(matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches))document.documentElement.classList.add('fx-off')}catch(e){}</script>
 </head><body>
@@ -31,6 +32,7 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
     <button data-v="narr">Narratives</button>
     <button data-v="risk">Risk radar</button>
     <button data-v="paper">Paper P&amp;L</button>
+    <button data-v="book">My paper</button>
     <button data-v="xfeed" id="xNav">X Live <span id="xNavBadge" class="nbadge hidden"></span></button>
     <button data-v="watch" id="wNav">Watchlist <span id="wNavBadge" class="nbadge hidden"></span></button>
     <button data-v="wallets">Wallets</button>
@@ -45,6 +47,13 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
     <button id="scanBtn" class="primary">▶ Run scan</button>
   </div>
 </header>
+<button type="button" id="paperBar" class="paperbar" hidden>
+  <span class="pb-tag">PAPER</span>
+  <b id="pbBarCash">Paper</b>
+  <span id="pbBarU"></span>
+  <span id="pbBarR"></span>
+  <small id="pbBarHint">simulation · not advice</small>
+</button>
 <section class="hero" aria-label="Introduction">
   <p class="hero-kicker">Free Solana memecoin scanner</p>
   <h2 class="hero-title">
@@ -155,11 +164,17 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
   </section>
 
   <section id="v-paper" class="view hidden">
+    <div class="disc" role="note"><b>Scanner ledger.</b> This tab is the shared RM paper book that ships with the scan snapshot. Your own play-money book (deposit, buy, sell, limits) is <button type="button" class="linkbtn" id="toMyPaper">My paper</button>.</div>
     <div id="paperKpis" class="stats inner"></div>
     <div class="grid2"><div class="card"><h3>Cumulative realised P&amp;L (RM)</h3><div id="curve"></div></div>
     <div class="card"><h3>Rules</h3><p id="rules" class="muted"></p><h3>Last run</h3><p id="lastRun" class="muted"></p></div></div>
     <div class="card"><h3>Closed paper trades</h3><div class="tablewrap"><table id="trades"></table></div></div>
     <div class="card"><h3>Candidate decisions (latest 60)</h3><div class="tablewrap"><table id="cands"></table></div></div>
+  </section>
+
+  <section id="v-book" class="view hidden">
+    <div class="disc" role="note"><b>Paper trading. Not financial advice.</b> Balances are play SOL. xScanner never connects a wallet, never asks for a seed phrase or private key, and never sends a transaction. Fills are simulated from prices this site already loaded, plus slippage, a priority fee and a platform fee.</div>
+    <div id="bookApp"></div>
   </section>
 
   <section id="v-xfeed" class="view hidden">
@@ -186,7 +201,7 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
 
 <aside id="drawer" class="drawer"><button id="dClose" class="x">✕</button><div id="dBody"></div></aside>
 <div id="scrim" class="scrim"></div>
-<footer><b>Not financial advice.</b> Read-only. No wallet keys, signing, trading or posting. Score ≥65 worth a look · 50–64 watch · &lt;50 skip. Juliaa gives the final yes.</footer>
+<footer><b>Not financial advice.</b> Read-only analysis. No wallet keys, signing or real trades. Paper buys and sells are a simulation. Score ≥65 worth a look · 50–64 watch · &lt;50 skip. Juliaa gives the final yes.</footer>
 <script src="/static/vendor/lightweight-charts.js?v=4.2.3"></script>
 <script>window.LightweightCharts||document.write('<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"><\/script>')</script>
 <script>window.__h0=location.hash</script>
@@ -194,6 +209,7 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
 <script src="/static/chart.js?v=fix8"></script>
 <script src="/static/app.js?v=fix8"></script>
 <script src="/static/xfeed.js?v=fix8"></script>
+<script src="/static/paper.js?v=paper2"></script>
 <script src="/static/trader.js?v=fix8"></script>
 <script type="module" src="/static/moon.js?v=fix8"></script>
 </body></html>

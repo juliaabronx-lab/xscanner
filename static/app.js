@@ -236,7 +236,7 @@ async function loadPaper(){
     (d.candidates_seen||[]).map(c=>`<tr><td>${dt(c.time)}</td><td><b>${esc(c.ticker)}</b></td><td><span class="pill ${/buy/.test(c.decision)?'grn':/sell/.test(c.decision)?'pur':''}">${esc(c.decision)}</span></td><td class="muted" style="white-space:normal;min-width:320px">${esc((c.reason||'').slice(0,220))}</td></tr>`).join('')+'</tbody>';
 }
 
-const loaders={feed:loadFeed,narr:loadNarr,risk:loadRisk,paper:loadPaper,pulse:async()=>{},watch:async()=>{},wallets:async()=>{},token:async()=>{}};
+const loaders={feed:loadFeed,narr:loadNarr,risk:loadRisk,paper:loadPaper,book:async()=>{if(window.paperShowBook)window.paperShowBook()},pulse:async()=>{},watch:async()=>{},wallets:async()=>{},token:async()=>{}};
 async function refresh(){try{await loadSummary();await loaders[view]()}catch(e){banner('Failed to load: '+esc(e.message),'err')}}
 function show(v){
   const prev=view, first=!show.ready;

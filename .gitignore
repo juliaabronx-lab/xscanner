@@ -9,3 +9,4 @@ __pycache__/
 *.key
 id_*
 .ingest_token
+data/paper_books/

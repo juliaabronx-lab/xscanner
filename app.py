@@ -20,6 +20,7 @@ import story as st_
 import pulse
 import trader as trd
 import tokenpage as tkp
+import paperbook
 from fastapi.responses import Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -651,6 +652,30 @@ def paper():
         "started": L.get("started"), "ends": L.get("ends"), "last_run": L.get("last_run"), "data_as_of": L.get("data_as_of") or meta.get("mtime"), "last_run_note": L.get("last_run_note"),
         "candidates_seen": (L.get("candidates_seen") or [])[-60:][::-1], "sources": {"ledger": meta},
     }
+
+
+# ---------------------------------------------------------------- Personal paper book (simulation only; extends /api/paper, does not replace the RM ledger)
+@app.get("/api/paper/book")
+def paper_book(request: Request):
+    """The signed-in user's play-money book, or an empty template when signed out.
+
+    Signed-out books stay in the browser. Prices are not fetched here.
+    """
+    return JSONResponse(paperbook.public_state(auth.current_user(request)), headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/paper/book/act")
+def paper_book_act(request: Request, body: dict):
+    """Apply one paper action (deposit, buy, sell, limit, cancel, mark, reset).
+
+    The fill price comes from caches already filled by the token page, quotes
+    and Pulse. This route does not call DexScreener, GeckoTerminal or Jupiter.
+    """
+    try:
+        out = paperbook.handle_act(auth.current_user(request), body or {}, ip=_client_ip(request))
+    except paperbook.BadRequest as e:
+        raise HTTPException(e.status, e.msg)
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 
 # ---------------------------------------------------------------- Paste-CA lookup (read-only, allowed in PUBLIC_READONLY)

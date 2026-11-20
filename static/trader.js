@@ -214,6 +214,7 @@ function tokPaint(d){
    ${(sc.risks||[]).length?`<h4>RugCheck notes</h4>${sc.risks.map(r=>`<span class="pill ${/danger|high/i.test(r.level||'')?'red':'amb'}" title="${esc(r.description||'')}">${esc(r.name)}</span>`).join('')}`:''}
    ${(d.pending||[]).length?`<p class="muted" style="font-size:11px">Still loading: ${esc(d.pending.join(', '))}…</p>`:''}${(d.notes||[]).map(n=>`<p class="muted" style="font-size:11px">${esc(n)}</p>`).join('')}`;
   paintStars();
+  try{window.paperOnToken&&window.paperOnToken(d)}catch(e){}
   if(TK.tab==='holders'||TK.tab==='dev')tkPane()}
 function tkStoryPaint(){
   const c=TK.lookup;const el=$('#tkStory');if(!el)return;
@@ -277,7 +278,7 @@ async function lookupLoad(m){
       TK.lookup='err';tkStoryPaint();return}
     catch(e){await sleep(2000)}}
   if(seq===TK.seq){TK.lookup='err';tkStoryPaint()}}
-function leaveToken(){TK.seq++;clearInterval(TK.tapeTimer);clearTimeout(TK.detailTimer);TK.tapeTimer=null;TK.cur=null;TK.tape=null;TK.lookup=null;TK.seen.clear();try{unmountChart()}catch(e){}CH.h=0}
+function leaveToken(){TK.seq++;clearInterval(TK.tapeTimer);clearTimeout(TK.detailTimer);TK.tapeTimer=null;TK.cur=null;TK.tape=null;TK.lookup=null;TK.seen.clear();try{window.paperLeaveToken&&window.paperLeaveToken()}catch(e){}try{unmountChart()}catch(e){}CH.h=0}
 window.openToken=function(m,opts){
   opts=opts||{};if(!B58.test(m||''))return;
   if(view==='token')leaveToken();
