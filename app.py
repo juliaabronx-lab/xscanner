@@ -20,6 +20,8 @@ import story as st_
 import pulse
 import trader as trd
 import tokenpage as tkp
+import pace
+import trades_tape
 import paperbook
 import accounts as acc
 from fastapi.responses import Response
@@ -59,6 +61,8 @@ app.add_middleware(_HeadAsGet)
 from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "HEAD", "OPTIONS"], allow_headers=["*"],
                    allow_credentials=False, max_age=3600)
+# Outermost: an /api request is interactive, so a background 429 does not make it wait.
+app.add_middleware(pace.UserPriorityMiddleware)
 
 
 def load(path, default):
@@ -897,6 +901,9 @@ def scan_status():
 # ---- X Live Feed (read-only; data/x_feed.json is written by xfeed_ingest.py from agent X searches)
 XFEED = os.environ.get("XFEED_PATH", os.path.join(HERE, "data", "x_feed.json"))
 XQUERIES = os.path.join(HERE, "data", "xfeed_queries.json")
+# Before chart pre-warm and the startup loops. One shared bucket for GeckoTerminal,
+# DexScreener and the rest, with a reserve left for lookups and the trades tape.
+pace.install()
 if live.ENABLED:  # hosted live mode: serve data the server-side loop keeps refreshing (snapshot until first scan)
     SCANNER, XFEED = live.prepare(SCANNER, XFEED)
     LEDGER = live.prepare_ledger(LEDGER)
@@ -1262,9 +1269,12 @@ def api_token(mint: str):
 
 @app.get("/api/trades/{pool}")
 def api_trades(pool: str, token: str = ""):
-    """Live trades tape of a pool (GeckoTerminal) plus top traders summed from it."""
+    """Live trades tape of a pool plus top traders summed from it.
+
+    GeckoTerminal when it answers; a Solana RPC swap read when it is rate-limited.
+    Concurrent viewers of one pool share a single fetch."""
     pool = _valid_mint_or_400(pool)
-    return JSONResponse(trd.trades(pool, token or None), headers=_NOSTORE)
+    return JSONResponse(trades_tape.trades(pool, token or None), headers=_NOSTORE)
 
 
 @app.get("/api/dev/{wallet}")

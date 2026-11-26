@@ -1,0 +1,23 @@
+{
+  "kind": "measured",
+  "clock": "wall-clock seconds from the uvicorn process start",
+  "window_s": 120,
+  "upstream": "synthetic. sitecustomize.py returns JSON and does not call GeckoTerminal, DexScreener, Jupiter, RugCheck, or Solana RPC. HTTP 429 counts in sim-gt429 are injected by the harness after 4 successful GeckoTerminal responses in that process, not observed from Render's IP.",
+  "before": {
+    "git": "e1ab19c5d2f3fd098ab34f777670b0821f4222da",
+    "files": ["before-open.json", "before-open.jsonl", "before-gt429.json", "before-gt429.jsonl"]
+  },
+  "after": {
+    "git_parent": "e1ab19c5d2f3fd098ab34f777670b0821f4222da",
+    "code": "working tree that became this commit (pace.py, trades_tape.py, net.py urlopen lookup, scan_runner hook). Measured before the commit existed, so base_commit inside the JSON is the parent SHA.",
+    "files": ["after-open.json", "after-open.jsonl", "after-gt429.json", "after-gt429.jsonl"]
+  },
+  "live_site_spot_check": {
+    "kind": "observed",
+    "host": "https://xscanner-c8jo.onrender.com",
+    "when": "2026-11-26, one GET each, not part of the 120s harness",
+    "health": "HTTP 200 in 0.250s, uptime_s 425",
+    "pulse_status": "gecko ok 5, errors 9, last_error HTTP 429, last_ok_s 194; dexscreener ok 64, errors 17; jupiter ok 43, errors 3, last_error HTTP 429",
+    "trades": "GET /api/trades/FcsUythNUWbfT7RP2yuFp1kiWjft15du9WtgLUrrqx3p?token=9cmXfuC26anZtH9AUWVzpUxU1UJ7PPogYxftYTepump returned HTTP 200 in 0.237s, available false, reason \"Trades tape unavailable right now (rate-limited, retry in 145s).\", trades []"
+  }
+}

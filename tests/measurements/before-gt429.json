@@ -1,0 +1,304 @@
+{
+  "label": "before-gt429",
+  "mode": "sim-gt429",
+  "kind": "measured",
+  "clock": "wall clock seconds from uvicorn process start",
+  "window_s": 120.0,
+  "base_commit": "e1ab19c5d2f3fd098ab34f777670b0821f4222da",
+  "health_ready_s": 0.834,
+  "server_exit": -15,
+  "pids": [
+    2655,
+    2664
+  ],
+  "upstream_calls": 104,
+  "hosts": {
+    "api.dexscreener.com": {
+      "calls": 45,
+      "http_429": 0,
+      "first_t": 0.887,
+      "last_t": 14.05,
+      "peak_per_sec": 9,
+      "peak_sec": 4,
+      "calls_first_30s": 45,
+      "per_sec": {
+        "0": 1,
+        "3": 8,
+        "4": 9,
+        "5": 2,
+        "6": 1,
+        "7": 1,
+        "8": 2,
+        "9": 4,
+        "10": 4,
+        "11": 4,
+        "12": 4,
+        "13": 4,
+        "14": 1
+      }
+    },
+    "api.rugcheck.xyz": {
+      "calls": 18,
+      "http_429": 0,
+      "first_t": 0.886,
+      "last_t": 34.887,
+      "peak_per_sec": 1,
+      "peak_sec": 0,
+      "calls_first_30s": 15,
+      "per_sec": {
+        "0": 1,
+        "2": 1,
+        "4": 1,
+        "6": 1,
+        "8": 1,
+        "10": 1,
+        "12": 1,
+        "14": 1,
+        "16": 1,
+        "18": 1,
+        "20": 1,
+        "22": 1,
+        "24": 1,
+        "26": 1,
+        "28": 1,
+        "30": 1,
+        "32": 1,
+        "34": 1
+      }
+    },
+    "solana-rpc.publicnode.com": {
+      "calls": 18,
+      "http_429": 0,
+      "first_t": 0.9,
+      "last_t": 5.141,
+      "peak_per_sec": 8,
+      "peak_sec": 4,
+      "calls_first_30s": 18,
+      "per_sec": {
+        "0": 1,
+        "3": 7,
+        "4": 8,
+        "5": 2
+      }
+    },
+    "api.geckoterminal.com": {
+      "calls": 13,
+      "http_429": 9,
+      "first_t": 0.615,
+      "last_t": 98.64,
+      "peak_per_sec": 3,
+      "peak_sec": 0,
+      "calls_first_30s": 9,
+      "per_sec": {
+        "0": 3,
+        "2": 2,
+        "3": 1,
+        "8": 1,
+        "20": 2,
+        "53": 1,
+        "70": 2,
+        "98": 1
+      }
+    },
+    "datapi.jup.ag": {
+      "calls": 4,
+      "http_429": 0,
+      "first_t": 0.614,
+      "last_t": 53.619,
+      "peak_per_sec": 1,
+      "peak_sec": 0,
+      "calls_first_30s": 3,
+      "per_sec": {
+        "0": 1,
+        "1": 1,
+        "8": 1,
+        "53": 1
+      }
+    },
+    "lite-api.jup.ag": {
+      "calls": 4,
+      "http_429": 0,
+      "first_t": 0.808,
+      "last_t": 60.851,
+      "peak_per_sec": 2,
+      "peak_sec": 2,
+      "calls_first_30s": 3,
+      "per_sec": {
+        "0": 1,
+        "2": 2,
+        "60": 1
+      }
+    },
+    "frontend-api-v3.pump.fun": {
+      "calls": 2,
+      "http_429": 0,
+      "first_t": 3.679,
+      "last_t": 3.68,
+      "peak_per_sec": 2,
+      "peak_sec": 3,
+      "calls_first_30s": 2,
+      "per_sec": {
+        "3": 2
+      }
+    }
+  },
+  "trades_bursts": [
+    {
+      "tag": "t20",
+      "t": 20.132,
+      "latency_s": 0.007,
+      "http": 200,
+      "available": false,
+      "reason": "Trades tape unavailable right now (HTTP 429).",
+      "stale": null,
+      "source": null,
+      "n_trades": 0,
+      "n_seen": null,
+      "note": ""
+    },
+    {
+      "tag": "t20",
+      "t": 20.133,
+      "latency_s": 0.006,
+      "http": 200,
+      "available": false,
+      "reason": "Trades tape unavailable right now (rate-limited, retry in 19s).",
+      "stale": null,
+      "source": null,
+      "n_trades": 0,
+      "n_seen": null,
+      "note": ""
+    },
+    {
+      "tag": "t20",
+      "t": 20.134,
+      "latency_s": 0.007,
+      "http": 200,
+      "available": false,
+      "reason": "Trades tape unavailable right now (rate-limited, retry in 19s).",
+      "stale": null,
+      "source": null,
+      "n_trades": 0,
+      "n_seen": null,
+      "note": ""
+    },
+    {
+      "tag": "t20",
+      "t": 20.134,
+      "latency_s": 0.007,
+      "http": 200,
+      "available": false,
+      "reason": "Trades tape unavailable right now (rate-limited, retry in 19s).",
+      "stale": null,
+      "source": null,
+      "n_trades": 0,
+      "n_seen": null,
+      "note": ""
+    },
+    {
+      "tag": "t20",
+      "t": 20.133,
+      "latency_s": 0.008,
+      "http": 200,
+      "available": false,
+      "reason": "Trades tape unavailable right now (rate-limited, retry in 19s).",
+      "stale": null,
+      "source": null,
+      "n_trades": 0,
+      "n_seen": null,
+      "note": ""
+    },
+    {
+      "tag": "t20",
+      "t": 20.133,
+      "latency_s": 0.008,
+      "http": 200,
+      "available": false,
+      "reason": "Trades tape unavailable right now (HTTP 429).",
+      "stale": null,
+      "source": null,
+      "n_trades": 0,
+      "n_seen": null,
+      "note": ""
+    },
+    {
+      "tag": "t70",
+      "t": 70.176,
+      "latency_s": 0.008,
+      "http": 200,
+      "available": false,
+      "reason": "Trades tape unavailable right now (HTTP 429).",
+      "stale": null,
+      "source": null,
+      "n_trades": 0,
+      "n_seen": null,
+      "note": ""
+    },
+    {
+      "tag": "t70",
+      "t": 70.177,
+      "latency_s": 0.008,
+      "http": 200,
+      "available": false,
+      "reason": "Trades tape unavailable right now (rate-limited, retry in 79s).",
+      "stale": null,
+      "source": null,
+      "n_trades": 0,
+      "n_seen": null,
+      "note": ""
+    },
+    {
+      "tag": "t70",
+      "t": 70.177,
+      "latency_s": 0.009,
+      "http": 200,
+      "available": false,
+      "reason": "Trades tape unavailable right now (rate-limited, retry in 79s).",
+      "stale": null,
+      "source": null,
+      "n_trades": 0,
+      "n_seen": null,
+      "note": ""
+    },
+    {
+      "tag": "t70",
+      "t": 70.176,
+      "latency_s": 0.009,
+      "http": 200,
+      "available": false,
+      "reason": "Trades tape unavailable right now (HTTP 429).",
+      "stale": null,
+      "source": null,
+      "n_trades": 0,
+      "n_seen": null,
+      "note": ""
+    },
+    {
+      "tag": "t70",
+      "t": 70.177,
+      "latency_s": 0.009,
+      "http": 200,
+      "available": false,
+      "reason": "Trades tape unavailable right now (rate-limited, retry in 159s).",
+      "stale": null,
+      "source": null,
+      "n_trades": 0,
+      "n_seen": null,
+      "note": ""
+    },
+    {
+      "tag": "t70",
+      "t": 70.177,
+      "latency_s": 0.009,
+      "http": 200,
+      "available": false,
+      "reason": "Trades tape unavailable right now (rate-limited, retry in 159s).",
+      "stale": null,
+      "source": null,
+      "n_trades": 0,
+      "n_seen": null,
+      "note": ""
+    }
+  ],
+  "note": "Synthetic upstream (no real market-data calls). 429s are injected by the harness when mode is sim-gt429, after MEASURE_GT_OK successful GeckoTerminal responses."
+}

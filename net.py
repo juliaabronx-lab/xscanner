@@ -7,9 +7,9 @@ After HTTP 429 or 503 the host is cooled down; we do not retry it in a loop.
 
 Read-only. No keys, signing, or trading.
 """
-import json, threading, time
+import json, threading, time, urllib.request
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 FRESH_S = 15
 MAX_ENTRIES = 128
@@ -136,7 +136,8 @@ def _fetch(url, timeout, headers):
     stats["fetches"] += 1
     req = Request(url, headers=headers or {"Accept": "application/json", "User-Agent": "xScanner"})
     try:
-        with urlopen(req, timeout=timeout) as r:
+        # Attribute lookup, not a name bound at import, so pace.install() is in the path.
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             raw = r.read()
             code = getattr(r, "status", 200) or 200
     except HTTPError as e:
