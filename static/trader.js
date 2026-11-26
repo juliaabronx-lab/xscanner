@@ -123,14 +123,14 @@ function paintSrc(){const s=P.src;if(!s)return;const nm={gecko:'GeckoTerminal (n
 const chipCls=(v,a,b)=>v==null?'na':v>=b?'red':v>=a?'amb':'grn';
 function pulseQBuyOn(){try{return localStorage.getItem('xs_pulse_qbuy_v1')==='1'}catch(e){return false}}
 function pulseQBuyAmt(){const el=document.getElementById('pqAmt');if(el&&el.value!==''&&+el.value>0)return +el.value;try{const v=+localStorage.getItem('xs_pulse_qbuy_amt_v1');if(v>0)return v}catch(e){}return 0.1}
+function bustPulseRows(){if(P&&P.els)P.els.forEach(el=>{if(el)el._v=null})}
 function paintQBuy(){
   const on=pulseQBuyOn();
   const btn=document.getElementById('pqBuyBtn'),wrap=document.getElementById('pqAmtWrap'),inp=document.getElementById('pqAmt');
   if(btn){btn.classList.toggle('on',on);btn.setAttribute('aria-pressed',on?'true':'false')}
   if(wrap)wrap.classList.toggle('hidden',!on);
   if(inp&&!inp.dataset.bound){inp.dataset.bound='1';inp.value=String(pulseQBuyAmt());
-    inp.addEventListener('change',()=>{const v=+inp.value||0.1;try{localStorage.setItem('xs_pulse_qbuy_amt_v1',String(v))}catch(e){};if(typeof renderAll==='function')renderAll()})}
-  if(typeof renderAll==='function'&&view==='pulse'){/* cards pick up pill via rowHTML */ }
+    inp.addEventListener('change',()=>{const v=+inp.value||0.1;try{localStorage.setItem('xs_pulse_qbuy_amt_v1',String(v))}catch(e){};bustPulseRows();if(typeof renderAll==='function')renderAll()})}
 }
 function rowHTML(r,col){
   const cv=r.cv,mcc=r.d==='pumpswap'||col==='migrated',t10=r.t10!=null?r.t10:r.t10x;
@@ -152,7 +152,7 @@ function rowHTML(r,col){
 }
 function rowEl(r,col){let el=P.els.get(r.m);
   if(!el){el=document.createElement('article');el.className='prow';el.dataset.m=r.m;el.tabIndex=0;el.setAttribute('role','link');el.setAttribute('aria-label','Open '+symOf(r));P.els.set(r.m,el);if(!P.first)el.classList.add('pin')}
-  if(el._v!==r.v||el._col!==col){const prevMc=el._mc;el.innerHTML=rowHTML(r,col);el._v=r.v;el._col=col;
+  if(el._v!==r.v||el._col!==col||el._qb!==pulseQBuyOn()||el._qba!==pulseQBuyAmt()){const prevMc=el._mc;el.innerHTML=rowHTML(r,col);el._v=r.v;el._col=col;el._qb=pulseQBuyOn();el._qba=pulseQBuyAmt();
     if(prevMc!=null&&r.mc!=null&&prevMc!==r.mc){el.classList.remove('fl-up','fl-dn');void el.offsetWidth;el.classList.add(r.mc>prevMc?'fl-up':'fl-dn')}
     el._mc=r.mc}
   return el}
@@ -229,7 +229,7 @@ function pulseConnect(){
 }
 function pulseStart(){pulseStop();bindQBuy();if(view==='pulse'){paintFilters();paintPresets();paintSeg();paintQBuy();if(P.first)for(const c of ['new','final','migrated'])renderCol(c)}else trendRender();pulseConnect()}
 function bindQBuy(){const btn=document.getElementById('pqBuyBtn');if(!btn||btn.dataset.bound)return;btn.dataset.bound='1';
-  btn.addEventListener('click',e=>{e.preventDefault();const on=!pulseQBuyOn();try{localStorage.setItem('xs_pulse_qbuy_v1',on?'1':'0')}catch(e){};paintQBuy();if(typeof renderAll==='function')renderAll();if(window.toast)window.toast(on?'Quick Buy on — paper simulation only.':'Quick Buy off.');else if(typeof toast==='function')toast(on?'Quick Buy on — paper simulation only.':'Quick Buy off.')})}
+  btn.addEventListener('click',e=>{e.preventDefault();const on=!pulseQBuyOn();try{localStorage.setItem('xs_pulse_qbuy_v1',on?'1':'0')}catch(e){};paintQBuy();bustPulseRows();if(typeof renderAll==='function')renderAll();if(window.toast)window.toast(on?'Quick Buy on — paper simulation only.':'Quick Buy off.');else if(typeof toast==='function')toast(on?'Quick Buy on — paper simulation only.':'Quick Buy off.')})}
 function pulseStop(){pulseGen++;clearInterval(pulseTimer);pulseTimer=null;if(pulseES){pulseES.close();pulseES=null}}
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){if(isP(view))pulseStop();return}

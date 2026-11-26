@@ -1,9 +1,12 @@
 // Live coin chart for the detail view: /api/ohlcv (cached backend proxy) drawn with TradingView
 // lightweight-charts; DexScreener embed as a toggle / fallback. Market data only. No Axiom assets.
-const CH={tf:localStorage.getItem('chartTf')||'15m',mode:'native',coin:null,chart:null,cs:null,vs:null,ls:null,timer:null,ro:null,seq:0,lastT:null,fit:true,
-  style:'candles',unit:'px',tool:'cross',magnet:true,log:false,drawings:[],lines:[],pending:null,supply:null,clock:null,lastBars:[]};
+const CH={tf:localStorage.getItem('chartTf')||'15m',mode:'native',coin:null,chart:null,cs:null,vs:null,ls:null,area:null,ema9:null,ema21:null,timer:null,ro:null,seq:0,lastT:null,fit:true,
+  style:(localStorage.getItem('xs_chart_style_v1')||'candles'),unit:'px',tool:'cross',magnet:true,log:false,ema:localStorage.getItem('xs_chart_ema_v1')!=='0',
+  drawings:[],lines:[],pending:null,supply:null,clock:null,lastBars:[],lastBarUp:true};
+if(!['candles','glow','line'].includes(CH.style))CH.style='candles';
 const TFS=['1m','5m','15m','1h','4h','1d'];
-const UP='#26a69a', DN='#ef5350', GRID='#161920', BG='#0b0c0f';
+const UP='#00f5a0', UPW='#5effc8', DN='#ff3b7a', DNW='#ff7aa8', GRID='rgba(255,255,255,0.045)', BG='rgba(9,11,16,0)';
+const EMA9='#38bdf8', EMA21='#a78bfa';
 const SUBS='₀₁₂₃₄₅₆₇₈₉';
 const tinyNum=a=>{const z=-Math.floor(Math.log10(a))-1;let sig=Math.round(a*Math.pow(10,z+3));let zz=z;if(sig>=10000){sig=Math.round(sig/10);zz--}
   return zz<=3?a.toFixed(zz+3+1).replace(/0+$/,''):'0.0'+String(zz).split('').map(d=>SUBS[d]).join('')+String(sig).replace(/0+$/,'')};
@@ -29,7 +32,8 @@ function chartBlockHTML(){
         <div class="tfs" data-role="tf">${TFS.map(t=>`<button data-tf="${t}" class="${t===CH.tf?'on':''}">${t}</button>`).join('')}</div>
         <span class="chdiv"></span>
         <div class="tfs" data-role="unit"><button data-unit="px" class="on">Price</button><button data-unit="mcap">MCap</button></div>
-        <div class="tfs" data-role="style"><button data-style="candles" class="on">Candles</button><button data-style="line">Line</button></div>
+        <div class="tfs" data-role="style"><button data-style="candles" class="${CH.style==='candles'?'on':''}">Candles</button><button data-style="glow" class="${CH.style==='glow'?'on':''}">3D Glow</button><button data-style="line" class="${CH.style==='line'?'on':''}">Line</button></div>
+        <div class="tfs" data-role="ema"><button type="button" data-ema="1" class="${CH.ema?'on':''}" title="Toggle EMA 9 and EMA 21 ribbons">EMA</button></div>
       </div>
       <div class="chctl-right tfs">
         <button type="button" id="itToggle" class="ch-instant" aria-pressed="false" title="Optional Instant Paper Trade card. Simulation only.">⚡ Instant</button>
@@ -40,8 +44,9 @@ function chartBlockHTML(){
     <div class="chbody">
       <aside class="ch-rail" id="chRail" aria-label="Chart tools">${RAIL.map(([id,t,s])=>`<button type="button" data-tool="${id}" title="${t}" class="${id==='cross'?'on':''}">${s}</button>`).join('')}</aside>
       <div id="chWrap" class="chwrap">
-        <div id="chLegend" class="ch-legend"><b id="chLegTitle">—</b> <span id="chLegOHLC"></span>
+        <div id="chLegend" class="ch-legend ch-hud"><b id="chLegTitle">—</b> <span id="chLegOHLC"></span>
           <b id="chPrice" hidden>—</b><span id="chChg" hidden></span><small id="chUpd" hidden></small></div>
+        <div id="chLive" class="ch-live hidden" aria-hidden="true"><i class="ch-live-dot"></i><span id="chLivePx">—</span></div>
         <div id="chNative" class="chnative"></div>
         <div id="chMsg" class="chmsg hidden"></div>
         <div id="chDex" class="chdex off"></div>
@@ -85,26 +90,80 @@ function barOf(k){return {time:k.t,open:scalePx(k.o),high:scalePx(k.h),low:scale
 function paintLegend(bar,chg){
   const el=document.getElementById('chLegOHLC'),title=document.getElementById('chLegTitle');
   const sym=(CH.coin&&CH.coin.symbol)||'TOKEN';
-  const unit=CH.unit==='mcap'?'MCAP':'USD';
-  if(title)title.textContent=`${sym}/${unit} · ${CH.tf} · xScanner`;
+  if(title)title.textContent=`$${sym} · ${CH.tf}`;
   if(!el)return;
   if(!bar){el.textContent='';return}
-  const pct=chg==null?'':` (${chg>=0?'+':''}${chg.toFixed(2)}%)`;
   const cls=bar.close>=bar.open?'up':'dn';
-  el.innerHTML=`O ${fmtNum(bar.open)}  H ${fmtNum(bar.high)}  L ${fmtNum(bar.low)}  C <span class="${cls}">${fmtNum(bar.close)}${pct}</span>`;
+  const badge=chg==null?'':`<span class="ch-pct ${cls}">${chg>=0?'+':''}${chg.toFixed(2)}%</span>`;
+  el.innerHTML=`<span class="ch-ohlc">O ${fmtNum(bar.open)}  H ${fmtNum(bar.high)}  L ${fmtNum(bar.low)}  C <span class="${cls}">${fmtNum(bar.close)}</span></span> ${badge}`;
 }
 function clearDrawings(){
   (CH.drawings||[]).forEach(s=>{try{CH.chart.removeSeries(s)}catch(e){}});
   (CH.lines||[]).forEach(l=>{try{CH.cs.removePriceLine(l)}catch(e){}});
   CH.drawings=[];CH.lines=[];CH.pending=null;
 }
+function volColor(up){return up?'rgba(0, 245, 160, 0.28)':'rgba(255, 59, 122, 0.28)'}
+function ribbonColors(){
+  const up=CH.lastBarUp!==false, glow=CH.style==='glow', line=CH.style==='line';
+  if(line)return{line:up?UP:DN,top:up?'rgba(0,245,160,0.42)':'rgba(255,59,122,0.42)',bot:up?'rgba(0,245,160,0.00)':'rgba(255,59,122,0.00)',lw:2.25};
+  if(glow)return{line:up?UPW:DNW,top:up?'rgba(0,245,160,0.38)':'rgba(255,59,122,0.36)',bot:up?'rgba(0,245,160,0.02)':'rgba(255,59,122,0.02)',lw:1.75};
+  return{line:up?'rgba(0,245,160,0.35)':'rgba(255,59,122,0.35)',top:up?'rgba(0,245,160,0.14)':'rgba(255,59,122,0.12)',bot:'rgba(9,11,16,0)',lw:1};
+}
 function applyStyle(){
   if(!CH.cs||!CH.ls)return;
-  const candles=CH.style!=='line';
-  CH.cs.applyOptions({visible:candles,lastValueVisible:candles,priceLineVisible:candles});
-  CH.ls.applyOptions({visible:!candles,lastValueVisible:!candles,priceLineVisible:!candles});
+  const line=CH.style==='line', glow=CH.style==='glow', up=CH.lastBarUp!==false;
+  const pxLine=up?UP:DN;
+  CH.cs.applyOptions({
+    visible:!line,lastValueVisible:!line,priceLineVisible:!line,
+    priceLineColor:pxLine,priceLineWidth:1,priceLineStyle:2,
+    upColor:glow?'rgba(0,245,160,0.82)':UP,downColor:glow?'rgba(255,59,122,0.82)':DN,
+    borderVisible:true,borderUpColor:UPW,borderDownColor:DNW,wickUpColor:UPW,wickDownColor:DNW
+  });
+  CH.ls.applyOptions({visible:false,lastValueVisible:false,priceLineVisible:false});
+  if(CH.area){
+    const r=ribbonColors();
+    CH.area.applyOptions({
+      visible:true,lineWidth:r.lw,lineColor:r.line,topColor:r.top,bottomColor:r.bot,
+      lastValueVisible:line,priceLineVisible:line,priceLineColor:pxLine,priceLineWidth:1,priceLineStyle:2,
+      crosshairMarkerVisible:line,crosshairMarkerRadius:line?5:3,
+      crosshairMarkerBorderColor:'#090b10',crosshairMarkerBackgroundColor:pxLine
+    });
+  }
   document.querySelectorAll('.chartcard [data-style]').forEach(b=>b.classList.toggle('on',b.dataset.style===CH.style));
+  const wrap=document.querySelector('.chwrap');
+  if(wrap){wrap.classList.toggle('ch-glow',glow);wrap.classList.toggle('ch-line',line)}
+  try{localStorage.setItem('xs_chart_style_v1',CH.style)}catch(e){}
+  applyEma();syncLivePrice();
 }
+function applyEma(){
+  const on=!!CH.ema;
+  document.querySelectorAll('.chartcard [data-ema]').forEach(b=>b.classList.toggle('on',on));
+  if(CH.ema9)CH.ema9.applyOptions({visible:on});
+  if(CH.ema21)CH.ema21.applyOptions({visible:on});
+  try{localStorage.setItem('xs_chart_ema_v1',on?'1':'0')}catch(e){}
+}
+function emaPts(cd,period){
+  const out=[];if(!cd||cd.length<period)return out;
+  let s=0;for(let i=0;i<period;i++)s+=scalePx(cd[i].c);
+  let e=s/period;out.push({time:cd[period-1].t,value:e});
+  const k=2/(period+1);
+  for(let i=period;i<cd.length;i++){e=scalePx(cd[i].c)*k+e*(1-k);out.push({time:cd[i].t,value:e})}
+  return out;
+}
+function syncLivePrice(){
+  const el=document.getElementById('chLive');if(!el)return;
+  const series=CH.style==='line'?(CH.area||CH.ls):CH.cs;
+  if(!series||CH.lastPx==null||!CH.chart){el.classList.add('hidden');return}
+  let y=null;try{y=series.priceToCoordinate(CH.lastPx)}catch(e){y=null}
+  if(y==null||!isFinite(y)||y<0){el.classList.add('hidden');return}
+  el.classList.remove('hidden');
+  el.classList.toggle('up',CH.lastBarUp!==false);
+  el.classList.toggle('dn',CH.lastBarUp===false);
+  el.style.transform='translateY('+y+'px)';
+  const px=document.getElementById('chLivePx');if(px)px.textContent=fmtPx(CH.lastPx);
+  el.setAttribute('aria-hidden','false');
+}
+
 function applyLog(){
   if(!CH.chart)return;
   try{CH.cs.priceScale().applyOptions({mode:CH.log?1:0})}catch(e){}
@@ -161,6 +220,7 @@ function bindTools(){
     if(CH.lastBars&&CH.lastBars.length)pushBars(CH.lastBars);
   });
   document.querySelectorAll('.chartcard [data-style]').forEach(b=>b.onclick=()=>{CH.style=b.dataset.style;applyStyle()});
+  document.querySelectorAll('.chartcard [data-ema]').forEach(b=>b.onclick=()=>{CH.ema=!CH.ema;applyEma()});
 }
 function tickClock(){
   const el=document.getElementById('chClock');if(!el)return;
@@ -183,21 +243,25 @@ function mountChart(c){
   const LC=window.LightweightCharts;
   const h=el.clientHeight||CH.h||360;
   const opts={width:el.clientWidth,height:h,
-    layout:{background:{type:'solid',color:BG},textColor:'#76798b',fontFamily:'Geist Mono, Geist, system-ui, sans-serif',fontSize:11},
-    grid:{vertLines:{color:GRID},horzLines:{color:GRID}},
-    rightPriceScale:{borderColor:'#1e222b',scaleMargins:{top:0.08,bottom:0.22}},
-    timeScale:{borderColor:'#1e222b',timeVisible:true,secondsVisible:false,rightOffset:4},
-    crosshair:{mode:CH.magnet?1:0,vertLine:{color:'#3a4150',style:3,width:1},horzLine:{color:'#3a4150',style:3,width:1}},
+    layout:{background:{type:'solid',color:BG},textColor:'#8b90a0',fontFamily:'Geist Mono, Geist, system-ui, sans-serif',fontSize:11},
+    grid:{vertLines:{color:GRID,style:1},horzLines:{color:GRID,style:1}},
+    rightPriceScale:{borderColor:'rgba(255,255,255,0.06)',scaleMargins:{top:0.08,bottom:0.22}},
+    timeScale:{borderColor:'rgba(255,255,255,0.06)',timeVisible:true,secondsVisible:false,rightOffset:6},
+    crosshair:{mode:CH.magnet?1:0,vertLine:{color:'rgba(0,245,160,0.28)',style:2,width:1},horzLine:{color:'rgba(0,245,160,0.28)',style:2,width:1}},
     localization:{priceFormatter:fmtAxis,timeFormatter:t=>new Date(t*1000).toLocaleString('en-GB',{timeZone:'Asia/Kuala_Lumpur',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}};
   try{opts.layout.attributionLogo=false}catch(e){}
   CH.chart=LC.createChart(el,opts);
-  CH.cs=CH.chart.addCandlestickSeries({upColor:UP,downColor:DN,borderVisible:false,wickUpColor:UP,wickDownColor:DN,
-    priceFormat:{type:'custom',formatter:fmtAxis,minMove:1e-12},
+  const pxFmt={type:'custom',formatter:fmtAxis,minMove:1e-12};
+  CH.area=CH.chart.addAreaSeries({lineColor:UP,topColor:'rgba(0,245,160,0.14)',bottomColor:'rgba(9,11,16,0)',lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,priceFormat:pxFmt});
+  CH.cs=CH.chart.addCandlestickSeries({upColor:UP,downColor:DN,borderVisible:true,borderUpColor:UPW,borderDownColor:DNW,wickUpColor:UPW,wickDownColor:DNW,
+    priceFormat:pxFmt,
     autoscaleInfoProvider:orig=>{const r=orig();if(r&&r.priceRange&&r.priceRange.minValue<0)r.priceRange.minValue=0;return r}});
-  CH.ls=CH.chart.addLineSeries({color:UP,lineWidth:2,visible:false,lastValueVisible:false,priceLineVisible:false,priceFormat:{type:'custom',formatter:fmtAxis,minMove:1e-12}});
+  CH.ls=CH.chart.addLineSeries({color:UP,lineWidth:2,visible:false,lastValueVisible:false,priceLineVisible:false,priceFormat:pxFmt});
+  CH.ema9=CH.chart.addLineSeries({color:EMA9,lineWidth:2,visible:!!CH.ema,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,priceFormat:pxFmt});
+  CH.ema21=CH.chart.addLineSeries({color:EMA21,lineWidth:2,visible:!!CH.ema,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,priceFormat:pxFmt});
   CH.vs=CH.chart.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},lastValueVisible:false,priceLineVisible:false});
-  CH.chart.priceScale('vol').applyOptions({scaleMargins:{top:0.8,bottom:0},visible:false});
-  CH.cs.priceScale().applyOptions({scaleMargins:{top:0.06,bottom:0.22}});
+  CH.chart.priceScale('vol').applyOptions({scaleMargins:{top:0.82,bottom:0},visible:false});
+  CH.cs.priceScale().applyOptions({scaleMargins:{top:0.08,bottom:0.22}});
   applyStyle();applyLog();
   CH.chart.subscribeCrosshairMove(param=>{
     const d=param&&param.seriesData&&CH.cs?param.seriesData.get(CH.cs):null;
@@ -205,11 +269,12 @@ function mountChart(c){
     else if(CH.lastBars&&CH.lastBars.length){const k=CH.lastBars[CH.lastBars.length-1],bar=barOf(k);const chg=k.o?((scalePx(k.c)-scalePx(k.o))/scalePx(k.o))*100:null;paintLegend(bar,chg)}
   });
   CH.chart.subscribeClick(onChartClick);
-  CH.ro=new ResizeObserver(()=>{if(!CH.chart)return;CH.chart.applyOptions({width:el.clientWidth,height:el.clientHeight||CH.h||360})});CH.ro.observe(el);
+  try{CH.chart.timeScale().subscribeVisibleLogicalRangeChange(()=>syncLivePrice())}catch(e){}
+  CH.ro=new ResizeObserver(()=>{if(!CH.chart)return;CH.chart.applyOptions({width:el.clientWidth,height:el.clientHeight||CH.h||360});syncLivePrice()});CH.ro.observe(el);
   load(true);
   CH.timer=setInterval(()=>{if(!document.hidden&&CH.mode==='native')load(false)},15000);
 }
-function unmountChart(){clearInterval(CH.timer);CH.timer=null;clearInterval(CH.clock);CH.clock=null;CH.ro?.disconnect();CH.ro=null;clearDrawings();try{CH.chart?.remove()}catch(e){}CH.chart=CH.cs=CH.vs=CH.ls=null;CH.coin=null;CH.lastPx=null;CH.seq++}
+function unmountChart(){clearInterval(CH.timer);CH.timer=null;clearInterval(CH.clock);CH.clock=null;CH.ro?.disconnect();CH.ro=null;clearDrawings();try{CH.chart?.remove()}catch(e){}CH.chart=CH.cs=CH.vs=CH.ls=CH.area=CH.ema9=CH.ema21=null;CH.coin=null;CH.lastPx=null;CH.seq++;const live=document.getElementById('chLive');if(live)live.classList.add('hidden')}
 const GT_TF={'1m':['minute',1],'5m':['minute',5],'15m':['minute',15],'1h':['hour',1],'4h':['hour',4],'1d':['day',1]};
 async function directGT(c,tf){
   const [p,a]=GT_TF[tf]||GT_TF['5m'];
@@ -222,12 +287,19 @@ async function directGT(c,tf){
 function pushBars(cd){
   CH.lastBars=cd;
   const bars=cd.map(barOf);
+  const last=bars[bars.length-1],first=bars[0];
+  CH.lastBarUp=!(last&&last.close<last.open);
+  if(last)CH.lastPx=last.close;
+  if(CH.area)CH.area.setData(bars.map(k=>({time:k.time,value:k.close})));
   CH.cs.setData(bars);
   CH.ls.setData(bars.map(k=>({time:k.time,value:k.close})));
-  CH.vs.setData(cd.map(k=>({time:k.t,value:k.v,color:k.c>=k.o?UP+'40':DN+'40'})));
-  const last=bars[bars.length-1],first=bars[0];
+  if(CH.ema9)CH.ema9.setData(emaPts(cd,9));
+  if(CH.ema21)CH.ema21.setData(emaPts(cd,21));
+  CH.vs.setData(cd.map(k=>({time:k.t,value:k.v||0,color:volColor(k.c>=k.o)})));
   const chg=first&&first.open?((last.close-first.open)/first.open)*100:null;
   paintLegend(last,chg);
+  applyStyle();
+  syncLivePrice();
 }
 async function load(showLoading){
   const c=CH.coin;if(!c||!c.pool||!CH.cs)return;const seq=++CH.seq,tf=CH.tf;

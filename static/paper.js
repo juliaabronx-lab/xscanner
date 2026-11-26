@@ -363,14 +363,23 @@ function paintChart(){
     const g=grouped.get(tm)||{time:tm,buy:0,sell:0};g[t.side]++;grouped.set(tm,g)}
   const markers=[...grouped.values()].sort((a,b)=>a.time-b.time).map(g=>{
     const both=g.buy&&g.sell;
-    return {time:g.time,position:both?'inBar':g.buy?'belowBar':'aboveBar',color:both?'#e6c35c':g.buy?'#00c703':'#e66565',size:2,
+    return {time:g.time,position:both?'inBar':g.buy?'belowBar':'aboveBar',color:both?'#e6c35c':g.buy?'#00f5a0':'#ff3b7a',size:2,
       shape:both?'circle':g.buy?'arrowUp':'arrowDown',
-      text:(g.buy?('Buy'+(g.buy>1?' ×'+g.buy:'')):'')+(both?' · ':'')+(g.sell?('Sell'+(g.sell>1?' ×'+g.sell:'')):'')}})
-  try{CH.cs.setMarkers(markers)}catch(e){}
-  try{if(PB.entryLine)CH.cs.removePriceLine(PB.entryLine)}catch(e){}
-  PB.entryLine=null;
+      text:(g.buy?('B'+(g.buy>1?'×'+g.buy:'')):'')+(both?' · ':'')+(g.sell?('S'+(g.sell>1?'×'+g.sell:'')):'')}})
+  const series=CH.style==='line'?(CH.area||CH.cs):CH.cs;
+  try{if(CH.cs)CH.cs.setMarkers(CH.style==='line'?[]:markers)}catch(e){}
+  try{if(CH.area&&CH.style==='line')CH.area.setMarkers(markers)}catch(e){}
+  try{if(PB.entryLine){ (PB.entryHost||CH.cs).removePriceLine(PB.entryLine) }}catch(e){}
+  PB.entryLine=null;PB.entryHost=null;
   const pos=posOf(mint);
-  if(pos&&pos.avg_px_usd>0){try{PB.entryLine=CH.cs.createPriceLine({price:pos.avg_px_usd,color:'#e6c35c',lineWidth:1,lineStyle:2,axisLabelVisible:true,title:'avg entry'})}catch(e){}}}
+  if(pos&&pos.avg_px_usd>0&&series){
+    const row=rowOf(mint);
+    const px=(CH.unit==='mcap'&&CH.supply)?pos.avg_px_usd*CH.supply:pos.avg_px_usd;
+    const up=!(row&&row.upnl_sol<0);
+    const pnl=row&&row.upnl_sol!=null?solTxt(row.upnl_sol,true):'';
+    const pc=row&&row.upnl_pct!=null?((row.upnl_pct>=0?'+':'')+row.upnl_pct.toFixed(1)+'%'):'';
+    const title='Avg'+(pnl?(' · '+pnl):'')+(pc?(' '+pc):'');
+    try{PB.entryLine=series.createPriceLine({price:px,color:up?'#00f5a0':'#ff3b7a',lineWidth:1,lineStyle:2,axisLabelVisible:true,title});PB.entryHost=series}catch(e){}}}
 
 let lastMark=0;
 async function maybeMark(force){
