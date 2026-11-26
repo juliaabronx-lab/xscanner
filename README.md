@@ -1,6 +1,6 @@
 # xScanner (public read-only copy)
 
-Memecoin narrative + X scanner dashboard. Analysis and paper trades only: no wallets, no keys, no signing, no trading, no posting.
+Memecoin narrative + X scanner dashboard. Analysis and paper trades only: no wallets, no keys, no signing, no real trades, no posting. The token page has a one-click paper Instant panel (play SOL, P1/P2/P3 fee bundles, limits, take-profit/stop, portfolio). Signed-in books are stored with the username/password account.
 
 - Runs with `PUBLIC_READONLY=1`: `POST /api/scan` returns 403. CA lookup, live charts (GeckoTerminal/DexScreener) and token images work.
 - `deploy/data/` is a snapshot of the scanner output (report.json, dashboard_data.json, scan.py + config.json + x_raw.json for the CA lookup) and the paper ledger.

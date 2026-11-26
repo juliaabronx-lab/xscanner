@@ -1,3 +1,33 @@
+.tk-chart{position:relative}
+.it-panel{position:absolute;top:42px;right:8px;z-index:5;width:min(262px,44%);max-height:calc(100% - 52px);overflow:auto;background:hsl(var(--card) / .96);border:1px solid hsl(var(--primary) / .16);border-radius:12px;padding:8px;box-shadow:0 12px 30px #000a}
+.it-panel.floating{position:fixed;width:262px;max-height:80vh;right:auto;z-index:40}
+.it-drag{display:flex;align-items:center;gap:6px;cursor:grab;margin-bottom:6px;font-size:12px}
+.it-drag b{letter-spacing:.04em}
+.it-ps{display:flex;gap:4px;margin-bottom:6px}
+.it-ps button,.it-pen{background:hsl(var(--field));color:var(--mut);border:1px solid hsl(var(--primary) / .14);border-radius:999px;padding:3px 8px;font:inherit;font-size:11px;font-weight:700;cursor:pointer}
+.it-ps button.on{background:hsl(var(--primary));color:hsl(var(--background))}
+.it-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}
+.it-buy,.it-sell,.it-grid button{border:0;border-radius:8px;padding:11px 4px;font:inherit;font-weight:700;cursor:pointer}
+.it-buy{background:hsl(var(--money));color:#04140a}
+.it-sell{background:hsl(var(--error));color:#fff}
+.it-grid input,.it-custom input,#pbDep{width:100%;background:hsl(var(--field));border:1px solid hsl(var(--primary) / .14);color:hsl(var(--primary));border-radius:8px;padding:7px;font:inherit}
+.it-custom{display:flex;gap:6px}
+.it-custom button{border-radius:8px;padding:7px 10px}
+.it-line{margin:6px 0 0;font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
+.it-pos{display:flex;justify-content:space-between;gap:8px;margin-top:8px;font-size:12px}
+.it-cash{text-align:right;color:var(--mut);font-size:11px}
+.it-tpsl{display:grid;grid-template-columns:1fr 1fr auto;gap:4px;margin-top:6px}
+.it-tpsl input{background:hsl(var(--field));border:1px solid hsl(var(--primary) / .12);color:hsl(var(--primary));border-radius:8px;padding:5px;font:inherit;font-size:11px}
+#itEditBox{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px}
+#itEditBox label{font-size:10px;color:var(--mut);display:flex;flex-direction:column}
+#itEditBox button{grid-column:1/-1}
+.qbuy{background:hsl(var(--money));color:#04140a;border:0;border-radius:999px;padding:3px 8px;font:inherit;font-size:11px;font-weight:700;cursor:pointer}
+.pb-hover{position:fixed;z-index:50;min-width:180px;background:hsl(var(--card));border:1px solid hsl(var(--primary) / .16);border-radius:10px;padding:8px 10px;font-size:12px;box-shadow:0 8px 24px #000a}
+.pb-barmenu{position:fixed;top:78px;left:16px;z-index:30;background:hsl(var(--card));border:1px solid hsl(var(--primary) / .14);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;font-size:12px}
+.pb-who{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:12px;color:var(--mut)}
+.pb-who input{flex:1;background:hsl(var(--field));border:1px solid hsl(var(--primary) / .12);color:hsl(var(--primary));border-radius:8px;padding:6px}
+@media(max-width:1000px){.it-panel:not(.floating){position:static;width:auto;max-height:none;margin-top:8px}}
+
 /* Paper book. Simulation chrome only — same dark palette as the rest of xScanner. */
 
 .paperbar{position:sticky;top:var(--bar-h,48px);z-index:25;display:flex;align-items:center;gap:12px;width:100%;margin:0;padding:6px 14px;border:0;border-bottom:1px solid hsl(var(--border));

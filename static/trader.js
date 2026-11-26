@@ -19,7 +19,7 @@ const toast=(msg,cls='')=>{let b=document.getElementById('toasts');if(!b){b=docu
   const t=document.createElement('div');t.className='toast '+cls;t.innerHTML=msg;b.appendChild(t);setTimeout(()=>t.classList.add('out'),6500);setTimeout(()=>t.remove(),7200)};
 window.toast=toast;
 const symOf=r=>r.s||r.sym||'?';
-const SC=['feed','narr','risk','paper','xfeed'];
+const SC=['feed','narr','risk','paper','book','xfeed'];
 const isP=v=>v==='pulse'||v==='trend';
 function navSync(){const sc=SC.includes(view);const h=$('#scHead');if(h)h.classList.toggle('hidden',!sc);const n=$('#scNav');if(n)n.classList.toggle('on',sc);
   $$('#subtabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===view))}
@@ -129,7 +129,7 @@ function rowHTML(r,col){
    ${tot?`<div class="bsbar" title="${bp}% of 1h transactions are buys"><i style="width:${bp}%"></i></div>`:''}
    ${!mcc?`<div class="cvbar" title="${cv!=null?(r.cvs==='chain'?'Bonding curve progress, read from the chain':'Estimated from market cap'):'Curve progress unavailable'}"><i style="width:${cv!=null?Math.min(100,cv):0}%" class="${cv!=null&&cv>=70?'hot':''}"></i><span>${cv!=null?cv.toFixed(cv<10?1:0)+'%'+(r.cvs==='est'?' ~':''):'curve —'}${r.cv_done?' · migrating':''}</span></div>`:`<div class="cvbar done"><span>migrated${r.mg?' '+ageS(now()-r.mg)+' ago':''}${r.lpl!=null?' · LP '+Math.round(r.lpl)+'% locked/burned':''}</span></div>`}
   </div>
-  <div class="pact"><a class="open" href="${esc(jupLink(r.m))}" target="_blank" rel="noopener noreferrer" title="Opens Jupiter in a new tab. xScanner never trades for you." data-noopen>Jupiter ↗</a><a class="open alt" href="${esc(axLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Axiom ↗</a><a class="open alt" href="${esc(phLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Photon ↗</a></div>`}
+  <div class="pact"><button type="button" class="qbuy" data-qbuy="${esc(r.m)}" data-qpx="${r.px||''}" data-qsym="${esc(symOf(r))}" data-qname="${esc(r.n||'')}" data-noopen title="Paper buy the first preset. Simulation only.">Buy</button><a class="open" href="${esc(jupLink(r.m))}" target="_blank" rel="noopener noreferrer" title="Opens Jupiter in a new tab. xScanner never trades for you." data-noopen>Jupiter ↗</a><a class="open alt" href="${esc(axLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Axiom ↗</a><a class="open alt" href="${esc(phLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Photon ↗</a></div>`}
 function rowEl(r,col){let el=P.els.get(r.m);
   if(!el){el=document.createElement('article');el.className='prow';el.dataset.m=r.m;el.tabIndex=0;el.setAttribute('role','link');el.setAttribute('aria-label','Open '+symOf(r));P.els.set(r.m,el);if(!P.first)el.classList.add('pin')}
   if(el._v!==r.v||el._col!==col){const prevMc=el._mc;el.innerHTML=rowHTML(r,col);el._v=r.v;el._col=col;
@@ -227,7 +227,7 @@ function trendRender(){
    <td class="mono">${r.cr?ageS(now()-r.cr):'—'}</td><td class="mono">${r.px?fmtPx(r.px):'—'}</td><td class="mono">${pc1(r.pc5)}</td><td class="mono">${pc1(r.pc1)}</td><td class="mono">${pc1(r.pc24)}</td>
    <td class="mono">${usd(r.v1)}</td><td class="mono">${usd(r.lq)}</td><td class="mono">${usd(r.mc)}</td>
    <td class="mono"><span class="up">${r.b1??'—'}</span>/<span class="dn">${r.s1??'—'}</span></td><td class="mono">${r.h!=null?r.h.toLocaleString():'—'}</td>
-   <td class="tact"><button class="star" data-star="${esc(r.m)}" aria-label="Watch"></button><a class="open alt" href="${esc(jupLink(r.m))}" target="_blank" rel="noopener noreferrer" data-noopen>Jupiter ↗</a></td></tr>`).join(''):'<tr><td colspan="13" class="muted" style="padding:18px">Nothing matches yet. The board fills in about a minute after the server wakes up.</td></tr>';
+   <td class="tact"><button type="button" class="qbuy" data-qbuy="${esc(r.m)}" data-qpx="${r.px||''}" data-qsym="${esc(symOf(r))}" data-qname="${esc(r.n||'')}" data-noopen>Buy</button><button class="star" data-star="${esc(r.m)}" aria-label="Watch"></button><a class="open alt" href="${esc(jupLink(r.m))}" target="_blank" rel="noopener noreferrer" data-noopen>Jupiter ↗</a></td></tr>`).join(''):'<tr><td colspan="13" class="muted" style="padding:18px">Nothing matches yet. The board fills in about a minute after the server wakes up.</td></tr>';
   paintStars()}
 $('#trSort').onclick=e=>{const b=e.target.closest('button[data-k]');if(!b)return;TR.k=b.dataset.k;LSs('xs_trend_k_v1',TR.k);trendRender()};
 $('#trDust').onchange=e=>{TR.dust=e.target.checked;LSs('xs_trend_dust_v1',TR.dust);trendRender()};

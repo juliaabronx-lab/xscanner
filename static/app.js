@@ -47,7 +47,7 @@ async function loadFeed(){
   $$('#feed th').forEach(th=>{th.classList.toggle('sorted',th.dataset.s===sort.k);th.textContent=th.textContent.replace(/ [▲▼]$/,'')+(th.dataset.s===sort.k?(sort.desc?' ▼':' ▲'):'')});
   $('#feed tbody').innerHTML=d.coins.length?d.coins.map(c=>`<tr data-m="${esc(c.mint)}">
     <td><span class="score ${tierCls(c.score)}">${c.score??'—'}</span></td>
-    <td class="sym">${tokImg(c.mint,c.symbol,'tava')}<b>$${esc(c.symbol)}</b> ${c.pump?'<span class="pill pur">pump</span>':''}<small>${esc(c.name)}</small></td>
+    <td class="sym">${tokImg(c.mint,c.symbol,'tava')}<b>$${esc(c.symbol)}</b> ${c.pump?'<span class="pill pur">pump</span>':''}<small>${esc(c.name)}</small> <button type="button" class="qbuy" data-qbuy="${esc(c.mint)}" data-qpx="${c.px||c.price||''}" data-qsym="${esc(c.symbol||'')}" data-qname="${esc(c.name||'')}">Buy</button></td>
     <td><span class="pill ${c.tier==='look'?'grn':c.tier==='watch'?'amb':'red'}">${c.status||c.tier}</span></td>
     <td>${usd(c.mcap)}</td><td>${usd(c.liq)}</td><td>${usd(c.vol24)}</td><td>${pct(c.pc1)}</td><td>${pct(c.pc24)}</td>
     <td>${ageTxt(c.age_h)}</td>
@@ -56,10 +56,10 @@ async function loadFeed(){
     :`<tr><td colspan="11" class="muted" style="padding:30px;text-align:center">No coins match (or report.json is missing/empty).</td></tr>`;
   grid.innerHTML=d.coins.length?d.coins.map(cardHTML).join(''):`<div class="xempty">No coins match (or report.json is missing/empty).</div>`;
   grid.removeAttribute('aria-busy');
-  $$('#cardGrid .tcard').forEach(el=>el.onclick=e=>{if(e.target.closest('.cpy'))return;openCoin(el.dataset.m)});
+  $$('#cardGrid .tcard').forEach(el=>el.onclick=e=>{if(e.target.closest('.cpy,.qbuy'))return;openCoin(el.dataset.m)});
   $$('#cardGrid .cpy').forEach(b=>b.onclick=e=>{e.stopPropagation();copyCa(b.dataset.cp,b)});
   applyLayout();
-  $$('#feed tbody tr[data-m]').forEach(tr=>tr.onclick=()=>openCoin(tr.dataset.m));
+  $$('#feed tbody tr[data-m]').forEach(tr=>tr.onclick=e=>{if(e.target.closest('.qbuy,.cpy'))return;openCoin(tr.dataset.m)});
   const first=!hadCards;
   d.coins.forEach(c=>{
     const el=grid.querySelector(`.tcard[data-m="${CSS.escape(c.mint)}"]`);
@@ -96,7 +96,8 @@ function cardHTML(c){
     <div class="tmc"><span class="muted">MC</span> <b data-n="mcap">${usd(c.mcap)}</b> <span class="muted">· Liq</span> ${usd(c.liq)}</div>
     <div class="tstats"><span>⏱ ${ageTxt(c.age_h)}</span><span>1h <span data-n="pc1">${pct(c.pc1)}</span></span><span>24h <span data-n="pc24">${pct(c.pc24)}</span></span></div>
     ${c.story_short?`<div class="twhy" title="${esc(c.story_short)}"><b>Why it's moving</b> ${esc(c.story_short)}</div>`:''}
-    <div class="tflags">${chips||'<span class="muted" style="font-size:11px">no flags</span>'}</div></div></article>`;
+    <div class="tflags">${chips||'<span class="muted" style="font-size:11px">no flags</span>'}</div>
+    <button type="button" class="qbuy" data-qbuy="${esc(c.mint)}" data-qpx="${c.px||c.price||''}" data-qsym="${esc(c.symbol||'')}" data-qname="${esc(c.name||'')}" data-noopen>Paper buy</button></div></article>`;
 }
 async function copyCa(ca,btn){try{await navigator.clipboard.writeText(ca)}catch(e){const t=document.createElement('textarea');t.value=ca;document.body.appendChild(t);t.select();try{document.execCommand('copy')}catch(_){}t.remove()}
   if(btn){const o=btn.textContent;btn.textContent='✓';btn.classList.add('ok');setTimeout(()=>{btn.textContent=o;btn.classList.remove('ok')},1200)}}

@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="/static/style.css?v=fix11">
 <link rel="stylesheet" href="/static/trader.css?v=fix11">
 <link rel="stylesheet" href="/static/terminal.css?v=fix11">
-<link rel="stylesheet" href="/static/paper.css?v=fix11">
+<link rel="stylesheet" href="/static/paper.css?v=instant2">
 <link rel="prefetch" href="/static/vendor/lightweight-charts.js?v=4.2.3" as="script">
 </head><body>
 <noscript><div style="max-width:760px;margin:24px auto;padding:16px;font:16px/1.5 system-ui,sans-serif;color:#eee;background:#111;border:1px solid #444;border-radius:8px">
@@ -48,10 +48,13 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
 <button type="button" id="paperBar" class="paperbar" hidden>
   <span class="pb-tag">PAPER</span>
   <b id="pbBarCash">Paper</b>
+  <span id="pbBarInv"></span>
   <span id="pbBarU"></span>
   <span id="pbBarR"></span>
   <small id="pbBarHint">simulation · not advice</small>
+  <span id="pbBarGear" class="it-pen" title="Choose bar fields">☰</span>
 </button>
+<div id="pbBarMenu" class="pb-barmenu" hidden></div>
 <div id="searchMsg" class="searchmsg hidden"></div>
 <div id="banner" class="banner hidden"></div>
 <div id="scHead" class="schead hidden">
@@ -60,6 +63,7 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
     <button data-v="narr">Narratives</button>
     <button data-v="risk">Risk radar</button>
     <button data-v="paper">Paper P&amp;L</button>
+    <button data-v="book">Portfolio</button>
     <button data-v="xfeed" id="xNav">X Live</button>
   </div>
   <section id="stats" class="statstrip" aria-label="Scan summary"></section>
@@ -213,5 +217,5 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
 <script src="/static/xfeed.js?v=fix11"></script>
 <script src="/static/trader.js?v=fix11"></script>
 <script src="/static/sync.js?v=fix11"></script>
-<script src="/static/paper.js?v=fix11"></script>
+<script src="/static/paper.js?v=instant2"></script>
 </body></html>

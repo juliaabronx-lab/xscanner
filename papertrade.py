@@ -50,9 +50,13 @@ MAX_SEEN = 80
 DEFAULT_SETTINGS = {
     "slippage_bps": 150,
     "priority_fee_sol": 0.001,
+    "bribe_sol": 0.0,
     "platform_fee_bps": 100,
     "exec_delay_ms": 700,
 }
+FAUCET_SOL = 1.0
+_BOOK_KEYS = ("cash_sol", "reserved_sol", "realized_sol", "deposited_sol", "wins", "losses", "scratches",
+              "positions", "orders", "trades", "daily", "faucet_day")
 
 
 class Reject(Exception):
@@ -120,6 +124,9 @@ def new_account(now=None) -> dict:
         "trades": [],
         "daily": {},
         "settings": dict(DEFAULT_SETTINGS),
+        "mode": "practice",
+        "faucet_day": "",
+        "alt": None,
         "seen": [],
         "resets": 0,
         "created_at": ts,
@@ -131,13 +138,48 @@ def clamp_settings(raw) -> dict:
     raw = raw if isinstance(raw, dict) else {}
     slip = _finite(raw.get("slippage_bps"))
     pri = _finite(raw.get("priority_fee_sol"))
+    bribe = _finite(raw.get("bribe_sol"))
     plat = _finite(raw.get("platform_fee_bps"))
     delay = _finite(raw.get("exec_delay_ms"))
+    active = raw.get("active_p") if raw.get("active_p") in ("P1", "P2", "P3") else "P1"
+    def pack(src, dslip, dss, dpri, dtip):
+        src = src if isinstance(src, dict) else {}
+        def I(k, d, hi=5000):
+            n = _finite(src.get(k))
+            return int(_clamp(n if n is not None else d, 0, hi))
+        def F(k, d):
+            n = _finite(src.get(k))
+            return _q(_clamp(n if n is not None else d, 0, 0.5))
+        return {"slippage_bps": I("slippage_bps", dslip), "sell_slippage_bps": I("sell_slippage_bps", dss),
+                "priority_fee_sol": F("priority_fee_sol", dpri), "bribe_sol": F("bribe_sol", dtip)}
+    srcb = raw.get("bundles") if isinstance(raw.get("bundles"), dict) else {}
+    bundles = {
+        "P1": pack(srcb.get("P1"), 100, 150, 0.001, 0.0),
+        "P2": pack(srcb.get("P2"), 300, 400, 0.003, 0.001),
+        "P3": pack(srcb.get("P3"), 1000, 1500, 0.01, 0.01),
+    }
+    def nums(key, default, lo, hi, as_int=False):
+        rawv = raw.get(key)
+        if not isinstance(rawv, list) or not rawv:
+            return list(default)
+        out = []
+        for v in rawv[:6]:
+            n = _finite(v)
+            if n is None or n <= 0:
+                continue
+            n = _clamp(n, lo, hi)
+            out.append(int(round(n)) if as_int else _q(n))
+        return out or list(default)
     return {
-        "slippage_bps": int(_clamp(slip if slip is not None else DEFAULT_SETTINGS["slippage_bps"], 0, 3000)),
-        "priority_fee_sol": _q(_clamp(pri if pri is not None else DEFAULT_SETTINGS["priority_fee_sol"], 0, 0.05)),
+        "slippage_bps": int(_clamp(slip if slip is not None else DEFAULT_SETTINGS["slippage_bps"], 0, 5000)),
+        "priority_fee_sol": _q(_clamp(pri if pri is not None else DEFAULT_SETTINGS["priority_fee_sol"], 0, 0.5)),
+        "bribe_sol": _q(_clamp(bribe if bribe is not None else DEFAULT_SETTINGS["bribe_sol"], 0, 0.5)),
         "platform_fee_bps": int(_clamp(plat if plat is not None else DEFAULT_SETTINGS["platform_fee_bps"], 0, 1000)),
         "exec_delay_ms": int(_clamp(delay if delay is not None else DEFAULT_SETTINGS["exec_delay_ms"], 0, 5000)),
+        "active_p": active,
+        "bundles": bundles,
+        "buy_amounts": nums("buy_amounts", [0.1, 0.25, 0.5, 1], 0.001, MAX_SPEND),
+        "sell_pcts": nums("sell_pcts", [10, 25, 50, 100], 1, 100, True),
     }
 
 
@@ -172,6 +214,20 @@ def normalize(raw) -> dict:
     created = _finite(raw.get("created_at"))
     a = new_account(int(created) if created and created > 0 else None)
     a["settings"] = clamp_settings(raw.get("settings"))
+    a["mode"] = "hard" if raw.get("mode") == "hard" else "practice"
+    day = raw.get("faucet_day")
+    a["faucet_day"] = day if isinstance(day, str) and len(day) == 10 else ""
+    alt = raw.get("alt") if isinstance(raw.get("alt"), dict) else None
+    if alt and not raw.get("_nested"):
+        inner = dict(alt)
+        inner["v"] = 1
+        inner.pop("alt", None)
+        inner["_nested"] = True
+        inner["settings"] = raw.get("settings") or {}
+        parked = normalize(inner)
+        a["alt"] = {k: parked.get(k) for k in _BOOK_KEYS}
+    else:
+        a["alt"] = None
     a["cash_sol"] = _q(_clamp(_finite(raw.get("cash_sol")) or 0.0, 0.0, MAX_CASH))
     a["realized_sol"] = _q(_finite(raw.get("realized_sol")) or 0.0)
     a["deposited_sol"] = _q(_clamp(_finite(raw.get("deposited_sol")) or 0.0, 0.0, MAX_CASH))
@@ -209,6 +265,24 @@ def normalize(raw) -> dict:
         mint = o.get("mint")
         side = o.get("side")
         limit = _finite(o.get("limit_px"))
+        if side == "oco":
+            if not _mint_ok(mint) or mint not in positions:
+                continue
+            tp, sl = _finite(o.get("tp_px")), _finite(o.get("sl_px"))
+            qty = _finite(o.get("qty")) or 0.0
+            if qty <= 0 or not ((tp and tp > 0) or (sl and sl > 0)):
+                continue
+            orders.append({
+                "id": _text(o.get("id"), 40) or uuid.uuid4().hex[:12],
+                "side": "oco", "mint": mint,
+                "symbol": _text(o.get("symbol"), 16) or positions[mint]["symbol"],
+                "name": _text(o.get("name"), 64), "pool": _text(o.get("pool"), 64),
+                "limit_px": 0.0, "sol": 0.0, "qty": _q(qty),
+                "tp_px": _q(tp) if tp and tp > 0 else None,
+                "sl_px": _q(sl) if sl and sl > 0 else None,
+                "created_at": int(_finite(o.get("created_at")) or a["created_at"]),
+            })
+            continue
         if side not in ("buy", "sell") or not _mint_ok(mint) or not limit or limit <= 0:
             continue
         if side == "sell" and mint not in positions:
@@ -240,11 +314,11 @@ def normalize(raw) -> dict:
 
     # Drop newest sell orders that reserve more tokens than the position holds.
     for mint, p in positions.items():
-        sells = [o for o in orders if o["side"] == "sell" and o["mint"] == mint]
+        sells = [o for o in orders if o["side"] in ("sell", "oco") and o["mint"] == mint]
         while sum(o["qty"] for o in sells) > p["qty"] * (1 + 1e-9) and sells:
             doomed = sells.pop()
             orders = [o for o in orders if o is not doomed and o["id"] != doomed["id"]]
-        held = sum(o["qty"] for o in orders if o["side"] == "sell" and o["mint"] == mint)
+        held = sum(o["qty"] for o in orders if o["side"] in ("sell", "oco") and o["mint"] == mint)
         p["reserved_qty"] = _q(min(p["qty"], held))
 
     implied = sum(o["sol"] for o in orders if o["side"] == "buy")
@@ -266,7 +340,7 @@ def normalize(raw) -> dict:
             "id": _text(t.get("id"), 40) or uuid.uuid4().hex[:12],
             "ts": int(_finite(t.get("ts")) or a["created_at"]),
             "side": t["side"],
-            "kind": "limit" if t.get("kind") == "limit" else "market",
+            "kind": t.get("kind") if t.get("kind") in ("limit", "tp", "sl") else "market",
             "mint": t["mint"],
             "symbol": _text(t.get("symbol"), 16) or "?",
             "qty": _q(_finite(t.get("qty")) or 0.0),
@@ -305,16 +379,33 @@ def _settings(a):
     return clamp_settings(a.get("settings"))
 
 
-def _fees(spend_or_gross, settings):
-    """Split a SOL amount into priority fee, platform fee and remainder.
+def trade_settings(account, action=None) -> dict:
+    """Stored settings, plus an optional per-trade ``fees`` override that does not stick."""
+    base = _settings(account)
+    over = (action or {}).get("fees") if isinstance((action or {}).get("fees"), dict) else None
+    if not over:
+        out = dict(base)
+        out["sell_slippage_bps"] = int(out["slippage_bps"])
+        return out
+    merged = dict(base)
+    for k in ("slippage_bps", "sell_slippage_bps", "priority_fee_sol", "bribe_sol", "platform_fee_bps"):
+        if k in over and over[k] is not None:
+            merged[k] = over[k]
+    out = clamp_settings(merged)
+    sell = _finite(over.get("sell_slippage_bps"))
+    out["sell_slippage_bps"] = int(_clamp(sell if sell is not None else out["slippage_bps"], 0, 5000))
+    return out
 
-    ``spend_or_gross`` is the SOL being spent (buy) or the gross proceeds (sell).
-    """
-    pri = min(settings["priority_fee_sol"], spend_or_gross)
+
+def _fees(spend_or_gross, settings):
+    """Split SOL into priority fee, tip, platform fee and remainder."""
+    pri = min(settings.get("priority_fee_sol") or 0.0, spend_or_gross)
     after = spend_or_gross - pri
-    plat = after * settings["platform_fee_bps"] / 10_000.0
+    tip = min(settings.get("bribe_sol") or 0.0, after)
+    after -= tip
+    plat = after * (settings.get("platform_fee_bps") or 0) / 10_000.0
     net = after - plat
-    return pri, plat, net
+    return pri, tip, plat, net
 
 
 def _meta(action, pos=None):
@@ -364,9 +455,9 @@ def _close_if_empty(a, mint):
 
 
 def buy(a, mint, spend, px, sol_usd, now, *, kind="market", meta=None, funded=False,
-        price_source="", waited_ms=0, order_id=None):
+        price_source="", waited_ms=0, order_id=None, settings=None):
     """Spend ``spend`` SOL (already reserved when ``funded``) and add tokens."""
-    s = _settings(a)
+    s = settings or _settings(a)
     spend = _finite(spend)
     px = _finite(px)
     sol_usd = _finite(sol_usd)
@@ -383,7 +474,7 @@ def buy(a, mint, spend, px, sol_usd, now, *, kind="market", meta=None, funded=Fa
             raise Reject("That limit is no longer reserved.")
     elif spend - a["cash_sol"] > 1e-8:
         raise Reject("Not enough paper SOL. Deposit more, or cancel a buy limit that is holding some.")
-    pri, plat, net = _fees(spend, s)
+    pri, tip, plat, net = _fees(spend, s)
     if net <= 1e-12:
         raise Reject("That amount is smaller than the paper priority fee and platform fee.")
     slip = s["slippage_bps"] / 10_000.0
@@ -422,14 +513,15 @@ def buy(a, mint, spend, px, sol_usd, now, *, kind="market", meta=None, funded=Fa
         "id": uuid.uuid4().hex[:12],
         "ts": int(now),
         "side": "buy",
-        "kind": "limit" if kind == "limit" else "market",
+        "kind": kind if kind in ("limit", "tp", "sl") else "market",
         "mint": mint,
         "symbol": pos["symbol"],
         "qty": _q(tokens),
         "sol": _q(spend),
         "sol_net": _q(net),
-        "fee_sol": _q(pri + plat),
+        "fee_sol": _q(pri + tip + plat),
         "priority_fee_sol": _q(pri),
+        "bribe_sol": _q(tip),
         "platform_fee_sol": _q(plat),
         "px_usd": _q(px),
         "fill_px_usd": _q(fill_px),
@@ -444,9 +536,9 @@ def buy(a, mint, spend, px, sol_usd, now, *, kind="market", meta=None, funded=Fa
 
 
 def sell(a, mint, qty_out, px, sol_usd, now, *, kind="market", from_reserved=False,
-         price_source="", waited_ms=0, order_id=None):
+         price_source="", waited_ms=0, order_id=None, settings=None):
     """Sell ``qty_out`` tokens. Reserved tokens can only be sold by their limit."""
-    s = _settings(a)
+    s = settings or _settings(a)
     px = _finite(px)
     sol_usd = _finite(sol_usd)
     qty_out = _finite(qty_out)
@@ -467,14 +559,14 @@ def sell(a, mint, qty_out, px, sol_usd, now, *, kind="market", from_reserved=Fal
         if qty_out - free > max(1e-8, free * 1e-6):
             raise Reject("Not enough free tokens. Some are held by a sell limit.")
         qty_out = min(qty_out, free)
-    slip = s["slippage_bps"] / 10_000.0
+    slip = (s.get("sell_slippage_bps") if s.get("sell_slippage_bps") is not None else s["slippage_bps"]) / 10_000.0
     fill_px = px * (1.0 - slip)
     if fill_px <= 0:
         raise Reject("Slippage is 100% or more, so a sell would receive nothing. Lower it in paper settings.")
     gross = qty_out * fill_px / sol_usd
     # A dust sell can be smaller than the priority fee. The fee then takes the
     # whole proceeds and the position still closes; cash does not go negative.
-    pri, plat, net = _fees(gross, s)
+    pri, tip, plat, net = _fees(gross, s)
     if net < 0:
         net = 0.0
     cost_out = pos["cost_sol"] * (qty_out / pos["qty"]) if pos["qty"] else 0.0
@@ -493,14 +585,15 @@ def sell(a, mint, qty_out, px, sol_usd, now, *, kind="market", from_reserved=Fal
         "id": uuid.uuid4().hex[:12],
         "ts": int(now),
         "side": "sell",
-        "kind": "limit" if kind == "limit" else "market",
+        "kind": kind if kind in ("limit", "tp", "sl") else "market",
         "mint": mint,
         "symbol": pos["symbol"],
         "qty": _q(qty_out),
         "sol": _q(net),
         "sol_gross": _q(gross),
-        "fee_sol": _q(pri + plat),
+        "fee_sol": _q(pri + tip + plat),
         "priority_fee_sol": _q(pri),
+        "bribe_sol": _q(tip),
         "platform_fee_sol": _q(plat),
         "px_usd": _q(px),
         "fill_px_usd": _q(fill_px),
@@ -524,7 +617,31 @@ def _require_price(action):
     return px, sol
 
 
+def _hard(a) -> bool:
+    return (a.get("mode") or "practice") == "hard"
+
+
+def _snap_book(a) -> dict:
+    return {k: copy.deepcopy(a.get(k)) for k in _BOOK_KEYS}
+
+
+def _blank_book() -> dict:
+    return {
+        "cash_sol": 0.0, "reserved_sol": 0.0, "realized_sol": 0.0, "deposited_sol": 0.0,
+        "wins": 0, "losses": 0, "scratches": 0, "positions": {}, "orders": [], "trades": [],
+        "daily": {}, "faucet_day": "",
+    }
+
+
+def _load_book(a, snap) -> None:
+    snap = snap or _blank_book()
+    for k, v in _blank_book().items():
+        a[k] = copy.deepcopy(snap.get(k, v))
+
+
 def _do_deposit(a, action, now):
+    if _hard(a):
+        raise Reject("Hard mode starts at zero. Claim the daily paper SOL. There is no deposit.")
     sol = _finite(action.get("sol"))
     if sol is None or sol <= 0:
         raise Reject("Enter a paper SOL amount to deposit.")
@@ -538,25 +655,94 @@ def _do_deposit(a, action, now):
 
 
 def _do_reset(a, now):
+    if _hard(a):
+        raise Reject("Hard mode cannot be reset. Switch back to practice, or keep trading the claimed SOL.")
     settings = _settings(a)
     resets = int(a.get("resets") or 0) + 1
     created = a.get("created_at") or int(now)
+    alt = a.get("alt")
+    seen = []
     fresh = new_account(created)
     fresh["settings"] = settings
     fresh["resets"] = resets
     fresh["created_at"] = created
     fresh["updated_at"] = int(now)
+    fresh["mode"] = "practice"
+    fresh["alt"] = alt
+    fresh["seen"] = seen
     a.clear()
     a.update(fresh)
     return {"side": "reset", "ts": int(now)}
 
 
+def _do_mode(a, action, now):
+    want = action.get("mode")
+    if want not in ("practice", "hard"):
+        raise Reject("Choose practice or hard mode.")
+    cur = a.get("mode") or "practice"
+    if want == cur:
+        return {"side": "mode", "mode": cur, "ts": int(now)}
+    parked = a.get("alt")
+    a["alt"] = _snap_book(a)
+    _load_book(a, parked if isinstance(parked, dict) else None)
+    a["mode"] = want
+    return {"side": "mode", "mode": want, "ts": int(now)}
+
+
+def _do_faucet(a, action, now):
+    if not _hard(a):
+        raise Reject("The daily claim is only available in hard mode.")
+    day = _day(now)
+    if a.get("faucet_day") == day:
+        raise Reject("Today's paper SOL is already claimed.")
+    if a["cash_sol"] + a["reserved_sol"] + FAUCET_SOL > MAX_CASH:
+        raise Reject("The paper book stops at %s SOL." % int(MAX_CASH))
+    a["cash_sol"] = _q(a["cash_sol"] + FAUCET_SOL)
+    a["faucet_day"] = day
+    return {"side": "faucet", "sol": FAUCET_SOL, "day": day, "ts": int(now)}
+
+
+def _do_tpsl(a, action, now):
+    """Attach one take-profit and/or stop to a position. They share one reserved quantity."""
+    mint = action.get("mint")
+    pos = a["positions"].get(mint) if _mint_ok(mint) else None
+    if pos is None:
+        raise Reject("Open a paper position before setting a target or a stop.")
+    for o in list(a["orders"]):
+        if o.get("side") == "oco" and o.get("mint") == mint:
+            pos["reserved_qty"] = _q(max(0.0, pos["reserved_qty"] - o["qty"]))
+            a["orders"] = [x for x in a["orders"] if x["id"] != o["id"]]
+    tp, sl = _finite(action.get("tp_px")), _finite(action.get("sl_px"))
+    tp = tp if tp and tp > 0 else None
+    sl = sl if sl and sl > 0 else None
+    if tp is None and sl is None:
+        return {"side": "tpsl", "cleared": True, "ts": int(now)}
+    pct = _finite(action.get("pct"))
+    if pct is None:
+        pct = 100.0
+    if pct <= 0 or pct > 100:
+        raise Reject("The protected size has to be between 0 and 100 percent.")
+    free = pos["qty"] - pos["reserved_qty"]
+    qty = min(free, free * pct / 100.0)
+    if qty <= 1e-12:
+        raise Reject("No free tokens left for a target or stop. Cancel a sell limit first.")
+    pos["reserved_qty"] = _q(pos["reserved_qty"] + qty)
+    order = {
+        "id": uuid.uuid4().hex[:12], "side": "oco", "mint": mint, "symbol": pos["symbol"],
+        "name": pos.get("name") or "", "pool": pos.get("pool") or "", "limit_px": 0.0, "sol": 0.0,
+        "qty": _q(qty), "tp_px": None if tp is None else _q(tp), "sl_px": None if sl is None else _q(sl),
+        "created_at": int(now),
+    }
+    a["orders"].append(order)
+    return {"side": "tpsl", "order": order, "ts": int(now)}
+
+
 def _do_settings(a, action, now):
+    incoming = action.get("settings") if isinstance(action.get("settings"), dict) else {}
     merged = dict(_settings(a))
-    incoming = action.get("settings") if isinstance(action.get("settings"), dict) else action
-    for k in DEFAULT_SETTINGS:
-        if k in incoming and incoming[k] is not None and k != "action":
-            merged[k] = incoming[k]
+    for k, v in incoming.items():
+        if k != "action" and v is not None:
+            merged[k] = v
     a["settings"] = clamp_settings(merged)
     return {"side": "settings", "settings": dict(a["settings"]), "ts": int(now)}
 
@@ -568,7 +754,7 @@ def _do_buy(a, action, now):
     return buy(
         a, mint, action.get("sol"), px, sol_usd, now,
         meta=_meta(action, pos), price_source=action.get("price_source") or "",
-        waited_ms=action.get("waited_ms") or 0,
+        waited_ms=action.get("waited_ms") or 0, settings=trade_settings(a, action),
     )
 
 
@@ -590,6 +776,7 @@ def _do_sell(a, action, now):
     return sell(
         a, mint, qty, px, sol_usd, now,
         price_source=action.get("price_source") or "", waited_ms=action.get("waited_ms") or 0,
+        settings=trade_settings(a, action),
     )
 
 
@@ -629,7 +816,7 @@ def _do_limit(a, action, now):
         if spend - a["cash_sol"] > 1e-8:
             raise Reject("Not enough free paper SOL to reserve that buy.")
         # Reject up front when the fees would consume the whole order.
-        pri, _plat, net = _fees(spend, _settings(a))
+        _pri, _tip, _plat, net = _fees(spend, _settings(a))
         if net <= 1e-12:
             raise Reject("That amount is smaller than the paper fees.")
         a["cash_sol"] = _q(a["cash_sol"] - spend)
@@ -705,21 +892,35 @@ def _do_mark(a, action, now):
         px = quotes.get(order["mint"])
         if not px:
             continue
-        if order["side"] == "buy" and px > order["limit_px"] * (1 + 1e-12):
+        if order["side"] == "oco":
+            kind = None
+            if order.get("tp_px") and px >= order["tp_px"] * (1 - 1e-12):
+                kind = "tp"
+            elif order.get("sl_px") and px <= order["sl_px"] * (1 + 1e-12):
+                kind = "sl"
+            if not kind:
+                continue
+        elif order["side"] == "buy" and px > order["limit_px"] * (1 + 1e-12):
             continue
-        if order["side"] == "sell" and px < order["limit_px"] * (1 - 1e-12):
+        elif order["side"] == "sell" and px < order["limit_px"] * (1 - 1e-12):
             continue
+        else:
+            kind = "limit" if order["side"] in ("buy", "sell") else None
         try:
             if order["side"] == "buy":
                 fill = buy(
                     a, order["mint"], order["sol"], px, sol_usd, now, kind="limit", funded=True,
                     meta=order, price_source=action.get("price_source") or "mark", order_id=order["id"],
+                    settings=trade_settings(a, action),
+                )
+            elif order["side"] in ("sell", "oco"):
+                fill = sell(
+                    a, order["mint"], order["qty"], px, sol_usd, now, kind=kind or "limit", from_reserved=True,
+                    price_source=action.get("price_source") or "mark", order_id=order["id"],
+                    settings=trade_settings(a, action),
                 )
             else:
-                fill = sell(
-                    a, order["mint"], order["qty"], px, sol_usd, now, kind="limit", from_reserved=True,
-                    price_source=action.get("price_source") or "mark", order_id=order["id"],
-                )
+                continue
         except Reject as e:
             order["last_error"] = e.msg
             continue
@@ -759,6 +960,12 @@ def apply(account, action, *, now=None, dry=False):
         fill = _do_limit(a, action, now_i)
     elif name == "cancel":
         fill = _do_cancel(a, action, now_i)
+    elif name == "tpsl":
+        fill = _do_tpsl(a, action, now_i)
+    elif name == "mode":
+        fill = _do_mode(a, action, now_i)
+    elif name == "faucet":
+        fill = _do_faucet(a, action, now_i)
     elif name == "mark":
         fills = _do_mark(a, action, now_i)
         if not fills:

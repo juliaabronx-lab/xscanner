@@ -58,64 +58,62 @@ async function act(payload,opts,retried){
       rows.forEach(f=>{if(!f||!f.side||f.side==='mark')return;const up=f.side==='sell'?(f.realized_sol||0)>=0:f.side!=='cancel';toast(fillMsg(f),f.side==='sell'?(up?'up':'dn'):'')})}}
   return j}
 
+function barFields(){return read('xs_bar_fields')||{cash:1,invested:1,u:1,r:1}}
 function paintBar(){
   const bar=document.getElementById('paperBar');if(!bar)return;bar.hidden=false;
-  const a=PB.acct,s=PB.summary;
-  const cash=a?a.cash_sol:0, res=a?a.reserved_sol:0;
-  document.getElementById('pbBarCash').textContent=a?solTxt(cash)+(res>0?' · '+solTxt(res)+' reserved':''):'Paper';
-  const u=s&&s.unrealized_known_sol;
-  const uEl=document.getElementById('pbBarU');
-  if(a&&Object.keys(a.positions||{}).length){uEl.className=clsPn(u);uEl.textContent='uPnL '+(u==null?'—':solTxt(u,true))+(s&&s.unpriced&&s.unpriced.length?' ·':'')}
-  else{uEl.className='';uEl.textContent='no open position'}
-  const r=a?a.realized_sol:0;
-  const rEl=document.getElementById('pbBarR');rEl.className=clsPn(r);rEl.textContent='rPnL '+solTxt(r||0,true);
+  const a=PB.acct,s=PB.summary,f=barFields();
+  const cash=a?a.cash_sol:0;
+  const invested=a?Object.values(a.positions||{}).reduce((n,p)=>n+(p.cost_sol||0),0):0;
+  const u=s&&s.unrealized_known_sol, r=a?a.realized_sol:0;
+  const show=(id,on,text,cls)=>{const el=document.getElementById(id);if(!el)return;el.hidden=!on;el.className=cls||'';el.textContent=text};
+  show('pbBarCash',f.cash!==0,a?solTxt(cash):'Paper');
+  show('pbBarInv',!!f.invested,'invested '+solTxt(invested));
+  show('pbBarU',f.u!==0,'uPnL '+(u==null?'—':solTxt(u,true)),clsPn(u));
+  show('pbBarR',f.r!==0,'rPnL '+solTxt(r||0,true),clsPn(r));
   const hint=document.getElementById('pbBarHint');
-  if(hint)hint.textContent=PB.signed?'saved to your account · simulation · not advice':'saved in this browser · simulation · not advice'}
+  if(hint)hint.textContent=((a&&a.mode)==='hard'?'hard mode · ':'')+(PB.signed?'on your account · ':'in this browser · ')+'paper · not advice'}
 
+function buyAmounts(){const a=settings().buy_amounts;return (a&&a.length?a:[0.1,0.25,0.5,1]).slice(0,4)}
+function sellPcts(){const a=settings().sell_pcts;return (a&&a.length?a:[10,25,50,100]).slice(0,4)}
+function feeBundle(){const s=settings();return {slippage_bps:s.slippage_bps,sell_slippage_bps:s.sell_slippage_bps||s.slippage_bps,priority_fee_sol:s.priority_fee_sol,bribe_sol:s.bribe_sol||0,platform_fee_bps:s.platform_fee_bps}}
 function ensurePanel(){
-  const side=document.querySelector('#tokBody .tk-side');if(!side)return null;
+  const host=document.querySelector('#tokBody .tk-chart')||document.querySelector('#tokBody .tk-side');if(!host)return null;
   let el=document.getElementById('tkPaper');
-  if(!el){el=document.createElement('div');el.id='tkPaper';el.className='card pb-card';side.insertBefore(el,side.firstChild)}
+  if(!el){el=document.createElement('div');el.id='tkPaper';el.className='it-panel';host.appendChild(el)}
+  else if(!el.classList.contains('floating')&&el.parentElement!==host)host.appendChild(el);
+  const pos=read('xs_it_pos');
+  if(pos&&pos.float){el.classList.add('floating');el.style.left=pos.x+'px';el.style.top=pos.y+'px'}
   return el}
 
 function panelShell(){
-  return `<div class="pb"><div class="pb-h"><h3>Paper trade</h3><span class="pb-tag">PAPER</span></div>
-    <p class="pb-note">Play money only. Not financial advice. This cannot move real SOL, and it never asks for a wallet or a seed phrase.</p>
-    <div class="pb-px"><span>Price <b id="pbPx">—</b></span><span>SOL <b id="pbSolUsd">—</b></span></div>
-    <div class="pb-bal"><div><span>Cash</span><b id="pbCash">—</b></div><div><span>This token</span><b id="pbPos">—</b><small id="pbUpnl"></small></div></div>
-    <div class="pb-dep"><label>Deposit paper SOL<input id="pbDep" data-depinput type="number" min="0" step="any" placeholder="10" inputmode="decimal"></label>
-      <div class="pb-presets"><button type="button" data-dep="1">1</button><button type="button" data-dep="5">5</button><button type="button" data-dep="10">10</button><button type="button" data-dep="25">25</button></div>
-      <button type="button" class="primary" id="pbDepGo" style="width:100%;margin-bottom:8px">Deposit</button></div>
+  return `<div class="pb it"><div class="it-drag" id="itDrag"><span class="pb-tag">PAPER</span><b>Instant</b><button type="button" class="it-pen" id="itDock" title="Dock on the chart">Dock</button></div>
+    <div class="it-ps" id="itPs"></div>
     <div class="pb-tabs" role="tablist"><button type="button" data-pbt="buy">Buy</button><button type="button" data-pbt="sell">Sell</button><button type="button" data-pbt="limit">Limit</button></div>
     <div id="pbForm"></div>
+    <p id="itLine" class="it-line"></p>
+    <div id="itEditBox" hidden></div>
+    <div class="it-pos"><div><b id="pbPos">No paper position</b><div id="pbUpnl"></div></div><div class="it-cash"><span id="pbCash">—</span><span id="pbPx">—</span></div></div>
+    <div class="it-tpsl"><input id="pbTp" type="number" step="any" placeholder="Take profit"><input id="pbSl" type="number" step="any" placeholder="Stop"><button type="button" id="pbTpGo">Set</button></div>
     <p id="pbEst" class="pb-est"></p><p id="pbErr" class="pb-err"></p>
-    <details class="pb-set"><summary>Slippage, fees, delay</summary>
-      <label>Slippage %<input id="pbSlip" type="number" min="0" max="30" step="0.1"></label>
-      <label>Priority fee (SOL)<input id="pbPri" type="number" min="0" max="0.05" step="0.0001"></label>
-      <label>Platform fee %<input id="pbPlat" type="number" min="0" max="10" step="0.1"></label>
-      <label>Simulated fill delay (ms)<input id="pbDelay" type="number" min="0" max="5000" step="50"></label>
-      <button type="button" class="ghost" id="pbSetSave">Save settings</button>
-      <p class="muted" style="margin:6px 0 0">A buy spends the SOL you type. The priority fee, then the platform fee, come out of it, and slippage worsens the fill. Sells take the same fees from the proceeds.</p>
-    </details>
     <div id="pbMine" class="pb-orders"></div>
-    <p class="pb-foot"><button type="button" class="linkbtn" id="pbOpenBook">Portfolio, history and calendar</button>
-      <button type="button" class="linkbtn" id="pbReset">Reset</button>
-      <button type="button" class="linkbtn" id="pbCard">PnL card</button></p></div>`}
+    <p class="pb-foot"><button type="button" class="linkbtn" id="itMode">Practice</button><button type="button" class="linkbtn" id="pbFaucet" hidden>Claim 1 SOL</button>
+      <button type="button" class="linkbtn" id="pbOpenBook">Portfolio</button><button type="button" class="linkbtn" id="pbCard">Card</button></p>
+    <div id="pbDepBox"><input id="pbDep" data-depinput type="number" min="0" step="any" placeholder="Deposit play SOL"><button type="button" id="pbDepGo">Add</button><button type="button" class="linkbtn" id="pbReset">Reset</button></div>
+    <p class="pb-note">Paper trading. Not financial advice. One click fills after a short delay at the live price. No wallet, no real order.</p></div>`}
 
 function formHTML(){
   const t=PB.tab;
-  if(t==='sell')return `<p class="muted" style="margin:0 0 8px;font-size:12px">Sells a share of the tokens that are not reserved by a sell limit.</p>
-    <div class="pb-presets"><button type="button" data-pct="25" data-go="1">25%</button><button type="button" data-pct="50" data-go="1">50%</button><button type="button" data-pct="100" data-go="1">100%</button></div>
-    <label>Custom % of free tokens<input id="pbPct" type="number" min="1" max="100" step="1" placeholder="25"></label>
-    <button type="button" class="pb-sell" id="pbSell">Sell</button>`;
-  if(t==='limit')return `<div class="pb-tabs" role="tablist"><button type="button" data-limside="buy">Buy limit</button><button type="button" data-limside="sell">Sell limit</button></div>
-    <label>Trigger price, USD per token<input id="pbLim" type="number" min="0" step="any" inputmode="decimal"></label>
-    <div id="pbLimAmt"></div>
-    <button type="button" class="pb-limit" id="pbLimGo">Place limit</button>
-    <p class="muted" style="font-size:11px;margin:8px 0 0">A buy limit reserves the SOL now and fills when the live price is at or under the trigger. A sell limit reserves tokens and fills at or above it. The fill then uses that live price, plus slippage and fees.</p>`;
-  return `<label>Spend paper SOL<input id="pbSol" type="number" min="0" step="any" inputmode="decimal" placeholder="0.5"></label>
-    <div class="pb-presets"><button type="button" data-sol="0.1">0.1</button><button type="button" data-sol="0.5">0.5</button><button type="button" data-sol="1">1</button><button type="button" data-sol="2">2</button></div>
-    <button type="button" class="pb-buy" id="pbBuy">Buy</button>`}
+  if(t==='sell'){const pcts=sellPcts();
+    const grid=PB.edit?pcts.map((n,i)=>`<input data-spct="${i}" type="number" min="1" max="100" value="${n}">`).join('')
+      :pcts.map(n=>`<button type="button" class="it-sell" data-pct="${n}" data-go="1">${n}%</button>`).join('');
+    return `<div class="it-grid">${grid}</div><div class="it-custom"><input id="pbPct" type="number" min="1" max="100" placeholder="Custom %"><button type="button" class="pb-sell" id="pbSell">Sell</button></div>`;}
+  if(t==='limit')return `<div class="pb-tabs"><button type="button" data-limside="buy">Buy limit</button><button type="button" data-limside="sell">Sell limit</button></div>
+    <label>Trigger USD<input id="pbLim" type="number" min="0" step="any"></label><div id="pbLimAmt"></div>
+    <button type="button" class="pb-limit" id="pbLimGo">Place limit</button>`;
+  const amts=buyAmounts();
+  const grid=PB.edit?amts.map((n,i)=>`<input data-amt="${i}" type="number" min="0" step="any" value="${n}">`).join('')
+    :amts.map(n=>`<button type="button" class="it-buy" data-sol="${n}">${n}</button>`).join('');
+  return `<div class="it-grid">${grid}</div><div class="it-custom"><input id="pbSol" type="number" min="0" step="any" placeholder="Custom SOL"><button type="button" class="pb-buy" id="pbBuy">Buy</button></div>`}
 
 function paintForm(){
   const box=document.getElementById('pbForm');if(!box)return;
@@ -131,9 +129,31 @@ function paintForm(){
     const lim=document.getElementById('pbLim');
     const px=PB.token&&livePx(PB.token.mint);
     if(lim&&px&&!lim.value)lim.value=String(px)}
-  const s=settings();
-  const set=(id,val)=>{const el=document.getElementById(id);if(el&&document.activeElement!==el&&el.value==='')el.value=val};
-  set('pbSlip',String(s.slippage_bps/100));set('pbPri',String(s.priority_fee_sol));set('pbPlat',String(s.platform_fee_bps/100));set('pbDelay',String(s.exec_delay_ms))}
+  paintPresetRow();wireDrag()}
+function paintPresetRow(){
+  const row=document.getElementById('itPs');if(!row)return;
+  const s=settings();const names=['P1','P2','P3'];
+  const cur=s.active_p||'P1';
+  row.innerHTML=names.map(n=>`<button type="button" data-pset="${n}" class="${n===cur?'on':''}">${n}</button>`).join('')+'<button type="button" class="it-pen" id="itEdit">✎</button>';
+  const box=document.getElementById('itEditBox');
+  const pack=(s.bundles&&s.bundles[cur])||{slippage_bps:s.slippage_bps,sell_slippage_bps:s.slippage_bps,priority_fee_sol:s.priority_fee_sol,bribe_sol:s.bribe_sol||0};
+  if(box){box.hidden=!PB.edit;box.innerHTML=PB.edit?`<label>Buy slip %<input id="itBuySlip" type="number" step="0.1" value="${(pack.slippage_bps||0)/100}"></label><label>Sell slip %<input id="itSellSlip" type="number" step="0.1" value="${((pack.sell_slippage_bps??pack.slippage_bps)||0)/100}"></label><label>Priority<input id="itPrio" type="number" step="0.0001" value="${pack.priority_fee_sol||0}"></label><label>Tip<input id="itTip" type="number" step="0.0001" value="${pack.bribe_sol||0}"></label><label>Delay ms<input id="itDelay" type="number" step="50" value="${s.exec_delay_ms||0}"></label><button type="button" id="itSave">Save ${cur}</button>`:''}
+  const line=document.getElementById('itLine');
+  if(line){const slip=PB.tab==='sell'?(pack.sell_slippage_bps??pack.slippage_bps):pack.slippage_bps;
+    line.textContent=`${((slip||0)/100).toFixed(1)}% · prio ${pack.priority_fee_sol||0} · tip ${pack.bribe_sol||0} · ${s.exec_delay_ms||0}ms`}
+  const modeBtn=document.getElementById('itMode');
+  if(modeBtn)modeBtn.textContent=(PB.acct&&PB.acct.mode)==='hard'?'Hard mode':'Practice';
+  const dep=document.getElementById('pbDepBox');if(dep)dep.hidden=(PB.acct&&PB.acct.mode)==='hard';
+  const faucet=document.getElementById('pbFaucet');if(faucet)faucet.hidden=(PB.acct&&PB.acct.mode)!=='hard';
+}
+function wireDrag(){
+  const el=document.getElementById('tkPaper'),h=document.getElementById('itDrag');if(!el||!h||h.dataset.wired)return;h.dataset.wired='1';
+  h.addEventListener('pointerdown',ev=>{if(ev.target.closest('button'))return;const r=el.getBoundingClientRect();const dx=ev.clientX-r.left,dy=ev.clientY-r.top;
+    el.classList.add('floating');
+    const move=e=>{el.style.left=Math.max(4,e.clientX-dx)+'px';el.style.top=Math.max(4,e.clientY-dy)+'px'};
+    const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);write('xs_it_pos',{float:true,x:parseInt(el.style.left,10)||8,y:parseInt(el.style.top,10)||80})};
+    window.addEventListener('pointermove',move);window.addEventListener('pointerup',up)});
+}
 
 function updatePanelFigures(){
   const cash=document.getElementById('pbCash');if(!cash)return;
@@ -179,7 +199,7 @@ async function market(payload){
   const est=document.getElementById('pbEst');if(est)est.textContent=delay?`Simulating a ${delay} ms fill…`:'Filling…';
   await sleep(delay);
   if(gen!==PB.seq)return;
-  const px=livePx(payload.mint);if(px)payload.px_usd=px;payload.waited_ms=delay;payload.sol_usd=PB.sol;
+  const px=livePx(payload.mint);if(px)payload.px_usd=px;payload.waited_ms=delay;payload.sol_usd=PB.sol;payload.fees=feeBundle();
   try{await act(payload)}finally{if(gen===PB.seq){PB.busy=false;updatePanelFigures();scheduleEst()}}}
 
 async function doDeposit(input){
@@ -190,13 +210,25 @@ async function doReset(){
   if(!confirm('Reset this paper book? Play SOL, positions, limits and history will be cleared. Nothing real is affected.'))return;
   PB.seq++;PB.busy=false;await act({action:'reset'})}
 
-async function saveSettings(){
-  const num=id=>{const el=document.getElementById(id);return el&&el.value!==''?+el.value:null};
-  await act({action:'settings',settings:{
-    slippage_bps:num('pbSlip')!=null?Math.round(num('pbSlip')*100):null,
-    priority_fee_sol:num('pbPri'),
-    platform_fee_bps:num('pbPlat')!=null?Math.round(num('pbPlat')*100):null,
-    exec_delay_ms:num('pbDelay')}})}
+async function saveBundle(){
+  const s=settings();const id=s.active_p||'P1';
+  const bundles=Object.assign({},s.bundles||{});
+  const cur=Object.assign({},bundles[id]||{});
+  const num=el=>el&&el.value!==''?+el.value:null;
+  const b=num(document.getElementById('itBuySlip')),se=num(document.getElementById('itSellSlip'));
+  const pri=num(document.getElementById('itPrio')),tip=num(document.getElementById('itTip')),delay=num(document.getElementById('itDelay'));
+  if(b!=null)cur.slippage_bps=Math.round(b*100);
+  if(se!=null)cur.sell_slippage_bps=Math.round(se*100);
+  if(pri!=null)cur.priority_fee_sol=pri;if(tip!=null)cur.bribe_sol=tip;
+  bundles[id]=cur;
+  const amounts=[...document.querySelectorAll('#tkPaper [data-amt]')].map(i=>+i.value).filter(n=>n>0);
+  const pcts=[...document.querySelectorAll('#tkPaper [data-spct]')].map(i=>+i.value).filter(n=>n>0&&n<=100);
+  const patch={bundles,active_p:id,slippage_bps:cur.slippage_bps,priority_fee_sol:cur.priority_fee_sol,bribe_sol:cur.bribe_sol};
+  if(cur.sell_slippage_bps!=null)patch.sell_slippage_bps=cur.sell_slippage_bps;
+  if(delay!=null)patch.exec_delay_ms=delay;
+  if(amounts.length)patch.buy_amounts=amounts;if(pcts.length)patch.sell_pcts=pcts;
+  await act({action:'settings',settings:patch});
+  PB.edit=false;const host=document.getElementById('tkPaper');if(host)host.dataset.tab='';paintForm()}
 
 function ensureBook(){
   const root=document.getElementById('bookApp');if(!root||root.dataset.ready)return;
@@ -270,7 +302,11 @@ function calendar(daily){
 
 function drawCard(opts){
   const c=document.createElement('canvas');c.width=1200;c.height=675;const g=c.getContext('2d');if(!g)return c;
-  g.fillStyle='#0b0c0e';g.fillRect(0,0,1200,675);
+  const bg=opts.bg||'night';
+  if(bg==='up'){g.fillStyle='#07140c';g.fillRect(0,0,1200,675);g.fillStyle='rgba(0,199,3,.18)';g.fillRect(0,0,1200,675)}
+  else if(bg==='down'){g.fillStyle='#14080a';g.fillRect(0,0,1200,675);g.fillStyle='rgba(230,101,101,.16)';g.fillRect(0,0,1200,675)}
+  else if(bg==='image'&&opts.img){g.drawImage(opts.img,0,0,1200,675);g.fillStyle='rgba(0,0,0,.45)';g.fillRect(0,0,1200,675)}
+  else {g.fillStyle='#0b0c0e';g.fillRect(0,0,1200,675)}
   for(let x=0;x<1200;x+=28)for(let y=0;y<675;y+=28){g.fillStyle='rgba(255,255,255,.025)';g.fillRect(x,y,2,2)}
   const up=opts.pnlPct==null?true:opts.pnlPct>=0;
   g.fillStyle=up?'#00c703':'#e66565';g.fillRect(0,0,14,675);
@@ -288,19 +324,29 @@ function drawCard(opts){
   const entry=pxTxt(opts.entry),mark=pxTxt(opts.mark);
   g.fillText('Entry  '+entry+'      Mark  '+mark,64,490);
   g.font='400 24px Geist, system-ui, sans-serif';
-  g.fillText('Simulation only. Not financial advice. No wallet was connected and no order was sent.',64,600);
+  const who=opts.who||PB.name||PB.user||'xScanner';
+  g.beginPath();g.arc(80,548,22,0,Math.PI*2);g.fillStyle='#e6c35c';g.fill();g.fillStyle='#111';g.font='700 22px Geist, system-ui, sans-serif';g.fillText(String(who).slice(0,1).toUpperCase(),72,556);
+  g.fillStyle='#d5d8de';g.font='500 22px Geist, system-ui, sans-serif';g.fillText(who,116,556);
+  g.fillStyle='#9aa0a6';g.font='400 20px Geist, system-ui, sans-serif';
+  g.fillText('Paper trading. Not financial advice. No wallet and no real order.',64,610);
   return c}
 
 function openShare(opts){
+  opts=Object.assign({bg:PB.cardBg||'night',img:PB.cardImg||null,who:(document.getElementById('pbWho')||{}).value||PB.name||'xScanner'},opts);
+  PB.cardOpts=opts;PB.cardBg=opts.bg;
   const c=drawCard(opts);
   let ov=document.getElementById('pbShare');
-  if(!ov){ov=document.createElement('div');ov.id='pbShare';ov.innerHTML='<div class="pb-sharebox" role="dialog" aria-label="Paper PnL card"><img alt="Paper trading PnL card"><div class="pb-sharerow"><button type="button" class="primary" id="pbShareDl">Download PNG</button><button type="button" class="ghost" id="pbShareX">Close</button></div><p class="muted">Simulation only. Not financial advice.</p></div>';
+  if(!ov){ov=document.createElement('div');ov.id='pbShare';ov.innerHTML='<div class="pb-sharebox" role="dialog" aria-label="Paper PnL card"><img alt="Paper trading PnL card"><div class="pb-sharerow"><button type="button" data-bg="night">Night</button><button type="button" data-bg="up">Green</button><button type="button" data-bg="down">Red</button><button type="button" data-bg="image">Image</button><input id="pbCardFile" type="file" accept="image/*" hidden></div><label class="pb-who">Name <input id="pbWho" maxlength="24"></label><div class="pb-sharerow"><button type="button" class="primary" id="pbShareDl">Download PNG</button><button type="button" class="ghost" id="pbShareCopy">Copy</button><button type="button" class="ghost" id="pbShareX">Close</button></div><p class="muted">Paper trading. Not financial advice.</p></div>';
     document.body.appendChild(ov);
-    ov.addEventListener('click',e=>{if(e.target===ov||e.target.id==='pbShareX')ov.classList.remove('on')})}
-  c.toBlob(blob=>{if(!blob){toast('Could not draw the card.','dn');return}
-    if(PB.shareUrl)URL.revokeObjectURL(PB.shareUrl);PB.shareUrl=URL.createObjectURL(blob);
+    ov.addEventListener('click',e=>{if(e.target===ov||e.target.id==='pbShareX')ov.classList.remove('on')});
+    ov.querySelector('#pbWho').addEventListener('change',()=>openShare(PB.cardOpts||{}));
+    ov.querySelector('#pbCardFile').addEventListener('change',ev=>{const f=ev.target.files&&ev.target.files[0];if(!f)return;const img=new Image();img.onload=()=>{PB.cardImg=img;openShare(Object.assign({},PB.cardOpts,{bg:'image',img}))};img.src=URL.createObjectURL(f)})}
+  const who=ov.querySelector('#pbWho');if(who&&document.activeElement!==who)who.value=opts.who||'';
+  c.toBlob(async blob=>{if(!blob){toast('Could not draw the card.','dn');return}
+    if(PB.shareUrl)URL.revokeObjectURL(PB.shareUrl);PB.shareUrl=URL.createObjectURL(blob);PB.shareBlob=blob;
     ov.querySelector('img').src=PB.shareUrl;ov.classList.add('on');
-    document.getElementById('pbShareDl').onclick=()=>{const a=document.createElement('a');a.href=PB.shareUrl;a.download='xscanner-paper-'+(opts.symbol||'pnl').replace(/[^A-Za-z0-9]+/g,'')+'.png';a.click()}})}
+    document.getElementById('pbShareDl').onclick=()=>{const a=document.createElement('a');a.href=PB.shareUrl;a.download='xscanner-paper-'+(opts.symbol||'pnl').replace(/[^A-Za-z0-9]+/g,'')+'.png';a.click()};
+    document.getElementById('pbShareCopy').onclick=async()=>{try{await navigator.clipboard.write([new ClipboardItem({'image/png':PB.shareBlob})]);toast('Card copied.')}catch(e){toast('Copy is blocked. Download the PNG instead.','dn')}}})}
 
 function sharePosition(mint){const p=posOf(mint),r=rowOf(mint);if(!p)return;
   openShare({symbol:p.symbol,pnlPct:r&&r.upnl_pct,pnlSol:r&&r.upnl_sol,entry:p.avg_px_usd,mark:r&&r.mark_px,label:'Unrealised'})}
@@ -311,10 +357,23 @@ let estT=0;
 function scheduleEst(){clearTimeout(estT);estT=setTimeout(()=>{runEst().catch(()=>{})},280)}
 
 async function onClick(e){
+  if(e.target.id==='pbBarGear'){e.preventDefault();e.stopPropagation();const m=document.getElementById('pbBarMenu');if(!m)return;
+    const f=barFields();m.hidden=!m.hidden;m.innerHTML=['cash','invested','u','r'].map(k=>`<label><input type="checkbox" data-bar="${k}" ${f[k]!==0?'checked':''}> ${{cash:'Balance',invested:'Invested',u:'Unrealised',r:'Realised'}[k]}</label>`).join('');
+    return}
   const t=e.target.closest('button');if(!t)return;
   if(t.id==='paperBar'||t.id==='toMyPaper'||t.id==='pbOpenBook'){e.preventDefault();if(window.show)window.show('book');return}
   if(t.dataset.dep){const scope=t.closest('.pb,.card')||document;const input=scope.querySelector('[data-depinput]');if(input){input.value=t.dataset.dep;input.focus()}return}
-  if(t.dataset.sol){const input=document.getElementById('pbSol');if(input){input.value=t.dataset.sol;scheduleEst()}return}
+  if(t.dataset.bg){if(t.dataset.bg==='image'){const f=document.getElementById('pbCardFile');if(f)f.click();return}openShare(Object.assign({},PB.cardOpts||{},{bg:t.dataset.bg,img:PB.cardImg}));return}
+  if(t.dataset.qbuy){e.preventDefault();e.stopPropagation();const px=+t.dataset.qpx;if(!px){toast('No cached price on this row yet.','dn');return}
+    await guard(()=>market({action:'buy',mint:t.dataset.qbuy,sol:buyAmounts()[0],px_usd:px,symbol:t.dataset.qsym||'',name:t.dataset.qname||''}));return}
+  if(t.dataset.pset){const s=settings();const pack=(s.bundles||{})[t.dataset.pset];if(pack&&PB.acct){PB.acct.settings.active_p=t.dataset.pset;PB.acct.settings.slippage_bps=pack.slippage_bps;PB.acct.settings.sell_slippage_bps=pack.sell_slippage_bps;PB.acct.settings.priority_fee_sol=pack.priority_fee_sol;PB.acct.settings.bribe_sol=pack.bribe_sol;saveLocal();paintPresetRow();act({action:'settings',settings:{active_p:t.dataset.pset,slippage_bps:pack.slippage_bps,priority_fee_sol:pack.priority_fee_sol,bribe_sol:pack.bribe_sol}},{silent:true,quiet:true}).catch(()=>{})}return}
+  if(t.id==='itEdit'){PB.edit=!PB.edit;const host=document.getElementById('tkPaper');if(host)host.dataset.tab='';paintForm();return}
+  if(t.id==='itSave'){await guard(saveBundle);return}
+  if(t.id==='itDock'){write('xs_it_pos',{float:false});const el=document.getElementById('tkPaper');if(el){el.classList.remove('floating');el.style.left='';el.style.top=''}return}
+  if(t.id==='itMode'){const next=(PB.acct&&PB.acct.mode)==='hard'?'practice':'hard';await guard(()=>act({action:'mode',mode:next}));return}
+  if(t.id==='pbFaucet'){await guard(()=>act({action:'faucet'}));return}
+  if(t.id==='pbTpGo'&&PB.token){await guard(()=>act(Object.assign({action:'tpsl',mint:PB.token.mint,tp_px:+document.getElementById('pbTp').value||null,sl_px:+document.getElementById('pbSl').value||null,pct:100},meta())));return}
+  if(t.dataset.sol&&PB.token&&!PB.edit){await guard(()=>market(Object.assign({action:'buy',mint:PB.token.mint,sol:+t.dataset.sol,px_usd:livePx(PB.token.mint)},meta())));return}
   if(t.dataset.pbt){PB.tab=t.dataset.pbt;const host=document.getElementById('tkPaper');if(host)host.dataset.tab='';paintForm();updatePanelFigures();scheduleEst();return}
   if(t.dataset.limside){PB.limSide=t.dataset.limside;const host=document.getElementById('tkPaper');if(host)host.dataset.tab='';paintForm();updatePanelFigures();return}
   if(t.dataset.pct&&t.dataset.go&&PB.token){const pct=+t.dataset.pct;await guard(()=>market(Object.assign({action:'sell',mint:PB.token.mint,pct,px_usd:livePx(PB.token.mint)},meta())));return}
@@ -336,7 +395,8 @@ async function onClick(e){
   if(t.id==='bkImport'){await guard(importAnon)}}
 async function guard(fn){try{await fn();const el=document.getElementById('pbErr');if(el)el.textContent=''}catch(e){const el=document.getElementById('pbErr');if(el)el.textContent=e.message}}
 
-function onInput(e){if(e.target&&(e.target.id==='pbSol'||e.target.id==='pbPct'||e.target.id==='pbLim'))scheduleEst()}
+function onInput(e){if(e.target&&e.target.dataset&&e.target.dataset.bar){const f=barFields();f[e.target.dataset.bar]=e.target.checked?1:0;write('xs_bar_fields',f);paintBar();return}
+  if(e.target&&(e.target.id==='pbSol'||e.target.id==='pbPct'||e.target.id==='pbLim'))scheduleEst()}
 
 function snapTime(ts,candles){if(!candles||!candles.length)return null;let best=candles[0].t;for(const k of candles){if(k.t<=ts)best=k.t;else break}return best}
 function paintChart(){
@@ -351,10 +411,27 @@ function paintChart(){
       shape:both?'circle':g.buy?'arrowUp':'arrowDown',
       text:(g.buy?('Buy'+(g.buy>1?' ×'+g.buy:'')):'')+(both?' · ':'')+(g.sell?('Sell'+(g.sell>1?' ×'+g.sell:'')):'')}})
   try{CH.cs.setMarkers(markers)}catch(e){}
-  try{if(PB.entryLine)CH.cs.removePriceLine(PB.entryLine)}catch(e){}
-  PB.entryLine=null;
+  PB.byTime={};
+  for(const t of PB.acct.trades||[]){if(t.mint!==mint)continue;const tm=snapTime(t.ts,PB.candles);if(tm==null)continue;
+    const b=PB.byTime[tm]||(PB.byTime[tm]={n:0,buys:0,sells:0,realized:0,last:t});
+    b.n++;if(t.side==='buy')b.buys++;else b.sells++;if(t.realized_sol)b.realized+=t.realized_sol;b.last=t}
+  (PB.lines||[]).forEach(l=>{try{CH.cs.removePriceLine(l)}catch(e){}});PB.lines=[];
+  const add=(price,color,title)=>{if(!(price>0))return;try{PB.lines.push(CH.cs.createPriceLine({price,color,lineWidth:1,lineStyle:2,axisLabelVisible:true,title}))}catch(e){}};
   const pos=posOf(mint);
-  if(pos&&pos.avg_px_usd>0){try{PB.entryLine=CH.cs.createPriceLine({price:pos.avg_px_usd,color:'#e6c35c',lineWidth:1,lineStyle:2,axisLabelVisible:true,title:'avg entry'})}catch(e){}}}
+  if(pos)add(pos.avg_px_usd,'#e6c35c','avg entry');
+  const lastSell=[...(PB.acct.trades||[])].reverse().find(t=>t.mint===mint&&t.side==='sell');
+  if(lastSell)add(lastSell.fill_px_usd,'#e66565','last exit');
+  const oco=(PB.acct.orders||[]).find(o=>o.side==='oco'&&o.mint===mint);
+  if(oco){add(oco.tp_px,'#00c703','take profit');add(oco.sl_px,'#ffb020','stop')}
+  const cardEl=()=>document.getElementById('pbHover')||document.body.appendChild(Object.assign(document.createElement('div'),{id:'pbHover',className:'pb-hover'}));
+  const showCard=(info,x,y)=>{const card=cardEl();if(!info){card.hidden=true;return}const t=info.last;card.hidden=false;
+    card.innerHTML=`<b>${t.side==='buy'?'Buy':'Sell'} ${esc(t.symbol||'')}</b><div>${solTxt(t.sol)} · ${pxTxt(t.fill_px_usd)}</div><div class="${clsPn(info.realized)}">realised ${solTxt(info.realized,true)}</div><div class="muted">${info.n} on this candle · ${(PB.acct.trades||[]).filter(x=>x.mint===mint).length} on this token</div>`;
+    card.style.left=Math.max(8,x+14)+'px';card.style.top=Math.max(8,y+14)+'px'};
+  const near=(time)=>{if(time==null||!PB.byTime)return null;if(PB.byTime[time])return PB.byTime[time];let best=null,bd=1e15;for(const k of Object.keys(PB.byTime)){const d=Math.abs(+k-time);if(d<bd){bd=d;best=+k}}return bd<=1800?PB.byTime[best]:null};
+  const host=document.getElementById('chNative');
+  if(host&&host._pbChart!==CH.chart){host._pbChart=CH.chart;host.addEventListener('mousemove',ev=>{
+    let time=null;try{const r=host.getBoundingClientRect();time=CH.chart.timeScale().coordinateToTime(ev.clientX-r.left)}catch(e){}
+    showCard(near(time),ev.clientX,ev.clientY)});host.addEventListener('mouseleave',()=>{const c=document.getElementById('pbHover');if(c)c.hidden=true})}}
 
 let lastMark=0;
 async function maybeMark(force){
