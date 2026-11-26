@@ -7,12 +7,14 @@ Everything is READ-ONLY (HTTP GET, public JSON-RPC reads). No wallet keys, no si
   * dev_history(): other pump.fun tokens a dev wallet launched and how they ended (RPC + DexScreener).
   * wallet_activity(): recent token buys / sells of a watched public wallet (RPC + DexScreener names).
   * quotes(): batch prices for the watchlist.
+  * tick(): 1–2s single-mint price (single-flight, 429 cooldown fallback).
 Every upstream call is cached, budgeted and degrades to an honest "unavailable" instead of blocking.
 """
 import base64, hashlib, json, os, re, struct, threading, time, urllib.error, urllib.request
 from collections import Counter, deque
 
 import sol_rpc as rpc
+import net
 
 UA = {"User-Agent": "Mozilla/5.0 (xScanner read-only; +https://xscanner-c8jo.onrender.com)", "Accept": "application/json"}
 GT_HDR = {**UA, "Accept": "application/json;version=20230302"}
@@ -335,6 +337,138 @@ def quotes(mints, ttl=10.0, ready=None):
                  "name": (p.get("baseToken") or {}).get("name"), "dex": p.get("dexId"), "pool": p.get("pairAddress"), "t": int(now)}
             _quote_cache[m] = (now, q); out[m] = q
     return out
+
+
+# ---------------------------------------------------------------- fast 1s tick (single-flight, short TTL)
+TICK_TTL_S = 1.5
+JUP_PRICE = "https://lite-api.jup.ag/price/v3?ids="
+DS_TOKEN = "https://api.dexscreener.com/tokens/v1/solana/"
+_tick_lock = threading.Lock()
+_tick_cache = {}      # mint -> (fetched_at, payload)
+_tick_flight = {}     # mint -> (Event, box)
+
+
+def derive_supply(px, mc, explicit=None):
+    """Circulating/total supply from metadata, or mc/px. Never invent 0, NaN, or 1e9."""
+    s = num(explicit)
+    if s is not None and 0 < s < 1e18:
+        return s
+    px, mc = num(px), num(mc)
+    if px and mc and px > 0 and mc > 0:
+        s = mc / px
+        if 0 < s < 1e18:
+            return s
+    return None
+
+
+def _tick_payload(mint, px, mc=None, lq=None, sol_usd=None, source=""):
+    px, mc = num(px), num(mc)
+    supply = derive_supply(px, mc)
+    if px and supply and mc is None:
+        mc = px * supply
+    return {"ok": True, "mint": mint, "px": px, "mc": mc, "lq": num(lq),
+            "supply": supply, "sol_usd": num(sol_usd), "t": int(time.time()), "source": source}
+
+
+def tick(mint, ready=None, sol_usd=None):
+    """One mint's live price. Concurrent callers share one upstream GET; cache is 1.5s.
+    On 429/cooldown, returns the last good payload with stale=True and retry_s (3–5),
+    or a Pulse row if the cache is empty."""
+    mint = (mint or "").strip()
+    if not MINT_RE.match(mint):
+        return {"ok": False, "error": "invalid mint"}
+    now = time.time()
+    cached = _tick_cache.get(mint)
+    if cached and now - cached[0] < TICK_TTL_S:
+        return {**cached[1], "cached": True}
+
+    if ready and ready.get(mint) and num(ready[mint].get("px")):
+        r = ready[mint]
+        age = now - (r.get("_ds") or 0)
+        if 0 <= age < TICK_TTL_S:
+            p = _tick_payload(mint, r.get("px"), r.get("mc"), r.get("lq"), sol_usd, "pulse")
+            if p.get("px"):
+                _tick_cache[mint] = (now, p)
+                return p
+
+    with _tick_lock:
+        fl = _tick_flight.get(mint)
+        if fl:
+            ev, box = fl
+            waiter = True
+        else:
+            ev, box = threading.Event(), {}
+            _tick_flight[mint] = (ev, box)
+            waiter = False
+    if waiter:
+        ev.wait(8)
+        return box.get("r") or (({**cached[1], "cached": True, "stale": True} if cached else {"ok": False, "mint": mint, "error": "busy"}))
+
+    stale = False
+    retry_s = None
+    payload = None
+    try:
+        try:
+            d = net.get_json(DS_TOKEN + mint, timeout=6, headers=UA, fresh_s=TICK_TTL_S, errors="raise", scope="tick")
+            pairs = d if isinstance(d, list) else []
+            p = best_pair(pairs, mint)
+            if p:
+                payload = _tick_payload(mint, p.get("priceUsd"), num(p.get("marketCap"), num(p.get("fdv"))),
+                                        (p.get("liquidity") or {}).get("usd"), sol_usd, "dexscreener")
+        except Exception as e:
+            code = getattr(e, "code", None)
+            if code in (429, 503):
+                stale, retry_s = True, 4
+        if payload is None:
+            try:
+                j = net.get_json(JUP_PRICE + mint, timeout=6, headers=UA, fresh_s=TICK_TTL_S, errors="raise", scope="tick")
+                row = None
+                if isinstance(j, dict):
+                    row = j.get(mint) or (j.get("data") or {}).get(mint)
+                if isinstance(row, dict):
+                    px = num(row.get("usdPrice"), num(row.get("price")))
+                    mc = None
+                    prev = cached[1] if cached else None
+                    if prev and prev.get("supply") and px:
+                        mc = px * prev["supply"]
+                    elif prev and prev.get("mc") and prev.get("px") and px:
+                        mc = px * (prev["mc"] / prev["px"])
+                    if px:
+                        payload = _tick_payload(mint, px, mc, None, sol_usd, "jupiter")
+                        if prev and prev.get("supply") and not payload.get("supply"):
+                            payload["supply"] = prev["supply"]
+            except Exception as e:
+                code = getattr(e, "code", None)
+                if code in (429, 503):
+                    stale, retry_s = True, (retry_s or 4)
+        if payload is None:
+            if cached:
+                payload = {**cached[1], "stale": True, "retry_s": retry_s or 3}
+            elif ready and ready.get(mint) and num(ready[mint].get("px")):
+                r = ready[mint]
+                payload = _tick_payload(mint, r.get("px"), r.get("mc"), r.get("lq"), sol_usd, "pulse")
+                payload["stale"] = True
+                payload["retry_s"] = retry_s or 3
+            else:
+                payload = {"ok": False, "mint": mint, "error": "quote unavailable",
+                           "stale": stale, "retry_s": retry_s or 3}
+        elif stale:
+            payload["stale"] = True
+            payload["retry_s"] = retry_s or 4
+        if payload.get("ok") and payload.get("px"):
+            store = {k: v for k, v in payload.items() if k not in ("cached",)}
+            _tick_cache[mint] = (now, store)
+            if len(_tick_cache) > 256:
+                for k in sorted(_tick_cache, key=lambda k: _tick_cache[k][0])[:80]:
+                    _tick_cache.pop(k, None)
+        box["r"] = payload
+        return payload
+    finally:
+        ev.set()
+        with _tick_lock:
+            cur = _tick_flight.get(mint)
+            if cur and cur[0] is ev:
+                _tick_flight.pop(mint, None)
 
 
 # ---------------------------------------------------------------- dev wallet history

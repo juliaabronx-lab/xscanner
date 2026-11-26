@@ -284,8 +284,8 @@ function tokPaint(d){
   const cvEl=cv&&cv.progress!=null?`<span class="cvpill ${cv.complete||cv.progress>=100?'done':''}" title="${esc(cv.note||'Bonding curve')}"><i style="width:${Math.min(100,cv.progress)}%"></i><em>${cv.complete||cv.progress>=100?'migrated':cv.progress.toFixed(0)+'%'}</em></span>`:'';
   $('#tokBody .tk-head').innerHTML=`<div class="tk-id">${tokImgDirect({m:d.mint,img:d.img,s:d.symbol},'tkimg')}<div><h2>$${esc(d.symbol||'?')} <small class="muted">${esc(d.name||'')}</small> <button class="star" data-star="${esc(d.mint)}"></button></h2>
     <div class="tca"><code title="${esc(d.mint)}">${esc(shortCa(d.mint))}</code><button class="cpy mini" data-cp="${esc(d.mint)}" title="Copy CA">⧉</button>${d.socials?.twitter?ext(d.socials.twitter,'𝕏','soc'):''}${d.socials?.telegram?ext(d.socials.telegram,'TG','soc'):''}${d.socials?.website?ext(d.socials.website,'↗','soc'):''}<span class="page">${age}</span></div></div></div>
-    ${stat('Market cap',usd(mk.mc),pc1(mk.pc1))}
-    <div id="tkStats" class="tk-stats">${stat('Price',fmtPx(mk.px),pc1(mk.pc5))+stat('Liquidity',usd(mk.lq))+stat('24h Vol',usd(mk.v24))+stat('Holders',sc.holders!=null?(+sc.holders).toLocaleString():'—')+stat('Top 10',pTxt(sec,0))+stat('Dev',pTxt(sc.dev?.balance_pct,1))+stat('Bundle',sc.insiders?((sc.insiders.networks||0)+' net'):'—')}</div>
+    ${stat('Market cap','<span id="tkMcVal">'+usd(mk.mc)+'</span>',pc1(mk.pc1))}
+    <div id="tkStats" class="tk-stats">${stat('Price','<span id="tkPxVal">'+(function(v){if(v==null||!isFinite(+v))return'—';const t=typeof fmtNum==='function'?fmtNum(v):String(v);return t==='—'?t:'$'+t})(mk.px)+'</span>',pc1(mk.pc5))+stat('Liquidity',usd(mk.lq))+stat('24h Vol',usd(mk.v24))+stat('Holders',sc.holders!=null?(+sc.holders).toLocaleString():'—')+stat('Top 10',pTxt(sec,0))+stat('Dev',pTxt(sc.dev?.balance_pct,1))+stat('Bundle',sc.insiders?((sc.insiders.networks||0)+' net'):'—')}</div>
     <div id="tkLinks" class="tk-links">${(d.links||[]).map(l=>`<a class="open" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)}</a>`).join('')}</div>
     <span id="tkCurve">${cvEl}</span>`;
   const tot=(mk.b1||0)+(mk.s1||0),bp=tot?Math.round((mk.b1||0)/tot*100):null;
@@ -327,7 +327,17 @@ function tokPaint(d){
    ${(sc.risks||[]).length?`<h4>RugCheck notes</h4>${sc.risks.map(r=>`<span class="pill ${/danger|high/i.test(r.level||'')?'red':'amb'}" title="${esc(r.description||'')}">${esc(r.name)}</span>`).join('')}`:''}
    ${(d.pending||[]).length?`<p class="muted" style="font-size:11px">Still loading: ${esc(d.pending.join(', '))}…</p>`:''}${(d.notes||[]).map(n=>`<p class="muted" style="font-size:11px">${esc(n)}</p>`).join('')}`;
   paintStars();
-  try{if(mk.px&&mk.mc)CH.supply=mk.mc/mk.px}catch(e){}
+  try{
+    if(typeof resolveSupply==='function'){
+      const had=typeof validSupply==='function'&&validSupply(CH.supply);
+      resolveSupply({px:mk.px,mc:mk.mc,supply:mk.supply||d.supply});
+      if(typeof syncUnitButtons==='function')syncUnitButtons();
+      if(CH.unit==='mcap'&&!had&&typeof validSupply==='function'&&validSupply(CH.supply)&&CH.lastBars&&CH.lastBars.length){
+        if(typeof pushBars==='function')pushBars(CH.lastBars);
+        if(typeof fitChart==='function')fitChart();
+      }
+    }else if(mk.px&&mk.mc)CH.supply=mk.mc/mk.px
+  }catch(e){}
   try{window.paperOnToken&&window.paperOnToken(d)}catch(e){}
   if(TK.tab==='holders'||TK.tab==='dev'||TK.tab==='security')tkPane()}
 function tkStoryPaint(){

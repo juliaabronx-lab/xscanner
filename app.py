@@ -1176,7 +1176,7 @@ _SSE_LOCK = threading.Lock()
 SSE_MAX = int(os.environ.get("PULSE_SSE_MAX", "60") or 60)              # streams open at once, whole process
 SSE_PER_IP = int(os.environ.get("PULSE_SSE_PER_IP", "4") or 4)           # per client address (a few tabs / devices)
 SSE_LIFETIME_S = int(os.environ.get("PULSE_SSE_LIFETIME_S", "900") or 900)   # then close politely; EventSource reconnects by itself
-SSE_BEAT_S = 10                                                          # a data event at least this often, so the page can tell it is live
+SSE_BEAT_S = 10                                                          # heartbeat only; new Pulse data is emitted on the 1s check below
 
 
 def _sse_acquire(ip):
@@ -1288,6 +1288,26 @@ def api_quotes(mints: str = ""):
     ms = [m for m in ms if lk.valid_mint(m)]
     if not ms: return JSONResponse({"quotes": {}, "t": int(time.time())}, headers=_NOSTORE)
     return JSONResponse({"quotes": trd.quotes(ms, ready=pulse.ready_rows()), "t": int(time.time())}, headers=_NOSTORE)
+
+
+@app.get("/api/tick/{mint}")
+def api_tick(mint: str):
+    """Lightweight live price for one mint. Viewers coalesce into one upstream call every ~1.5s.
+    On upstream 429, a cached/Pulse quote is returned with stale=True and retry_s (3–5)."""
+    mint = _valid_mint_or_400(mint)
+    sol = None
+    try:
+        sol = pulse.status().get("sol_usd")
+    except Exception:
+        sol = None
+    q = trd.tick(mint, ready=pulse.ready_rows(), sol_usd=sol)
+    headers = dict(_NOSTORE)
+    if q.get("retry_s"):
+        headers["Retry-After"] = str(int(q["retry_s"]))
+    # Have a price (fresh or stale) → 200 so the chart can paint; empty + rate-limited → 429.
+    if not q.get("ok") and not q.get("px") and q.get("stale") and q.get("retry_s"):
+        return JSONResponse(q, status_code=429, headers=headers)
+    return JSONResponse(q, headers=headers)
 
 
 @app.api_route("/token/{mint}", methods=["GET", "HEAD"], include_in_schema=False)

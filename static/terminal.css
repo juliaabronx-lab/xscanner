@@ -396,3 +396,5 @@ code.addr{font-family:var(--font-mono);font-size:11px;color:#f9f9f8;word-break:b
 @media(max-width:900px){
   .solpill,.syncpill{display:none}
 }
+
+.chartcard [data-unit][disabled],.chartcard [data-unit].off{opacity:.4;cursor:not-allowed}

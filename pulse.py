@@ -491,7 +491,7 @@ def _loop():
             _tick()
         except Exception as e:
             stats["last_error"] = "%s: %s" % (type(e).__name__, e)
-        _wake.wait(2.0 if _active() else 8.0); _wake.clear()
+        _wake.wait(1.0 if _active() else 8.0); _wake.clear()  # 1s cadence while a viewer is on the page
 
 
 def start():
