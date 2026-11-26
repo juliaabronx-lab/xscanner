@@ -89,3 +89,46 @@
 .pb-fee{margin:0 0 8px;font-size:11px;color:#76798b}
 .pb-buy,.pb-sell,.pb-limit{width:100%;border:0;border-radius:6px;padding:10px 12px;font:inherit;font-weight:700;font-size:14px;cursor:pointer}
 .pb-tabs button.on{border-color:transparent}
+
+/* Instant Paper Trade card — optional, paper-only, Axiom-like floating chrome */
+.it-card{position:fixed;z-index:40;width:320px;max-width:calc(100vw - 16px);background:#13161c;border:1px solid #262b36;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.03);color:#c8c9d1;font:12px/1.35 var(--font-sans);overflow:hidden;user-select:none}
+.it-card.hidden{display:none}
+.it-head{display:flex;align-items:center;gap:6px;padding:7px 8px;border-bottom:1px solid #1e222b;cursor:grab;background:#16191f}
+.it-head:active{cursor:grabbing}
+.it-tabs{display:flex;gap:2px;background:#0d0e11;border:1px solid #262b36;border-radius:6px;padding:2px}
+.it-tabs button{background:none;border:0;color:#76798b;font:700 11px var(--font-sans);padding:3px 8px;border-radius:4px;cursor:pointer}
+.it-tabs button.on{background:#262b36;color:#f9f9f8}
+.it-head .pb-tag{margin-left:4px}
+.it-ico{margin-left:auto;background:none;border:0;color:#9a9cae;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:14px;line-height:1}
+.it-head .it-ico + .it-ico{margin-left:0}
+.it-ico:hover{background:#262b36;color:#f9f9f8}
+.it-edit{padding:8px 10px;border-bottom:1px solid #1e222b}
+.it-edit-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0}
+.it-edit-row input{width:100%;background:#0d0e11;border:1px solid #262b36;border-radius:6px;color:#f9f9f8;padding:4px 6px;font:12px var(--font-mono)}
+.it-buy,.it-sell{padding:8px 10px 6px;border-bottom:1px solid #1e222b}
+.it-rowlab{display:flex;align-items:center;gap:6px;margin-bottom:6px;color:#c8c9d1}
+.it-rowlab b{font-size:12px;color:#f9f9f8}
+.it-hold{margin-left:auto;font:11px var(--font-mono);color:#9a9cae}
+.it-presets{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.it-presets button{display:inline-flex;align-items:center;justify-content:center;gap:4px;background:transparent;border-radius:7px;padding:7px 4px;font:700 12px var(--font-sans);cursor:pointer;color:#f9f9f8}
+.it-buy-presets button{border:1px solid rgba(47,227,172,.55);color:#2fe3ac}
+.it-buy-presets button:hover{background:rgba(47,227,172,.12);border-color:#2fe3ac}
+.it-sell-presets{grid-template-columns:repeat(4,1fr)}
+.it-sell-presets button{border:1px solid rgba(236,57,122,.55);color:#ec397a}
+.it-sell-presets button:hover{background:rgba(236,57,122,.12);border-color:#ec397a}
+.it-init{grid-column:1/-1;margin-top:2px;border:1px dashed rgba(236,57,122,.45)!important;font-weight:600!important}
+.it-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;font:11px var(--font-mono);color:#76798b}
+.it-speed{display:flex;border:1px solid #262b36;border-radius:6px;overflow:hidden}
+.it-speed button{background:#0d0e11;border:0;color:#9a9cae;font:700 10px var(--font-mono);padding:2px 7px;cursor:pointer}
+.it-speed button.on{background:#262b36;color:#f9f9f8}
+.it-foot{padding:8px 10px 10px;background:#101318}
+.it-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;font-size:10px;color:#76798b}
+.it-kpis b{display:block;font:700 11px var(--font-mono);color:#f9f9f8;margin-top:1px}
+.it-kpis .up{color:#2fe3ac}.it-kpis .dn{color:#ec397a}
+.it-foot-l{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
+.it-foot-l small{color:#76798b;font-size:10px;letter-spacing:.04em;text-transform:uppercase}
+.it-dep{display:flex;align-items:center;gap:6px;margin-top:6px}
+.it-empty .it-buy-presets button,.it-empty .it-sell-presets button{opacity:.45}
+@media(max-width:700px){
+  .it-card{width:min(360px,calc(100vw - 12px));left:6px!important;right:6px;top:auto!important;bottom:44px;max-height:calc(100vh - 96px);overflow:auto}
+}

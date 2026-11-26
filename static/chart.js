@@ -32,6 +32,7 @@ function chartBlockHTML(){
         <div class="tfs" data-role="style"><button data-style="candles" class="on">Candles</button><button data-style="line">Line</button></div>
       </div>
       <div class="chctl-right tfs">
+        <button type="button" id="itToggle" class="ch-instant" aria-pressed="false" title="Optional Instant Paper Trade card. Simulation only.">⚡ Instant</button>
         <button data-mode="native" class="on">Chart</button>
         <button data-mode="dex">DexScreener</button>
       </div>
@@ -172,6 +173,9 @@ function mountChart(c){
     document.querySelectorAll('.chartcard [data-tf]').forEach(x=>x.classList.toggle('on',x===b));CH.fit=true;CH.lastT=null;if(CH.mode!=='native')setMode('native');else load(true)});
   document.querySelectorAll('.chartcard [data-mode]').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
   bindTools();tickClock();CH.clock=setInterval(tickClock,1000);
+  const it=document.getElementById('itToggle');
+  if(it)it.onclick=e=>{e.preventDefault();e.stopPropagation();if(window.paperToggleInstant)window.paperToggleInstant()};
+  if(window.paperSyncInstant)window.paperSyncInstant();
   paintLegend(null);
   if(!c.pool){chMsg('No trading pair known for this coin, so there is no chart yet.');return}
   const el=document.getElementById('chNative');

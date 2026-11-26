@@ -10,12 +10,23 @@
 <link rel="alternate" type="text/html" href="/text" title="Plain HTML view of the latest scan">
 <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
 <link rel="apple-touch-icon" href="/static/logo.svg">
-<link rel="stylesheet" href="/static/style.css?v=fix13">
-<link rel="stylesheet" href="/static/trader.css?v=fix13">
-<link rel="stylesheet" href="/static/terminal.css?v=fix13">
-<link rel="stylesheet" href="/static/paper.css?v=fix13">
+<link rel="stylesheet" href="/static/style.css?v=fix14">
+<link rel="stylesheet" href="/static/trader.css?v=fix14">
+<link rel="stylesheet" href="/static/terminal.css?v=fix14">
+<link rel="stylesheet" href="/static/paper.css?v=fix14">
 <link rel="prefetch" href="/static/vendor/lightweight-charts.js?v=4.2.3" as="script">
 </head><body>
+<svg xmlns="http://www.w3.org/2000/svg" id="solSprite" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="solGrad" x1="360" y1="351" x2="141" y2="-69" gradientUnits="userSpaceOnUse" gradientTransform="matrix(1 0 0 -1 0 314)">
+      <stop offset="0" stop-color="#00FFA3"/><stop offset=".5" stop-color="#03E1FF"/><stop offset="1" stop-color="#DC1FFF"/>
+    </linearGradient>
+    <symbol id="solLogo" viewBox="0 0 398 312">
+      <path fill="url(#solGrad)" d="M64.6 237.9c2.4-2.4 5.7-3.8 9.2-3.8h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1l62.7-62.7zm0-234.1C67.1 1.4 70.4 0 73.8 0h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1L64.6 3.8zM333.1 120.1c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8 0-8.7 7-4.6 11.1l62.7 62.7c2.4 2.4 5.7 3.8 9.2 3.8h317.4c5.8 0 8.7-7 4.6-11.1l-62.7-62.7z"/>
+    </symbol>
+  </defs>
+</svg>
+
 <noscript><div style="max-width:760px;margin:24px auto;padding:16px;font:16px/1.5 system-ui,sans-serif;color:#eee;background:#111;border:1px solid #444;border-radius:8px">
 <h1 style="font-size:20px;margin:0 0 8px">xScanner: Solana memecoin scanner</h1>
 <p>This app needs JavaScript. No JavaScript? Read the same data as plain pages:
@@ -39,7 +50,7 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
     <button id="searchBtn" type="submit" class="iconbtn go" title="Go" aria-label="Scan">→</button>
   </form>
   <div class="actions">
-    <span id="solPill" class="solpill" title="SOL price in USD">SOL —</span>
+    <span id="solPill" class="solpill" title="SOL price in USD"><svg class="solmark" viewBox="0 0 398 312" width="14" height="11" aria-hidden="true"><use href="#solLogo"/></svg><span id="solPillTxt">SOL —</span></span>
     <button type="button" id="goWatch" class="iconbtn star-nav" title="Watchlist" aria-label="Watchlist">☆</button>
     <span id="syncPill" class="syncpill" title="Watchlist and wallet sync"></span>
     <div id="authBox" class="authbox"></div>
@@ -47,12 +58,13 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
 </header>
 <div id="paperBar" class="paperbar dock" role="status">
   <span class="pb-tag">PAPER</span>
-  <b id="pbBarCash">0.00 SOL</b>
+  <span class="dock-solamt"><svg class="solmark" viewBox="0 0 398 312" width="12" height="10" aria-hidden="true"><use href="#solLogo"/></svg><b id="pbBarCash">0.00 SOL</b></span>
   <span id="pbBarU"></span>
   <span id="pbBarR">PnL 0.00 SOL</span>
-  <span id="dockSol" class="dock-sol">SOL —</span>
+  <span id="dockSol" class="dock-sol"><svg class="solmark" viewBox="0 0 398 312" width="12" height="10" aria-hidden="true"><use href="#solLogo"/></svg><span id="dockSolTxt">SOL —</span></span>
   <span class="dock-live"><i id="dockLiveDot"></i><span id="dockLiveTxt">Live</span></span>
   <small id="pbBarHint">Simulation · Not financial advice</small>
+  <button type="button" id="dockInstant" class="linkbtn">⚡ Instant</button>
   <button type="button" id="dockPaper" class="linkbtn">Paper book</button>
 </div>
 <div id="searchMsg" class="searchmsg hidden"></div>
@@ -76,6 +88,10 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
       <div class="plive"><i id="pLiveDot"></i><span id="pLiveTxt">connecting…</span><button class="linkbtn" id="pSrcBtn" type="button" title="Data sources">sources</button></div>
       <div class="ppresets" id="pPresets" role="group" aria-label="Presets"></div>
       <button class="ghost" id="pFiltBtn" type="button" aria-expanded="false">Filters <span id="pFiltN" class="nbadge hidden"></span></button>
+      <div class="pqbar" id="pqBar" title="Optional: one-click paper buys on Pulse cards. Off by default. Simulation only.">
+        <button type="button" class="ghost" id="pqBuyBtn" aria-pressed="false">⚡ Quick Buy</button>
+        <label class="pqamt hidden" id="pqAmtWrap"><svg class="solmark" viewBox="0 0 398 312" width="12" height="10" aria-hidden="true"><use href="#solLogo"/></svg><input id="pqAmt" type="number" min="0.01" step="0.1" value="0.1" aria-label="Quick buy paper SOL amount"> SOL</label>
+      </div>
     </div>
     <div id="pSrcBox" class="srcbox hidden"></div>
     <form id="pFilters" class="pfilters hidden" autocomplete="off">
@@ -211,11 +227,11 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
 <div id="scrim" class="scrim"></div>
 <footer><b>Not financial advice.</b> Read-only analysis. No wallet keys, signing or real trades. Paper buys and sells are a simulation. Score ≥65 worth a look · 50–64 watch · &lt;50 skip. Juliaa gives the final yes.</footer>
 <script>window.__h0=location.hash</script>
-<script src="/static/motion.js?v=fix13"></script>
-<script src="/static/chart.js?v=fix13"></script>
-<script src="/static/app.js?v=fix13"></script>
-<script src="/static/xfeed.js?v=fix13"></script>
-<script src="/static/trader.js?v=fix13"></script>
-<script src="/static/sync.js?v=fix13"></script>
-<script src="/static/paper.js?v=fix13"></script>
+<script src="/static/motion.js?v=fix14"></script>
+<script src="/static/chart.js?v=fix14"></script>
+<script src="/static/app.js?v=fix14"></script>
+<script src="/static/xfeed.js?v=fix14"></script>
+<script src="/static/trader.js?v=fix14"></script>
+<script src="/static/sync.js?v=fix14"></script>
+<script src="/static/paper.js?v=fix14"></script>
 </body></html>

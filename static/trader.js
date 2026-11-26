@@ -12,7 +12,7 @@ const shortMint=m=>{if(!m)return'';return /pump$/i.test(m)&&m.length>10?m.slice(
 const mcTier=mc=>{if(mc==null||!isFinite(+mc))return'';mc=+mc;return mc<3e4?'mc-cyn':mc<1.5e5?'mc-gld':'mc-grn'};
 const ringCls=(r,col)=>{if(r.bd==='flagged'||r.ebl)return'ring-risk';if(col==='migrated'||r.d==='pumpswap')return'ring-mig';if(col==='final'||(r.cv!=null&&r.cv>=70))return'ring-final';return'ring-new'};
 const chartH=()=>window.innerWidth<700?Math.max(240,Math.round(window.innerHeight*0.38)):Math.max(380,Math.round(window.innerHeight*0.56));
-function paintSol(v){const t=v?('SOL $'+Number(v).toLocaleString('en-US',{maximumFractionDigits:2})):'SOL —';const a=$('#solPill'),b=$('#dockSol');if(a)a.textContent=t;if(b)b.textContent=t;}
+function paintSol(v){const t=v?('SOL $'+Number(v).toLocaleString('en-US',{maximumFractionDigits:2})):'SOL —';const a=$('#solPillTxt')||$('#solPill'),b=$('#dockSolTxt')||$('#dockSol');if(a)a.textContent=t;if(b)b.textContent=t;}
 
 const num=v=>v==null||v===''||!isFinite(+v)?null:+v;
 const pc1=v=>v==null?'—':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${Math.abs(v)>=1000?Math.round(v).toLocaleString():(+v).toFixed(1)}%</span>`;
@@ -121,6 +121,17 @@ function paintSrc(){const s=P.src;if(!s)return;const nm={gecko:'GeckoTerminal (n
     return `<div><span>${t}</span><span>${st}</span></div>`}).join('')+`<p class="muted">Free public APIs rate-limit shared servers, so a source can pause for a while; its fields then show — until it is back.</p>`}
 
 const chipCls=(v,a,b)=>v==null?'na':v>=b?'red':v>=a?'amb':'grn';
+function pulseQBuyOn(){try{return localStorage.getItem('xs_pulse_qbuy_v1')==='1'}catch(e){return false}}
+function pulseQBuyAmt(){const el=document.getElementById('pqAmt');if(el&&el.value!==''&&+el.value>0)return +el.value;try{const v=+localStorage.getItem('xs_pulse_qbuy_amt_v1');if(v>0)return v}catch(e){}return 0.1}
+function paintQBuy(){
+  const on=pulseQBuyOn();
+  const btn=document.getElementById('pqBuyBtn'),wrap=document.getElementById('pqAmtWrap'),inp=document.getElementById('pqAmt');
+  if(btn){btn.classList.toggle('on',on);btn.setAttribute('aria-pressed',on?'true':'false')}
+  if(wrap)wrap.classList.toggle('hidden',!on);
+  if(inp&&!inp.dataset.bound){inp.dataset.bound='1';inp.value=String(pulseQBuyAmt());
+    inp.addEventListener('change',()=>{const v=+inp.value||0.1;try{localStorage.setItem('xs_pulse_qbuy_amt_v1',String(v))}catch(e){};if(typeof renderAll==='function')renderAll()})}
+  if(typeof renderAll==='function'&&view==='pulse'){/* cards pick up pill via rowHTML */ }
+}
 function rowHTML(r,col){
   const cv=r.cv,mcc=r.d==='pumpswap'||col==='migrated',t10=r.t10!=null?r.t10:r.t10x;
   const b1=r.b1,s1=r.s1,tot=(b1||0)+(s1||0),bp=tot?Math.round((b1||0)/tot*100):null;
@@ -132,7 +143,7 @@ function rowHTML(r,col){
   const curve=!mcc?`<i class="cvline" title="${cv!=null?(r.cvs==='chain'?'Bonding curve progress, read from the chain':'Estimated from market cap'):'Curve progress unavailable'}"><i style="width:${cv!=null?Math.min(100,cv):0}%" class="${cv!=null&&cv>=70?'hot':''}"></i></i>`:`<i class="cvline done" title="migrated${r.mg?' '+ageS(now()-r.mg)+' ago':''}"></i>`;
   return `<div class="pimg ${ringCls(r,col)}">${tokImgDirect(r)}<button class="star" data-star="${esc(r.m)}" aria-label="Watch"></button><div class="pca" title="${esc(r.m)}">${esc(shortMint(r.m))}</div></div>
   <div class="pmain">
-     <div class="ptop"><b class="psym">${esc(symOf(r))}</b><span class="pname">${esc(r.n||'')}</span><button class="cpy mini" data-cp="${esc(r.m)}" title="Copy CA">⧉</button><span class="qlinks"><a href="${esc(jupLink(r.m))}" target="_blank" rel="noopener noreferrer" title="Opens Jupiter. xScanner never trades for you." data-noopen>Jup</a><a href="${esc(axLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Ax</a><a href="${esc(phLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Ph</a></span></div>
+     <div class="ptop"><b class="psym">${esc(symOf(r))}</b><span class="pname">${esc(r.n||'')}</span><button class="cpy mini" data-cp="${esc(r.m)}" title="Copy CA">⧉</button><span class="qlinks"><a href="${esc(jupLink(r.m))}" target="_blank" rel="noopener noreferrer" title="Opens Jupiter. xScanner never trades for you." data-noopen>Jup</a><a href="${esc(axLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Ax</a><a href="${esc(phLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Ph</a></span>${pulseQBuyOn()?`<button type="button" class="pqbuy" data-qbuy="${esc(r.m)}" data-sym="${esc(symOf(r))}" data-px="${r.px||''}" data-noopen title="Instant paper buy (simulation only)">⚡ ${typeof solMark==='function'?solMark():''} ${pulseQBuyAmt()}</button>`:''}</div>
      <div class="psub"><span class="page" data-cr="${r.cr||''}" data-mg="${r.mg||''}" data-col="${col}">${ageS(r.cr?now()-r.cr:null)}</span>${soc?`<span class="psoc">${soc}</span>`:''}${r.h!=null?`<span class="pholds" title="Holders">${r.h.toLocaleString()}</span>`:''}${r.pc5!=null?` ${pc1(r.pc5)}`:''}</div>
      <div class="pchips"><span class="chip ${chipCls(t10,20,35)}" title="Top 10 holders share (excluding the pool)">10 ${pTxt(t10,0)}</span><span class="chip ${chipCls(r.dv,3,10)}" title="Dev wallet holding">D ${pTxt(r.dv,1)}</span><span class="chip ${snC}" title="Supply bought in the first blocks after launch">S ${snTxt}</span><span class="chip ${bundC}" title="Bundle: RugCheck insider clusters or 4+ txs in one block">B ${bundTxt}</span></div>
   </div>
@@ -164,7 +175,8 @@ function skelRows(n){return Array.from({length:n},()=>`<div class="prow skel-row
 function renderAll(){if(view==='trend'){trendRender();P.first=false;return}for(const c of ['new','final','migrated'])renderCol(c);paintStars();P.first=false}
 document.addEventListener('click',e=>{const row=e.target.closest('.prow[data-m]');if(!row)return;
   const cp=e.target.closest('[data-cp]');if(cp){e.stopPropagation();copyCa(cp.dataset.cp,cp);return}
-  if(e.target.closest('[data-star],[data-noopen],a,.psoc'))return;
+  const qb=e.target.closest('[data-qbuy]');if(qb){e.preventDefault();e.stopPropagation();if(window.paperQuickBuy)window.paperQuickBuy({mint:qb.dataset.qbuy,symbol:qb.dataset.sym,name:'',px:qb.dataset.px?+qb.dataset.px:null});return}
+  if(e.target.closest('[data-star],[data-noopen],a,.psoc,.pqbuy'))return;
   openToken(row.dataset.m)});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.classList&&e.target.classList.contains('prow'))openToken(e.target.dataset.m)});
 setInterval(()=>{if(view==='trend'&&!document.hidden&&P.okAt){const s=Math.round(Date.now()/1000-P.okAt);$('#tLiveTxt').textContent=P.warming?'warming up…':`live · updated ${s<=1?'just now':s+'s ago'}`;$('#tLiveDot').className=s>20?'stale':'on'}if(view!=='pulse'||document.hidden)return;const t=now();$$('.page').forEach(el=>{const cr=+el.dataset.cr;if(cr)el.textContent=ageS(t-cr)});
@@ -215,7 +227,9 @@ function pulseConnect(){
   if(P.ver){pulseOpen();return}
   const g=++pulseGen;pulsePoll().then(()=>{if(g===pulseGen)pulseOpen()},()=>{if(g===pulseGen)pulseOpen()})
 }
-function pulseStart(){pulseStop();if(view==='pulse'){paintFilters();paintPresets();paintSeg();if(P.first)for(const c of ['new','final','migrated'])renderCol(c)}else trendRender();pulseConnect()}
+function pulseStart(){pulseStop();bindQBuy();if(view==='pulse'){paintFilters();paintPresets();paintSeg();paintQBuy();if(P.first)for(const c of ['new','final','migrated'])renderCol(c)}else trendRender();pulseConnect()}
+function bindQBuy(){const btn=document.getElementById('pqBuyBtn');if(!btn||btn.dataset.bound)return;btn.dataset.bound='1';
+  btn.addEventListener('click',e=>{e.preventDefault();const on=!pulseQBuyOn();try{localStorage.setItem('xs_pulse_qbuy_v1',on?'1':'0')}catch(e){};paintQBuy();if(typeof renderAll==='function')renderAll();if(window.toast)window.toast(on?'Quick Buy on — paper simulation only.':'Quick Buy off.');else if(typeof toast==='function')toast(on?'Quick Buy on — paper simulation only.':'Quick Buy off.')})}
 function pulseStop(){pulseGen++;clearInterval(pulseTimer);pulseTimer=null;if(pulseES){pulseES.close();pulseES=null}}
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){if(isP(view))pulseStop();return}

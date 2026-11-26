@@ -339,3 +339,26 @@ code.addr{font-family:var(--font-mono);font-size:11px;color:#f9f9f8;word-break:b
   .pca{font-size:9px}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* SOL mark + Instant / Quick Buy chrome */
+.solmark{display:inline-block;width:14px;height:11px;vertical-align:-1px;flex:none}
+.solpill,.dock-sol,.dock-solamt{display:inline-flex;align-items:center;gap:5px}
+.dock-solamt{font:600 11px var(--font-mono);color:#f9f9f8}
+.sol-inline,.sol-amt{display:inline-flex;align-items:center;gap:5px}
+.sol-amt input{flex:1;min-width:0}
+.ch-instant{font:700 11px var(--font-sans)!important;color:#c8c9d1;border:1px solid #262b36;border-radius:6px;padding:3px 8px;background:#171a1f;cursor:pointer}
+.ch-instant.on,#dockInstant.on,#pqBuyBtn.on{color:#2fe3ac;border-color:rgba(47,227,172,.5);background:rgba(47,227,172,.08)}
+#dockInstant{font:700 11px var(--font-sans)}
+.pqbar{display:inline-flex;align-items:center;gap:6px;margin-left:8px}
+.pqamt{display:inline-flex;align-items:center;gap:4px;font:11px var(--font-mono);color:#9a9cae}
+.pqamt input{width:54px;background:#0d0e11;border:1px solid #262b36;border-radius:6px;color:#f9f9f8;padding:2px 6px;font:11px var(--font-mono)}
+.pqbuy{display:inline-flex;align-items:center;gap:3px;margin-left:6px;border:1px solid rgba(47,227,172,.5);background:rgba(47,227,172,.08);color:#2fe3ac;border-radius:999px;padding:1px 7px;font:700 10px var(--font-sans);cursor:pointer;white-space:nowrap}
+.pqbuy .solmark{width:10px;height:8px}
+.pqbuy:hover{background:rgba(47,227,172,.16)}
+@media(max-width:700px){
+  .pqbar{margin-left:0}
+  #dockInstant{order:2}
+}
+@media(max-width:900px){
+  .solpill,.syncpill{display:none}
+}

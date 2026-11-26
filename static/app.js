@@ -1,4 +1,15 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+// Official-style Solana mark (three bars, public brand geometry). Unique gradient ids so many copies can sit on one page.
+let _solMarkN=0;
+function solMark(cls){
+  const kn=cls?' '+cls:'';
+  if(document.getElementById('solLogo'))
+    return `<svg class="solmark${kn}" viewBox="0 0 398 312" width="14" height="11" aria-hidden="true" focusable="false"><use href="#solLogo"/></svg>`;
+  const id='solg'+(++_solMarkN);
+  return `<svg class="solmark${kn}" viewBox="0 0 398 312" width="14" height="11" aria-hidden="true" focusable="false"><defs><linearGradient id="${id}" x1="360" y1="351" x2="141" y2="-69" gradientUnits="userSpaceOnUse" gradientTransform="matrix(1 0 0 -1 0 314)"><stop offset="0" stop-color="#00FFA3"/><stop offset=".5" stop-color="#03E1FF"/><stop offset="1" stop-color="#DC1FFF"/></linearGradient></defs><path fill="url(#${id})" d="M64.6 237.9c2.4-2.4 5.7-3.8 9.2-3.8h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1l62.7-62.7zm0-234.1C67.1 1.4 70.4 0 73.8 0h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1L64.6 3.8zM333.1 120.1c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8 0-8.7 7-4.6 11.1l62.7 62.7c2.4 2.4 5.7 3.8 9.2 3.8h317.4c5.8 0 8.7-7 4.6-11.1l-62.7-62.7z"/></svg>`;
+}
+window.solMark=solMark;
+
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const usd=v=>{if(v==null||v===''||!isFinite(+v))return'—';v=+v;const a=Math.abs(v);
   for(const[d,u]of[[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e3,'K']])if(a>=d){let s=(v/d).toFixed(a/d>=100?0:a/d>=10?1:2);if(s.includes('.'))s=s.replace(/0+$/,'').replace(/\.$/,'');return'$'+s+u}
