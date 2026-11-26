@@ -12,7 +12,7 @@ const shortMint=m=>{if(!m)return'';return /pump$/i.test(m)&&m.length>10?m.slice(
 const mcTier=mc=>{if(mc==null||!isFinite(+mc))return'';mc=+mc;return mc<3e4?'mc-cyn':mc<1.5e5?'mc-gld':'mc-grn'};
 const ringCls=(r,col)=>{if(r.bd==='flagged'||r.ebl)return'ring-risk';if(col==='migrated'||r.d==='pumpswap')return'ring-mig';if(col==='final'||(r.cv!=null&&r.cv>=70))return'ring-final';return'ring-new'};
 const chartH=()=>window.innerWidth<700?Math.max(240,Math.round(window.innerHeight*0.38)):Math.max(380,Math.round(window.innerHeight*0.56));
-function paintSol(v){const t=v?('SOL $'+Number(v).toLocaleString('en-US',{maximumFractionDigits:2})):'SOL —';const a=$('#solPillTxt')||$('#solPill'),b=$('#dockSolTxt')||$('#dockSol');if(a)a.textContent=t;if(b)b.textContent=t;}
+function paintSol(v){if(v>0)try{window.XS_SOL=+v}catch(e){}const px=(v>0?+v:window.XS_SOL);const t=px?('SOL $'+Number(px).toLocaleString('en-US',{maximumFractionDigits:2})):'SOL —';const a=$('#solPillTxt')||$('#solPill'),b=$('#dockSolTxt')||$('#dockSol');if(a)a.textContent=t;if(b)b.textContent=t;}window.paintSol=paintSol;
 
 const num=v=>v==null||v===''||!isFinite(+v)?null:+v;
 const pc1=v=>v==null?'—':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${Math.abs(v)>=1000?Math.round(v).toLocaleString():(+v).toFixed(1)}%</span>`;
@@ -282,7 +282,7 @@ function tokSkeleton(m,r){
   <div class="disc sr-nfa" role="note"><b>Not financial advice.</b> Data is public and can be wrong or late. xScanner is read-only: the buttons above open other sites in a new tab; we never hold keys or place orders.</div>`}
 const ma0=a=>!a||!a.known?'—':a.disabled?'<span class="up">Disabled</span>':'<b class="dn">ENABLED</b>'+(a.who?' <code class="addr">'+esc(shortCa(a.who))+'</code>':'');
 function stat(l,v,sub){return `<div class="tks"><span>${l}</span><b>${v}</b>${sub?`<small>${sub}</small>`:''}</div>`}
-function tokPaint(d){
+function tokPaint(d){try{paintSol(d&&d.sol_usd)}catch(e){}
   TK.cur=d;
   if(TK.holdersMint!==d.mint){TK.holdersLock=null;TK.holdersMint=d.mint}
   if(d.security&&d.security.holders!=null){
@@ -521,7 +521,7 @@ function paintTickers(prices){
     const txt=px>=100?px.toLocaleString('en-US',{maximumFractionDigits:0}):px.toLocaleString('en-US',{maximumFractionDigits:2});
     return `<span class="dtk ${k.toLowerCase()}"><b>${k}</b> $${txt}</span>`;
   }).join('');
-  if(prices.SOL)paintSol(prices.SOL);
+  if(prices.SOL&&typeof window.paintSol==='function')window.paintSol(prices.SOL);
 }
 async function pollTickers(){
   try{

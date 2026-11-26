@@ -1300,6 +1300,11 @@ def api_quotes(mints: str = ""):
     return JSONResponse({"quotes": trd.quotes(ms, ready=pulse.ready_rows()), "t": int(time.time())}, headers=_NOSTORE)
 
 
+_ticker_cache = {"t": 0, "data": None}
+_TICKER_TTL = 15
+_BINANCE_SYMS = [("BTC", "BTCUSDT"), ("ETH", "ETHUSDT"), ("SOL", "SOLUSDT"), ("BNB", "BNBUSDT")]
+
+
 @app.get("/api/tick/{mint}")
 def api_tick(mint: str):
     """Lightweight live price for one mint. Viewers coalesce into one upstream call every ~1.5s.
@@ -1310,6 +1315,12 @@ def api_tick(mint: str):
         sol = pulse.status().get("sol_usd")
     except Exception:
         sol = None
+    if not sol:
+        try:
+            cached = (_ticker_cache.get("data") or {}).get("prices") or {}
+            sol = cached.get("SOL")
+        except Exception:
+            sol = None
     q = trd.tick(mint, ready=pulse.ready_rows(), sol_usd=sol)
     headers = dict(_NOSTORE)
     if q.get("retry_s"):
@@ -1318,11 +1329,6 @@ def api_tick(mint: str):
     if not q.get("ok") and not q.get("px") and q.get("stale") and q.get("retry_s"):
         return JSONResponse(q, status_code=429, headers=headers)
     return JSONResponse(q, headers=headers)
-
-
-_ticker_cache = {"t": 0, "data": None}
-_TICKER_TTL = 15
-_BINANCE_SYMS = [("BTC", "BTCUSDT"), ("ETH", "ETHUSDT"), ("SOL", "SOLUSDT"), ("BNB", "BNBUSDT")]
 
 
 @app.get("/api/tickers")

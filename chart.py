@@ -24,6 +24,7 @@ import pricehist as ph
 B58_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 TF = {"1m": ("minute", 1), "5m": ("minute", 5), "15m": ("minute", 15),
       "1h": ("hour", 1), "4h": ("hour", 4), "1d": ("day", 1)}
+SUB_TF = {"1s": 1, "15s": 15, "30s": 30}   # live tick frames; not a GeckoTerminal/Jupiter interval
 CACHE_TTL = 60
 TTL_BY_TF = {"1m": 60, "5m": 90, "15m": 120, "1h": 180, "4h": 300, "1d": 600}
 SWR_MAX = 900            # a cached answer up to this old is served at once while a refresh runs in the background
@@ -393,13 +394,40 @@ def _fallback(pool, tf, token, now, why):
 
 
 # ------------------------------------------------------------------ public API
+def _subminute(pool, tf, token):
+    """1s/15s/30s are live tick frames. Never 400 and never call GeckoTerminal/Jupiter with an invalid interval.
+    Seed history from our snapshots or a cached 1m/5m chart; the browser appends live /api/tick candles."""
+    mint = token
+    cs, src, note = [], "ticks", "Live sub-minute candles build from /api/tick."
+    if mint:
+        cs = ph.candles(mint, tf) or []
+        if cs:
+            src, note = "snapshots", "Built from our own price snapshots; new candles append from /api/tick."
+        else:
+            cs = ph.candles(mint, "1m") or []
+            if cs:
+                src, note = "snapshots", "Seeded from 1-minute snapshots; live 1s/15s/30s candles append from /api/tick."
+    if not cs:
+        with _lock:
+            for k in [(pool, "1m", token), (pool, "1m", None), (pool, "5m", token), (pool, "5m", None)]:
+                e = _cache.get(k)
+                if e and (e[1] or {}).get("candles"):
+                    cs = e[1]["candles"]
+                    src, note = e[1].get("source") or "resampled", "Seeded from longer candles; live sub-minute bars append from /api/tick."
+                    break
+    return {"pool": pool, "tf": tf, "candles": cs or [], "source": src, "base": {}, "quote": {},
+            "note": note, "cached": False, "age_s": 0}
+
+
 def _get_ohlcv(pool, tf, token=None):
     if not B58_RE.match(pool or ""):
         raise ChartError(400, "Invalid pool address.")
     if token and not B58_RE.match(token):
         token = None
+    if tf in SUB_TF:
+        return _subminute(pool, tf, token)
     if tf not in TF:
-        raise ChartError(400, f"tf must be one of {', '.join(TF)}.")
+        raise ChartError(400, f"tf must be one of {', '.join(list(SUB_TF)+list(TF))}.")
     _load_store()
     if token: ph.watch(token, pool)
     key = (pool, tf, token)

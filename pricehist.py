@@ -27,7 +27,7 @@ MAX_PTS = 2400
 FULL_RES_S = 3 * 3600        # points older than this are thinned to one per COMPACT_S (disk / seed stay small)
 COMPACT_S = 300
 WATCH_S = 6 * 3600           # a coin someone opened (not in the report) is tracked this long
-TF_S = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
+TF_S = {"1s": 1, "15s": 15, "30s": 30, "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
 
 price_hint = None             # optional callable(mint) -> price from other caches (DexScreener pull, RugCheck, mcap / supply)
 _lock = threading.Lock()

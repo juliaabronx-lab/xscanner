@@ -126,7 +126,6 @@ td{padding:7px 10px;border-bottom:1px solid #1e222b;color:#f9f9f8}
 
 /* Pulse header 40px + unified 3-column board */
 .pbar-top{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;margin:0 0 6px;height:40px;min-height:40px}
-#v-pulse .pbar-top::before{content:"Pulse";font-size:16px;font-weight:600;letter-spacing:-.02em;color:#f9f9f8;margin-right:4px;flex:none}
 .plive{display:flex;align-items:center;gap:6px;font-size:11px;color:#76798b}
 .plive i{width:6px;height:6px;border-radius:50%;background:#696b7b}
 .plive i.on{background:#14ab7d}
@@ -344,7 +343,6 @@ code.addr{font-family:var(--font-mono);font-size:11px;color:#f9f9f8;word-break:b
   .authbox .signup{display:none}
   .uname{max-width:70px}
   main{padding:8px 8px 12px}
-  #v-pulse .pbar-top::before{font-size:16px}
   .pbar-top{height:auto;min-height:0;flex-wrap:wrap}
   .pseg{display:flex;gap:0;margin:0 0 8px;overflow:auto;border-bottom:1px solid #1e222b}
   .pseg button{flex:1;min-width:max-content;background:none;border:0;border-bottom:2px solid transparent;color:#76798b;padding:8px 12px;font:600 12px var(--font-sans);cursor:pointer}
@@ -447,4 +445,14 @@ html,body{max-width:100%;overflow-x:hidden}
   .it-card,.cal-card{max-width:calc(100vw - 16px)!important;left:8px!important;right:8px!important}
   .pboard{display:block}
   .kbd-hint{display:none}
+}
+
+/* fix18: one Pulse title; 390px nav shows Scanner without clipping or page overflow */
+.tbar{max-width:100%;overflow-x:hidden}
+#tabs{min-width:0;max-width:100%}
+@media(max-width:480px){
+  .tbar{overflow-x:hidden;max-width:100vw}
+  #tabs{min-width:0;width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;justify-content:flex-start}
+  #tabs button{padding:0 7px;font-size:12px}
+  #tabs button.on::after{left:7px;right:7px}
 }
