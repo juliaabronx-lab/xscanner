@@ -10,10 +10,10 @@
 <link rel="alternate" type="text/html" href="/text" title="Plain HTML view of the latest scan">
 <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
 <link rel="apple-touch-icon" href="/static/logo.svg">
-<link rel="stylesheet" href="/static/style.css?v=fix12">
-<link rel="stylesheet" href="/static/trader.css?v=fix12">
-<link rel="stylesheet" href="/static/terminal.css?v=fix12">
-<link rel="stylesheet" href="/static/paper.css?v=fix12">
+<link rel="stylesheet" href="/static/style.css?v=fix13">
+<link rel="stylesheet" href="/static/trader.css?v=fix13">
+<link rel="stylesheet" href="/static/terminal.css?v=fix13">
+<link rel="stylesheet" href="/static/paper.css?v=fix13">
 <link rel="prefetch" href="/static/vendor/lightweight-charts.js?v=4.2.3" as="script">
 </head><body>
 <noscript><div style="max-width:760px;margin:24px auto;padding:16px;font:16px/1.5 system-ui,sans-serif;color:#eee;background:#111;border:1px solid #444;border-radius:8px">
@@ -34,27 +34,31 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
   </nav>
   <form id="searchForm" class="tbsearch" autocomplete="off" role="search">
     <span class="sicon" aria-hidden="true">⌕</span>
-    <input id="searchIn" type="text" spellcheck="false" placeholder="Search by token CA (mint address)…" aria-label="Token contract address">
-    <button id="pasteBtn" type="button" class="ghost" title="Paste from clipboard">Paste</button>
-    <button id="searchBtn" type="submit" class="primary">Scan</button>
+    <input id="searchIn" type="text" spellcheck="false" placeholder="Search token or CA" aria-label="Token contract address">
+    <button id="pasteBtn" type="button" class="iconbtn" title="Paste from clipboard" aria-label="Paste">⧉</button>
+    <button id="searchBtn" type="submit" class="iconbtn go" title="Go" aria-label="Scan">→</button>
   </form>
   <div class="actions">
-    <span id="scanInfo" class="muted"></span>
-    <button id="scanBtn" class="primary">▶ Run scan</button>
+    <span id="solPill" class="solpill" title="SOL price in USD">SOL —</span>
+    <button type="button" id="goWatch" class="iconbtn star-nav" title="Watchlist" aria-label="Watchlist">☆</button>
     <span id="syncPill" class="syncpill" title="Watchlist and wallet sync"></span>
     <div id="authBox" class="authbox"></div>
   </div>
 </header>
-<button type="button" id="paperBar" class="paperbar" hidden>
+<div id="paperBar" class="paperbar dock" role="status">
   <span class="pb-tag">PAPER</span>
-  <b id="pbBarCash">Paper</b>
+  <b id="pbBarCash">0.00 SOL</b>
   <span id="pbBarU"></span>
-  <span id="pbBarR"></span>
-  <small id="pbBarHint">simulation · not advice</small>
-</button>
+  <span id="pbBarR">PnL 0.00 SOL</span>
+  <span id="dockSol" class="dock-sol">SOL —</span>
+  <span class="dock-live"><i id="dockLiveDot"></i><span id="dockLiveTxt">Live</span></span>
+  <small id="pbBarHint">Simulation · Not financial advice</small>
+  <button type="button" id="dockPaper" class="linkbtn">Paper book</button>
+</div>
 <div id="searchMsg" class="searchmsg hidden"></div>
 <div id="banner" class="banner hidden"></div>
 <div id="scHead" class="schead hidden">
+  <div class="sc-tools"><span id="scanInfo" class="muted"></span><button id="scanBtn" class="ghost" type="button">Run scan</button></div>
   <div id="subtabs" class="subtabs" role="tablist" aria-label="Scanner views">
     <button data-v="feed">Coin feed</button>
     <button data-v="narr">Narratives</button>
@@ -207,11 +211,11 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
 <div id="scrim" class="scrim"></div>
 <footer><b>Not financial advice.</b> Read-only analysis. No wallet keys, signing or real trades. Paper buys and sells are a simulation. Score ≥65 worth a look · 50–64 watch · &lt;50 skip. Juliaa gives the final yes.</footer>
 <script>window.__h0=location.hash</script>
-<script src="/static/motion.js?v=fix12"></script>
-<script src="/static/chart.js?v=fix12"></script>
-<script src="/static/app.js?v=fix12"></script>
-<script src="/static/xfeed.js?v=fix12"></script>
-<script src="/static/trader.js?v=fix12"></script>
-<script src="/static/sync.js?v=fix12"></script>
-<script src="/static/paper.js?v=fix12"></script>
+<script src="/static/motion.js?v=fix13"></script>
+<script src="/static/chart.js?v=fix13"></script>
+<script src="/static/app.js?v=fix13"></script>
+<script src="/static/xfeed.js?v=fix13"></script>
+<script src="/static/trader.js?v=fix13"></script>
+<script src="/static/sync.js?v=fix13"></script>
+<script src="/static/paper.js?v=fix13"></script>
 </body></html>

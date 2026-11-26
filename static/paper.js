@@ -75,18 +75,21 @@ function paintBar(){
 function ensurePanel(){
   const side=document.querySelector('#tokBody .tk-side');if(!side)return null;
   let el=document.getElementById('tkPaper');
-  if(!el){el=document.createElement('div');el.id='tkPaper';el.className='card pb-card';side.insertBefore(el,side.firstChild)}
+  if(!el){el=document.createElement('div');el.id='tkPaper';el.className='card pb-card';
+    const mini=document.getElementById('tkMini');
+    if(mini&&mini.parentNode===side)side.insertBefore(el,mini.nextSibling);
+    else side.insertBefore(el,side.firstChild)}
   return el}
 
 function panelShell(){
-  return `<div class="pb"><div class="pb-h"><h3>Paper trade</h3><span class="pb-tag">PAPER</span></div>
-    <p class="pb-note">Play money only. Not financial advice. This cannot move real SOL, and it never asks for a wallet or a seed phrase.</p>
-    <div class="pb-px"><span>Price <b id="pbPx">—</b></span><span>SOL <b id="pbSolUsd">—</b></span></div>
-    <div class="pb-bal"><div><span>Cash</span><b id="pbCash">—</b></div><div><span>This token</span><b id="pbPos">—</b><small id="pbUpnl"></small></div></div>
-    <div class="pb-dep"><label>Deposit paper SOL<input id="pbDep" data-depinput type="number" min="0" step="any" placeholder="10" inputmode="decimal"></label>
+  return `<div class="pb"><div class="pb-h"><span class="pb-tag">PAPER</span><small class="pb-note-inline">Not financial advice · Simulation. Play money only — no wallet, no real SOL.</small></div>
+    <div class="pb-bal-line"><span>Cash <b id="pbCash">—</b></span><button type="button" class="linkbtn" id="pbDepToggle">+ Deposit</button><span>This token <b id="pbPos">—</b> <small id="pbUpnl"></small></span></div>
+    <div class="pb-dep hidden" id="pbDepBox"><label>Deposit paper SOL<input id="pbDep" data-depinput type="number" min="0" step="any" placeholder="10" inputmode="decimal"></label>
       <div class="pb-presets"><button type="button" data-dep="1">1</button><button type="button" data-dep="5">5</button><button type="button" data-dep="10">10</button><button type="button" data-dep="25">25</button></div>
-      <button type="button" class="primary" id="pbDepGo" style="width:100%;margin-bottom:8px">Deposit</button></div>
-    <div class="pb-tabs" role="tablist"><button type="button" data-pbt="buy">Buy</button><button type="button" data-pbt="sell">Sell</button><button type="button" data-pbt="limit">Limit</button></div>
+      <button type="button" class="primary" id="pbDepGo">Deposit</button></div>
+    <div class="pb-px"><span>Price <b id="pbPx">—</b></span><span>SOL <b id="pbSolUsd">—</b></span></div>
+    <div class="pb-tabs pb-sides" role="tablist"><button type="button" data-pbt="buy">Buy</button><button type="button" data-pbt="sell">Sell</button></div>
+    <div class="pb-subtabs" role="tablist"><button type="button" data-pbmode="market" class="on">Market</button><button type="button" data-pbmode="limit">Limit</button></div>
     <div id="pbForm"></div>
     <p id="pbEst" class="pb-est"></p><p id="pbErr" class="pb-err"></p>
     <details class="pb-set"><summary>Slippage, fees, delay</summary>
@@ -107,15 +110,15 @@ function formHTML(){
   if(t==='sell')return `<p class="muted" style="margin:0 0 8px;font-size:12px">Sells a share of the tokens that are not reserved by a sell limit.</p>
     <div class="pb-presets"><button type="button" data-pct="25" data-go="1">25%</button><button type="button" data-pct="50" data-go="1">50%</button><button type="button" data-pct="100" data-go="1">100%</button></div>
     <label>Custom % of free tokens<input id="pbPct" type="number" min="1" max="100" step="1" placeholder="25"></label>
-    <button type="button" class="pb-sell" id="pbSell">Sell</button>`;
+    <p class="pb-fee" id="pbFee"></p><button type="button" class="pb-sell" id="pbSell">Paper Sell</button>`;
   if(t==='limit')return `<div class="pb-tabs" role="tablist"><button type="button" data-limside="buy">Buy limit</button><button type="button" data-limside="sell">Sell limit</button></div>
     <label>Trigger price, USD per token<input id="pbLim" type="number" min="0" step="any" inputmode="decimal"></label>
     <div id="pbLimAmt"></div>
-    <button type="button" class="pb-limit" id="pbLimGo">Place limit</button>
+    <p class="pb-fee" id="pbFee"></p><button type="button" class="pb-limit" id="pbLimGo">Place paper limit</button>
     <p class="muted" style="font-size:11px;margin:8px 0 0">A buy limit reserves the SOL now and fills when the live price is at or under the trigger. A sell limit reserves tokens and fills at or above it. The fill then uses that live price, plus slippage and fees.</p>`;
-  return `<label>Spend paper SOL<input id="pbSol" type="number" min="0" step="any" inputmode="decimal" placeholder="0.5"></label>
+  return `<label>AMOUNT<input id="pbSol" type="number" min="0" step="any" inputmode="decimal" placeholder="0.5"></label>
     <div class="pb-presets"><button type="button" data-sol="0.1">0.1</button><button type="button" data-sol="0.5">0.5</button><button type="button" data-sol="1">1</button><button type="button" data-sol="2">2</button></div>
-    <button type="button" class="pb-buy" id="pbBuy">Buy</button>`}
+    <p class="pb-fee" id="pbFee"></p><button type="button" class="pb-buy" id="pbBuy">Paper Buy</button>`}
 
 function paintForm(){
   const box=document.getElementById('pbForm');if(!box)return;
@@ -148,8 +151,16 @@ function updatePanelFigures(){
     else if(pos&&pos.reserved_qty>0){up.className='';up.textContent=fmtQty(pos.reserved_qty)+' reserved by limits'}else up.textContent=''}
   const buy=document.getElementById('pbBuy'),sell=document.getElementById('pbSell'),lim=document.getElementById('pbLimGo');
   const wait=!px||!PB.sol;
-  if(buy){buy.disabled=PB.busy||wait;buy.textContent=PB.busy?'Filling…':'Buy'}
-  if(sell){sell.disabled=PB.busy||wait||!(pos&&pos.qty>pos.reserved_qty);sell.textContent=PB.busy?'Filling…':'Sell'}
+  const sym=(PB.token&&PB.token.symbol)||'TOKEN';
+  if(buy){buy.disabled=PB.busy||wait;buy.textContent=PB.busy?'Filling…':'Paper Buy $'+sym}
+  if(sell){sell.disabled=PB.busy||wait||!(pos&&pos.qty>pos.reserved_qty);sell.textContent=PB.busy?'Filling…':'Paper Sell $'+sym}
+  const fee=document.getElementById('pbFee');
+  if(fee){const st=settings();fee.textContent=(st.slippage_bps/100)+'% slip · '+st.priority_fee_sol+' SOL · '+(st.platform_fee_bps/100)+'% fee'}
+  document.querySelectorAll('#tkPaper [data-pbmode]').forEach(b=>b.classList.toggle('on',b.dataset.pbmode===(PB.tab==='limit'?'limit':'market')));
+  document.querySelectorAll('#tkPaper .pb-sides [data-pbt]').forEach(b=>{
+    const side=PB.tab==='limit'?(PB.limSide||'buy'):PB.tab;
+    b.classList.toggle('on',b.dataset.pbt===side);
+  })
   if(lim)lim.disabled=PB.busy||!PB.sol||(PB.limSide==='sell'&&!(pos&&pos.qty>pos.reserved_qty));
   const mine=document.getElementById('pbMine');
   if(mine&&PB.acct){const orders=(PB.acct.orders||[]).filter(o=>!mint||o.mint===mint);
@@ -312,10 +323,11 @@ function scheduleEst(){clearTimeout(estT);estT=setTimeout(()=>{runEst().catch(()
 
 async function onClick(e){
   const t=e.target.closest('button');if(!t)return;
-  if(t.id==='paperBar'||t.id==='toMyPaper'||t.id==='pbOpenBook'){e.preventDefault();if(window.show)window.show('book');return}
+  if(t.id==='paperBar'||t.id==='dockPaper'||t.id==='toMyPaper'||t.id==='pbOpenBook'){e.preventDefault();if(window.show)window.show('book');return}
   if(t.dataset.dep){const scope=t.closest('.pb,.card')||document;const input=scope.querySelector('[data-depinput]');if(input){input.value=t.dataset.dep;input.focus()}return}
   if(t.dataset.sol){const input=document.getElementById('pbSol');if(input){input.value=t.dataset.sol;scheduleEst()}return}
-  if(t.dataset.pbt){PB.tab=t.dataset.pbt;const host=document.getElementById('tkPaper');if(host)host.dataset.tab='';paintForm();updatePanelFigures();scheduleEst();return}
+  if(t.dataset.pbt){if(PB.tab==='limit'||PB._mode==='limit'){PB.tab='limit';PB.limSide=t.dataset.pbt;PB._mode='limit'}else{PB.tab=t.dataset.pbt;PB._mode='market'}const host=document.getElementById('tkPaper');if(host)host.dataset.tab='';paintForm();updatePanelFigures();scheduleEst();return}
+  if(t.dataset.pbmode){PB._mode=t.dataset.pbmode;if(PB._mode==='limit'){PB.limSide=PB.tab==='sell'?'sell':'buy';PB.tab='limit'}else{PB.tab=PB.limSide||PB.tab||'buy';if(PB.tab==='limit')PB.tab=PB.limSide||'buy'}const host=document.getElementById('tkPaper');if(host)host.dataset.tab='';paintForm();updatePanelFigures();scheduleEst();return}
   if(t.dataset.limside){PB.limSide=t.dataset.limside;const host=document.getElementById('tkPaper');if(host)host.dataset.tab='';paintForm();updatePanelFigures();return}
   if(t.dataset.pct&&t.dataset.go&&PB.token){const pct=+t.dataset.pct;await guard(()=>market(Object.assign({action:'sell',mint:PB.token.mint,pct,px_usd:livePx(PB.token.mint)},meta())));return}
   if(t.id==='pbBuy'&&PB.token){const sol=+(document.getElementById('pbSol')||{}).value;await guard(()=>market(Object.assign({action:'buy',mint:PB.token.mint,sol,px_usd:livePx(PB.token.mint)},meta())));return}
@@ -324,6 +336,7 @@ async function onClick(e){
     const payload=Object.assign({action:'limit',side:PB.limSide,mint:PB.token.mint,limit_px:limit},meta());
     if(PB.limSide==='buy')payload.sol=+(document.getElementById('pbLimSol')||{}).value;else payload.pct=+(document.getElementById('pbLimPct')||{}).value||100;
     await guard(()=>act(payload));return}
+  if(t.id==='pbDepToggle'){const box=document.getElementById('pbDepBox');if(box)box.classList.toggle('hidden');return}
   if(t.id==='pbDepGo'){await guard(()=>doDeposit(document.getElementById('pbDep')));return}
   if(t.id==='bkDepGo'){await guard(()=>doDeposit(document.getElementById('bkDep')));return}
   if(t.id==='pbReset'||t.id==='bkReset'){await guard(doReset);return}

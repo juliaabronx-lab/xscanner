@@ -355,6 +355,7 @@ async function runLookup(raw){
   finally{btn.disabled=false;btn.textContent='Scan CA'}
 }
 $('#searchForm').onsubmit=e=>{e.preventDefault();runLookup($('#searchIn').value)};
+const gw=document.getElementById('goWatch');if(gw)gw.onclick=()=>{if(window.show)window.show('watch');location.hash='watch'};
 $('#searchIn').addEventListener('paste',e=>{const t=(e.clipboardData||window.clipboardData)?.getData('text');if(t&&B58.test(extractMint(t))){e.preventDefault();runLookup(t)}});
 $('#pasteBtn').onclick=async()=>{try{const t=await navigator.clipboard.readText();$('#searchIn').value=t;runLookup(t)}catch(e){$('#searchIn').focus();sMsg('Clipboard blocked by the browser — long-press / Ctrl+V into the box instead.','warn')}};
 // deep link: /?ca=<mint> runs the same lookup as pasting the address and opens its detail drawer

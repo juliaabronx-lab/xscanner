@@ -8,6 +8,12 @@ const LSs=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const now=()=>Date.now()/1000;
 const ageS=s=>{if(s==null||!isFinite(s))return'—';s=Math.max(0,Math.floor(s));if(s<60)return s+'s';if(s<3600)return Math.floor(s/60)+'m';if(s<86400)return Math.floor(s/3600)+'h '+(Math.floor(s/60)%60)+'m';return Math.floor(s/86400)+'d'};
+const shortMint=m=>{if(!m)return'';return /pump$/i.test(m)&&m.length>10?m.slice(0,4)+'...pump':m.slice(0,4)+'...'+m.slice(-4)};
+const mcTier=mc=>{if(mc==null||!isFinite(+mc))return'';mc=+mc;return mc<3e4?'mc-cyn':mc<1.5e5?'mc-gld':'mc-grn'};
+const ringCls=(r,col)=>{if(r.bd==='flagged'||r.ebl)return'ring-risk';if(col==='migrated'||r.d==='pumpswap')return'ring-mig';if(col==='final'||(r.cv!=null&&r.cv>=70))return'ring-final';return'ring-new'};
+const chartH=()=>window.innerWidth<700?Math.max(240,Math.round(window.innerHeight*0.38)):Math.max(380,Math.round(window.innerHeight*0.56));
+function paintSol(v){const t=v?('SOL $'+Number(v).toLocaleString('en-US',{maximumFractionDigits:2})):'SOL —';const a=$('#solPill'),b=$('#dockSol');if(a)a.textContent=t;if(b)b.textContent=t;}
+
 const num=v=>v==null||v===''||!isFinite(+v)?null:+v;
 const pc1=v=>v==null?'—':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${Math.abs(v)>=1000?Math.round(v).toLocaleString():(+v).toFixed(1)}%</span>`;
 const pTxt=(v,d=1)=>v==null?'—':(+v).toFixed(d)+'%';
@@ -118,21 +124,21 @@ const chipCls=(v,a,b)=>v==null?'na':v>=b?'red':v>=a?'amb':'grn';
 function rowHTML(r,col){
   const cv=r.cv,mcc=r.d==='pumpswap'||col==='migrated',t10=r.t10!=null?r.t10:r.t10x;
   const b1=r.b1,s1=r.s1,tot=(b1||0)+(s1||0),bp=tot?Math.round((b1||0)/tot*100):null;
-  const bund=r.bd==='flagged'?['red','Bundle']:r.ebl?['red',(r.ebm||4)+'+ in block']:r.bd==='elevated'?['amb','Bundle risk']:r.bd==='ok'?['grn','Bundle ok']:r.bd==='unavailable'?['na','Bundle ?']:['na','Bundle —'];
-  const sn=r.sn!=null?[chipCls(r.sn,5,15),'Snipers '+pTxt(r.sn,r.sn<10?1:0)]:r.es==='too_old'?['na','Snipers n/a']:['na','Snipers —'];
+  const bundC=r.bd==='flagged'||r.ebl?'red':r.bd==='elevated'?'amb':r.bd==='ok'?'grn':'na';
+  const bundTxt=r.bd==='flagged'?'⚠':r.ebl?((r.ebm||4)+'+'):r.bd==='elevated'?'risk':r.bd==='ok'?'ok':r.bd==='unavailable'?'?':'—';
+  const snTxt=r.sn!=null?pTxt(r.sn,r.sn<10?1:0):(r.es==='too_old'?'n/a':'—');
+  const snC=r.sn!=null?chipCls(r.sn,5,15):'na';
   const soc=[r.tw?ext(r.tw,'𝕏','soc'):'',r.tg?ext(r.tg,'TG','soc'):'',r.web?ext(r.web,'🌐','soc'):''].join('');
-  return `<div class="pimg">${tokImgDirect(r)}<button class="star" data-star="${esc(r.m)}" aria-label="Watch"></button></div>
+  const curve=!mcc?`<i class="cvline" title="${cv!=null?(r.cvs==='chain'?'Bonding curve progress, read from the chain':'Estimated from market cap'):'Curve progress unavailable'}"><i style="width:${cv!=null?Math.min(100,cv):0}%" class="${cv!=null&&cv>=70?'hot':''}"></i></i>`:`<i class="cvline done" title="migrated${r.mg?' '+ageS(now()-r.mg)+' ago':''}"></i>`;
+  return `<div class="pimg ${ringCls(r,col)}">${tokImgDirect(r)}<button class="star" data-star="${esc(r.m)}" aria-label="Watch"></button><div class="pca" title="${esc(r.m)}">${esc(shortMint(r.m))}</div></div>
   <div class="pmain">
-   <div class="pline">
-    <div class="pleft">
-     <div class="ptop"><b class="psym">${esc(symOf(r))}</b><span class="pname">${esc(r.n||'')}</span><button class="cpy mini" data-cp="${esc(r.m)}" title="Copy CA">⧉</button>${soc?`<span class="psoc">${soc}</span>`:''}<span class="qlinks"><a href="${esc(jupLink(r.m))}" target="_blank" rel="noopener noreferrer" title="Opens Jupiter. xScanner never trades for you." data-noopen>Jup</a><a href="${esc(axLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Ax</a><a href="${esc(phLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Ph</a></span></div>
-     <div class="psub"><span class="page" data-cr="${r.cr||''}" data-mg="${r.mg||''}" data-col="${col}">${ageS(r.cr?now()-r.cr:null)}</span>${r.h!=null?`<span class="mut"> · ${r.h.toLocaleString()} hold</span>`:''}${r.pc5!=null?` · ${pc1(r.pc5)}`:''}</div>
-    </div>
-    <div class="pmets"><span title="Market cap">MC <b class="mcv">${usd(r.mc)}</b></span><span title="Volume (1h)">V <b>${usd(r.v1)}</b></span><span title="Liquidity">L <b>${usd(r.lq)}</b></span><span title="Buys / sells in the last hour">TX <b class="up">${b1??'—'}</b>/<b class="dn">${s1??'—'}</b></span></div>
-   </div>
-   <div class="pchips"><span class="chip ${chipCls(t10,20,35)}" title="Top 10 holders share (excluding the pool)">${pTxt(t10,0)}</span><span class="chip ${chipCls(r.dv,3,10)}" title="Dev wallet holding">${pTxt(r.dv,1)}</span><span class="chip ${sn[0]}" title="Supply bought in the first blocks after launch (RPC check)">${sn[1]}</span><span class="chip ${bund[0]}" title="Bundle: RugCheck insider clusters or 4+ txs in one block">${bund[1]}</span></div>
-   ${!mcc?`<div class="cvbar" title="${cv!=null?(r.cvs==='chain'?'Bonding curve progress, read from the chain':'Estimated from market cap'):'Curve progress unavailable'}"><i style="width:${cv!=null?Math.min(100,cv):0}%" class="${cv!=null&&cv>=70?'hot':''}"></i><span>${cv!=null?cv.toFixed(cv<10?1:0)+'%'+(r.cvs==='est'?' ~':''):''}${r.cv_done?' · migrating':''}</span></div>`:`<div class="cvbar done"><span>migrated${r.mg?' '+ageS(now()-r.mg)+' ago':''}${r.lpl!=null?' · LP '+Math.round(r.lpl)+'% locked/burned':''}</span></div>`}
-  </div>`}
+     <div class="ptop"><b class="psym">${esc(symOf(r))}</b><span class="pname">${esc(r.n||'')}</span><button class="cpy mini" data-cp="${esc(r.m)}" title="Copy CA">⧉</button><span class="qlinks"><a href="${esc(jupLink(r.m))}" target="_blank" rel="noopener noreferrer" title="Opens Jupiter. xScanner never trades for you." data-noopen>Jup</a><a href="${esc(axLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Ax</a><a href="${esc(phLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Ph</a></span></div>
+     <div class="psub"><span class="page" data-cr="${r.cr||''}" data-mg="${r.mg||''}" data-col="${col}">${ageS(r.cr?now()-r.cr:null)}</span>${soc?`<span class="psoc">${soc}</span>`:''}${r.h!=null?`<span class="pholds" title="Holders">${r.h.toLocaleString()}</span>`:''}${r.pc5!=null?` ${pc1(r.pc5)}`:''}</div>
+     <div class="pchips"><span class="chip ${chipCls(t10,20,35)}" title="Top 10 holders share (excluding the pool)">10 ${pTxt(t10,0)}</span><span class="chip ${chipCls(r.dv,3,10)}" title="Dev wallet holding">D ${pTxt(r.dv,1)}</span><span class="chip ${snC}" title="Supply bought in the first blocks after launch">S ${snTxt}</span><span class="chip ${bundC}" title="Bundle: RugCheck insider clusters or 4+ txs in one block">B ${bundTxt}</span></div>
+  </div>
+  <div class="pmets"><div class="pm"><span>MC</span><b class="mcv ${mcTier(r.mc)}">${usd(r.mc)}</b></div><div class="pm"><span>V</span><b>${usd(r.v1)}</b></div><div class="pm"><span>L</span><b>${usd(r.lq)}</b></div><div class="pm tx"><span>TX</span><b><i class="up">${b1??'—'}</i>/<i class="dn">${s1??'—'}</i></b>${bp!=null?`<i class="txbar" title="Buy share of 1h txs"><i style="width:${bp}%"></i></i>`:''}</div></div>
+  ${curve}`
+}
 function rowEl(r,col){let el=P.els.get(r.m);
   if(!el){el=document.createElement('article');el.className='prow';el.dataset.m=r.m;el.tabIndex=0;el.setAttribute('role','link');el.setAttribute('aria-label','Open '+symOf(r));P.els.set(r.m,el);if(!P.first)el.classList.add('pin')}
   if(el._v!==r.v||el._col!==col){const prevMc=el._mc;el.innerHTML=rowHTML(r,col);el._v=r.v;el._col=col;
@@ -164,7 +170,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.classList&&
 setInterval(()=>{if(view==='trend'&&!document.hidden&&P.okAt){const s=Math.round(Date.now()/1000-P.okAt);$('#tLiveTxt').textContent=P.warming?'warming up…':`live · updated ${s<=1?'just now':s+'s ago'}`;$('#tLiveDot').className=s>20?'stale':'on'}if(view!=='pulse'||document.hidden)return;const t=now();$$('.page').forEach(el=>{const cr=+el.dataset.cr;if(cr)el.textContent=ageS(t-cr)});
   if(P.okAt){const s=Math.round(Date.now()/1000-P.okAt);$('#pLiveTxt').textContent=P.warming?'warming up…':`live · updated ${s<=1?'just now':s+'s ago'}`;$('#pLiveDot').className=s>20?'stale':'on'}},1000);
 function applyPulse(j){
-  P.okAt=now();P.src=j.sources;P.warming=!!j.warming;P.sol=j.sol_usd;
+  P.okAt=now();P.src=j.sources;P.warming=!!j.warming;P.sol=j.sol_usd;if(j.sol_usd)paintSol(j.sol_usd);
   for(const r of j.rows||[])P.rows.set(r.m,r);
   if(j.cols){P.cols=j.cols;P.h=j.h}
   P.ver=j.ver;
@@ -172,7 +178,7 @@ function applyPulse(j){
   if((j.rows&&j.rows.length)||j.cols||P.first)renderAll();
   if(!$('#pSrcBox').classList.contains('hidden'))paintSrc();
   return missing}
-const liveMsg=(t,cls)=>{const a=$('#pLiveTxt'),b=$('#tLiveTxt'),d=$('#pLiveDot'),e=$('#tLiveDot');if(a)a.textContent=t;if(b)b.textContent=t;if(d)d.className=cls;if(e)e.className=cls};
+const liveMsg=(t,cls)=>{const a=$('#pLiveTxt'),b=$('#tLiveTxt'),d=$('#pLiveDot'),e=$('#tLiveDot');if(a)a.textContent=t;if(b)b.textContent=t;if(d)d.className=cls;if(e)e.className=cls;const dd=$('#dockLiveDot'),dt=$('#dockLiveTxt');if(dd)dd.className=cls;if(dt)dt.textContent=t||'Live'};
 async function pulsePoll(){
   if(P.busy||document.hidden||!isP(view))return;P.busy=true;
   try{const j=await api(`/api/pulse?since=${P.ver}&h=${encodeURIComponent(P.h)}`);
@@ -247,27 +253,30 @@ $$('#subtabs button').forEach(b=>b.onclick=()=>window.show(b.dataset.v));
 const TK={cur:null,mint:null,seq:0,tape:null,tapeTimer:null,detailTimer:null,tab:'trades',lookup:null,seen:new Set()};
 const secRow=(ok,label,val,note)=>`<div class="secrow"><span class="si ${ok===true?'ok':ok===false?'bad':'na'}">${ok===true?'✓':ok===false?'✗':'?'}</span><span class="sl">${label}</span><span class="sv">${val??'—'}</span>${note?`<small class="muted">${note}</small>`:''}</div>`;
 function tokSkeleton(m,r){
-  return `<div class="tk-head card"><div class="tk-id">${r?tokImgDirect({...r,m},'tkimg'):'<div class="skel tkimg"></div>'}<div><h2>${r?'$'+esc(symOf(r)):'<span class="skel" style="display:inline-block;width:120px;height:22px"></span>'} <small class="muted">${esc(r?.n||'')}</small></h2><div class="tca"><code>${esc(shortCa(m))}</code><button class="cpy" data-cp="${esc(m)}">⧉ Copy CA</button></div></div></div><div id="tkLinks" class="tk-links"></div></div>
-  <div id="tkStats" class="tk-stats">${Array.from({length:8},()=>'<div class="skel" style="height:46px"></div>').join('')}</div>
+  return `<div class="tk-head"><div class="tk-id">${r?tokImgDirect({...r,m},'tkimg'):'<div class="skel tkimg"></div>'}<div><h2>${r?'$'+esc(symOf(r)):'<span class="skel" style="display:inline-block;width:90px;height:18px"></span>'} <small class="muted">${esc(r?.n||'')}</small></h2><div class="tca"><code>${esc(shortCa(m))}</code><button class="cpy mini" data-cp="${esc(m)}" title="Copy CA">⧉</button></div></div></div>
+    <div id="tkStats" class="tk-stats">${Array.from({length:7},()=>'<div class="skel" style="height:28px;width:64px"></div>').join('')}</div>
+    <div id="tkLinks" class="tk-links"></div><span id="tkCurve"></span></div>
   <div class="tk-grid"><div class="tk-main">
-    <div class="card tk-chart">${chartBlockHTML()}</div>
-    <div class="card tk-tabs"><div class="tfs" id="tkTabs" role="tablist"><button data-t="trades" class="on">Trades</button><button data-t="positions">Positions</button><button data-t="holders">Holders</button><button data-t="traders">Top traders</button><button data-t="dev">Dev tokens</button></div><div id="tkPane" class="tk-pane"><div class="skel" style="height:160px"></div></div></div>
-    <div class="card" id="tkStory"><h3>Our read</h3><div class="skel" style="height:120px"></div></div>
-   </div><aside class="tk-side"><div class="card" id="tkInfo"><h3>Token info</h3><div class="skel" style="height:200px"></div></div><div class="card" id="tkSec"><h3>Security</h3><div class="skel" style="height:220px"></div></div></aside></div>
-  <div class="disc" role="note"><b>Not financial advice.</b> Data is public and can be wrong or late. xScanner is read-only: the buttons above open other sites in a new tab; we never hold keys or place orders.</div>`}
+    <div class="tk-chart">${chartBlockHTML()}</div>
+    <div class="tk-tabs"><div class="tfs" id="tkTabs" role="tablist"><button data-t="trades" class="on">Trades</button><button data-t="positions">Positions</button><button data-t="holders">Holders</button><button data-t="traders">Top traders</button><button data-t="dev">Dev tokens</button><button data-t="security">Security</button></div><div id="tkPane" class="tk-pane"><div class="skel" style="height:140px"></div></div></div>
+   </div><aside class="tk-side"><div id="tkMini" class="tk-mini"></div><div class="card" id="tkInfo"><h3>Token info</h3><div class="skel" style="height:160px"></div></div><div class="card" id="tkSec"><h3>Security</h3><div class="skel" style="height:160px"></div></div><div class="card" id="tkStory"><h3>Our read</h3><div class="skel" style="height:80px"></div></div></aside></div>
+  <div class="disc sr-nfa" role="note"><b>Not financial advice.</b> Data is public and can be wrong or late. xScanner is read-only: the buttons above open other sites in a new tab; we never hold keys or place orders.</div>`}
 const ma0=a=>!a||!a.known?'—':a.disabled?'<span class="up">Disabled</span>':'<b class="dn">ENABLED</b>'+(a.who?' <code class="addr">'+esc(shortCa(a.who))+'</code>':'');
 function stat(l,v,sub){return `<div class="tks"><span>${l}</span><b>${v}</b>${sub?`<small>${sub}</small>`:''}</div>`}
 function tokPaint(d){
   TK.cur=d;const mk=d.market||{},sc=d.security||{},cv=d.curve;
-  $('#tokBody .tk-head').innerHTML=`<div class="tk-id">${tokImgDirect({m:d.mint,img:d.img,s:d.symbol},'tkimg')}<div><h2>$${esc(d.symbol||'?')} <small class="muted">${esc(d.name||'')}</small> <button class="star big" data-star="${esc(d.mint)}"></button></h2>
-    <div class="tca"><code title="${esc(d.mint)}">${esc(shortCa(d.mint))}</code><button class="cpy" data-cp="${esc(d.mint)}">⧉ Copy CA</button>${d.socials?.twitter?ext(d.socials.twitter,'𝕏','soc'):''}${d.socials?.telegram?ext(d.socials.telegram,'Telegram','soc'):''}${d.socials?.website?ext(d.socials.website,'Website','soc'):''}</div></div></div>
-    <div id="tkLinks" class="tk-links"><span class="muted">Open in</span>${(d.links||[]).slice(0,3).map(l=>`<a class="open" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)} ↗</a>`).join('')}<span class="muted">·</span>${(d.links||[]).slice(3).map(l=>`<a class="open alt" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)}</a>`).join('')}</div>`;
   const age=mk.created?ageS(now()-mk.created):'—';
   const sec=sc.top10_pct;
-  $('#tkStats').innerHTML=stat('Price',fmtPx(mk.px),pc1(mk.pc5)+' 5m')+stat('Market cap',usd(mk.mc),pc1(mk.pc1)+' 1h')+stat('Liquidity',usd(mk.lq))+stat('Volume 24h',usd(mk.v24),'1h '+usd(mk.v1))+
-    stat('Buys / sells 1h',`<span class="up">${mk.b1??'—'}</span> / <span class="dn">${mk.s1??'—'}</span>`,'5m '+(mk.b5??'—')+' / '+(mk.s5??'—'))+stat('Holders',sc.holders!=null?(+sc.holders).toLocaleString():'—','top-10 '+pTxt(sec,0))+stat('Dev holds',pTxt(sc.dev?.balance_pct,1),sc.dev?.launched!=null?sc.dev.launched+' tokens launched':'')+stat('Age',age,esc(mk.dex||''));
-  const cvEl=cv&&cv.progress!=null?`<div class="tkcurve"><div class="cvbar big" title="${esc(cv.note||'')}"><i style="width:${Math.min(100,cv.progress)}%" class="${cv.progress>=70?'hot':''}"></i><span>Bonding curve ${cv.progress.toFixed(1)}%${cv.source==='est'?' (estimated)':cv.complete?' · complete':''}</span></div></div>`:'';
-  let ce=$('#tkCurve');if(!ce){ce=document.createElement('div');ce.id='tkCurve';$('#tkStats').after(ce)}ce.innerHTML=cvEl;
+  const cvEl=cv&&cv.progress!=null?`<span class="cvpill ${cv.complete||cv.progress>=100?'done':''}" title="${esc(cv.note||'Bonding curve')}"><i style="width:${Math.min(100,cv.progress)}%"></i><em>${cv.complete||cv.progress>=100?'migrated':cv.progress.toFixed(0)+'%'}</em></span>`:'';
+  $('#tokBody .tk-head').innerHTML=`<div class="tk-id">${tokImgDirect({m:d.mint,img:d.img,s:d.symbol},'tkimg')}<div><h2>$${esc(d.symbol||'?')} <small class="muted">${esc(d.name||'')}</small> <button class="star" data-star="${esc(d.mint)}"></button></h2>
+    <div class="tca"><code title="${esc(d.mint)}">${esc(shortCa(d.mint))}</code><button class="cpy mini" data-cp="${esc(d.mint)}" title="Copy CA">⧉</button>${d.socials?.twitter?ext(d.socials.twitter,'𝕏','soc'):''}${d.socials?.telegram?ext(d.socials.telegram,'TG','soc'):''}${d.socials?.website?ext(d.socials.website,'↗','soc'):''}<span class="page">${age}</span></div></div></div>
+    ${stat('Market cap',usd(mk.mc),pc1(mk.pc1))}
+    <div id="tkStats" class="tk-stats">${stat('Price',fmtPx(mk.px),pc1(mk.pc5))+stat('Liquidity',usd(mk.lq))+stat('24h Vol',usd(mk.v24))+stat('Holders',sc.holders!=null?(+sc.holders).toLocaleString():'—')+stat('Top 10',pTxt(sec,0))+stat('Dev',pTxt(sc.dev?.balance_pct,1))+stat('Bundle',sc.insiders?((sc.insiders.networks||0)+' net'):'—')}</div>
+    <div id="tkLinks" class="tk-links">${(d.links||[]).map(l=>`<a class="open" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)}</a>`).join('')}</div>
+    <span id="tkCurve">${cvEl}</span>`;
+  const tot=(mk.b1||0)+(mk.s1||0),bp=tot?Math.round((mk.b1||0)/tot*100):null;
+  const mini=$('#tkMini');
+  if(mini)mini.innerHTML=`<div><span>1h Vol</span><b>${usd(mk.v1)}</b></div><div><span>Buys</span><b class="up">${mk.b1??'—'}</b></div><div><span>Sells</span><b class="dn">${mk.s1??'—'}</b></div><div><span>Net</span><b class="${(mk.b1||0)>=(mk.s1||0)?'up':'dn'}">${(mk.b1||0)-(mk.s1||0)}</b></div>${bp!=null?`<i class="txbar"><i style="width:${bp}%"></i></i>`:''}`;
   // Solscan-style key/value card: copyable addresses + explorer links
   const dv=sc.dev||{};
   const tiles=[{l:'Top 10 H.',v:pTxt(sec,0),c:chipCls(sec,20,35)},{l:'Dev H.',v:pTxt(sc.dev&&sc.dev.balance_pct,1),c:chipCls(sc.dev&&sc.dev.balance_pct,3,10)},{l:'Snipers H.',v:d.early&&d.early.sniper_pct!=null?pTxt(d.early.sniper_pct,1):'—',c:d.early&&d.early.sniper_pct!=null?chipCls(d.early.sniper_pct,5,15):'na'},{l:'Holders',v:sc.holders!=null?(+sc.holders).toLocaleString():'—',c:'na'},{l:'Pro / bundle',v:(d.lookup&&d.lookup.bundle)||sc.insiders?((sc.insiders&&sc.insiders.networks)||0)+' net':'—',c:'na'}];
@@ -304,8 +313,9 @@ function tokPaint(d){
    ${(sc.risks||[]).length?`<h4>RugCheck notes</h4>${sc.risks.map(r=>`<span class="pill ${/danger|high/i.test(r.level||'')?'red':'amb'}" title="${esc(r.description||'')}">${esc(r.name)}</span>`).join('')}`:''}
    ${(d.pending||[]).length?`<p class="muted" style="font-size:11px">Still loading: ${esc(d.pending.join(', '))}…</p>`:''}${(d.notes||[]).map(n=>`<p class="muted" style="font-size:11px">${esc(n)}</p>`).join('')}`;
   paintStars();
+  try{if(mk.px&&mk.mc)CH.supply=mk.mc/mk.px}catch(e){}
   try{window.paperOnToken&&window.paperOnToken(d)}catch(e){}
-  if(TK.tab==='holders'||TK.tab==='dev')tkPane()}
+  if(TK.tab==='holders'||TK.tab==='dev'||TK.tab==='security')tkPane()}
 function tkStoryPaint(){
   const c=TK.lookup;const el=$('#tkStory');if(!el)return;
   if(c==null){el.innerHTML='<h3>Our read</h3><div class="skel" style="height:120px"></div><p class="muted" style="font-size:11px">Scoring this token (a live scan can take up to ~20 s)…</p>';return}
@@ -329,7 +339,9 @@ function tkPane(){
     pane.innerHTML=h?`<div class="tablewrap"><table class="tkt"><thead><tr><th>#</th><th>Wallet</th><th>% supply</th><th>Tags</th></tr></thead><tbody>${h.rows.map(x=>`<tr><td>${x.rank}</td><td><a href="https://solscan.io/account/${esc(x.owner)}" target="_blank" rel="noopener noreferrer"><code>${esc(shortCa(x.owner))}</code></a></td><td><div class="hbar"><i style="width:${Math.min(100,x.pct*2)}%"></i><b>${x.pct.toFixed(2)}%</b></div></td><td>${x.pool?'<span class="pill">pool / curve</span>':''}${x.dev?'<span class="pill amb">dev</span>':''}${x.insider?'<span class="pill red">insider</span>':''}</td></tr>`).join('')}</tbody></table></div><p class="muted" style="font-size:11px">Top ${h.rows.length} of ${h.total!=null?(+h.total).toLocaleString():'?'} holders · source: RugCheck (${ageS(h.age_s)} old)</p>`:'<p class="muted">Holders table is loading (RugCheck is rate limited, so it can take a moment)…</p>';return}
   if(t==='traders'){const tr=TK.tape;
     pane.innerHTML=!tr?'<div class="skel" style="height:140px"></div>':!tr.available?`<p class="muted">Top traders unavailable: ${esc(tr.reason||'trades feed busy')}.</p>`:tr.traders.length?`<div class="tablewrap"><table class="tkt"><thead><tr><th>Wallet</th><th>Buys</th><th>Sells</th><th>Bought $</th><th>Sold $</th><th>Net</th></tr></thead><tbody>${tr.traders.map(x=>`<tr><td><a href="https://solscan.io/account/${esc(x.w)}" target="_blank" rel="noopener noreferrer"><code>${esc(shortCa(x.w))}</code></a></td><td class="up">${x.buys}</td><td class="dn">${x.sells}</td><td>${usd(x.buy_usd)}</td><td>${usd(x.sell_usd)}</td><td>${pc1x(x.net_usd)}</td></tr>`).join('')}</tbody></table></div><p class="muted" style="font-size:11px">${esc(tr.note)}</p>`:'<p class="muted">No trades yet.</p>';return}
-  if(t==='dev')devPane()}
+  if(t==='dev')return devPane();
+  if(t==='security'){const sec=$('#tkSec');pane.innerHTML=sec?sec.innerHTML:'<p class="muted">Security is loading…</p>';return}
+}
 const pc1x=v=>v==null?'—':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':'-'}${usd(Math.abs(v))}</span>`;
 async function devPane(){
   const pane=$('#tkPane'),d=TK.cur;const w=d?.security?.dev?.wallet;
@@ -363,7 +375,7 @@ async function tokLoad(m){
     try{const d=await api('/api/token/'+m);if(seq!==TK.seq)return;
       if(d.found===false){$('#tokBody').innerHTML=`<div class="card"><h3>No market found</h3><p class="muted">${esc((d.notes||[])[0]||'This token has no trading pair yet.')}</p><p><a href="#pulse" onclick="location.hash='pulse';history.pushState({},'','/#pulse');show('pulse');return false">← Back to Pulse</a></p></div>`;return}
       const first=!TK.cur||TK.cur.mint!==m;TK.cur=d;tokPaint(d);
-      if(first||!CH.coin){CH.h=window.innerWidth<700?260:340;mountChart({pool:d.pool,mint:d.mint,symbol:d.symbol})}
+      if(first||!CH.coin){CH.h=chartH();mountChart({pool:d.pool,mint:d.mint,symbol:d.symbol})}
       if(first){tapePoll();clearInterval(TK.tapeTimer);TK.tapeTimer=setInterval(tapePoll,10000)}
       clearTimeout(TK.detailTimer);TK.detailTimer=setTimeout(()=>{if(view==='token'&&seq===TK.seq)tokLoad(m)},(d.pending||[]).length?4000:12000);return}
     catch(e){if(i===2){$('#tokBody').innerHTML=`<div class="card"><h3>Could not load this token</h3><p class="muted">${esc(e.message)}</p><p><button class="ghost" onclick="openToken('${esc(m)}')">Retry</button></p></div>`;return}await sleep(1500)}}}
