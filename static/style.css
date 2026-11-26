@@ -53,7 +53,10 @@
   color-scheme:dark;
 }
 *{box-sizing:border-box}
-html{background:var(--bg);scroll-behavior:smooth;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+html{background:var(--bg);scroll-behavior:smooth;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
+body{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
+svg,img,canvas{transform:translateZ(0)}
+svg{shape-rendering:geometricPrecision}
 body{margin:0;background:var(--bg);color:hsl(var(--primary));font:14px/1.45 var(--font-sans)}
 ::-webkit-scrollbar{width:var(--scroll-size);height:var(--scroll-size)}
 ::-webkit-scrollbar-track{background:hsl(var(--card))}

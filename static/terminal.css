@@ -1,3 +1,5 @@
+/* HiDPI: crisp type, borders and SVGs */
+html,body{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
 /* xScanner terminal skin (fix13): denser layout measured from public Axiom stills.
    Own name, logo and features. No Axiom code, logos or brand assets. The decorative space layer stays on /login only. */
 :root{

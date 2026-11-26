@@ -250,6 +250,7 @@ function mountChart(c){
     crosshair:{mode:CH.magnet?1:0,vertLine:{color:'rgba(0,245,160,0.28)',style:2,width:1},horzLine:{color:'rgba(0,245,160,0.28)',style:2,width:1}},
     localization:{priceFormatter:fmtAxis,timeFormatter:t=>new Date(t*1000).toLocaleString('en-GB',{timeZone:'Asia/Kuala_Lumpur',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}};
   try{opts.layout.attributionLogo=false}catch(e){}
+  try{opts.devicePixelRatio=Math.max(1,window.devicePixelRatio||1)}catch(e){}
   CH.chart=LC.createChart(el,opts);
   const pxFmt={type:'custom',formatter:fmtAxis,minMove:1e-12};
   CH.area=CH.chart.addAreaSeries({lineColor:UP,topColor:'rgba(0,245,160,0.14)',bottomColor:'rgba(9,11,16,0)',lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,priceFormat:pxFmt});
@@ -270,7 +271,7 @@ function mountChart(c){
   });
   CH.chart.subscribeClick(onChartClick);
   try{CH.chart.timeScale().subscribeVisibleLogicalRangeChange(()=>syncLivePrice())}catch(e){}
-  CH.ro=new ResizeObserver(()=>{if(!CH.chart)return;CH.chart.applyOptions({width:el.clientWidth,height:el.clientHeight||CH.h||360});syncLivePrice()});CH.ro.observe(el);
+  CH.ro=new ResizeObserver(()=>{if(!CH.chart)return;const o={width:el.clientWidth,height:el.clientHeight||CH.h||360};try{o.devicePixelRatio=Math.max(1,window.devicePixelRatio||1)}catch(e){}CH.chart.applyOptions(o);syncLivePrice()});CH.ro.observe(el);
   load(true);
   CH.timer=setInterval(()=>{if(!document.hidden&&CH.mode==='native')load(false)},15000);
 }

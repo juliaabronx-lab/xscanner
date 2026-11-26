@@ -14,6 +14,9 @@ function toast(msg,cls){let b=document.getElementById('toasts');if(!b){b=documen
   const t=document.createElement('div');t.className='toast '+(cls||'');t.textContent=msg;b.appendChild(t);setTimeout(()=>t.classList.add('out'),4200);setTimeout(()=>t.remove(),4800)}
 function solTxt(v,signed){if(v==null||!isFinite(+v))return'—';let n=+v;if(Math.abs(n)<5e-7)n=0;const a=Math.abs(n);const d=a===0||a>=100?2:a>=1?3:a>=0.01?4:6;const body=a.toFixed(d);
   if(signed)return(n>0?'+':n<0?'-':'')+body+' SOL';return(n<0?'-':'')+body+' SOL'}
+function solCompact(v,signed){if(v==null||!isFinite(+v))return'—';let n=+v;if(Math.abs(n)<5e-7)n=0;const body=Math.abs(n).toFixed(2);
+  if(signed)return(n>0?'+':n<0?'-':'')+body+' SOL';return(n<0?'-':'')+body+' SOL'}
+function usdCompact(v){if(v==null||!isFinite(+v))return'—';const n=+v;return(n<0?'-':'')+'$'+Math.abs(n).toFixed(2)}
 function clsPn(v){return v==null?'':(+v>=0?'up':'dn')}
 function fmtQty(v){if(v==null||!isFinite(+v))return'—';const n=+v,a=Math.abs(n);if(a>=1e9)return(n/1e9).toFixed(2)+'B';if(a>=1e6)return(n/1e6).toFixed(2)+'M';if(a>=1e3)return(n/1e3).toFixed(2)+'K';if(a>=1)return n.toFixed(2);return n.toPrecision(3)}
 function when(ts){if(!ts)return'—';try{return new Date(ts*1000).toLocaleString('en-GB',{timeZone:'Asia/Kuala_Lumpur',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}catch(e){return'—'}}
@@ -53,7 +56,7 @@ async function act(payload,opts,retried){
     if(!opts.quiet)toast(msg,'dn');throw new Error(msg)}
   if(j.sol_usd)PB.sol=j.sol_usd;
   if(!j.dry){PB.acct=j.account;PB.summary=j.summary;saveLocal();
-    paintBar();paintChart();updatePanelFigures();if(bookVisible())fillBook();paintInstant();
+    paintBar();paintChart();updatePanelFigures();if(bookVisible())fillBook();paintInstant();paintCal();
     if(!opts.silent){const rows=j.fills&&j.fills.length?j.fills:(j.fill?[j.fill]:[]);
       rows.forEach(f=>{if(!f||!f.side||f.side==='mark')return;const up=f.side==='sell'?(f.realized_sol||0)>=0:f.side!=='cancel';toast(fillMsg(f),f.side==='sell'?(up?'up':'dn'):'')})}}
   return j}
@@ -224,8 +227,7 @@ function ensureBook(){
     </div><div class="card"><h3>Record</h3><div id="bkStats"></div></div></div>
     <div class="card"><h3>Open positions</h3><div id="bkPos"></div></div>
     <div class="card"><h3>Limit orders</h3><div id="bkOrd"></div></div>
-    <div class="card"><h3>Daily realised PnL</h3><div id="bkCal"></div><p class="muted" id="bkCalNote"></p></div>
-    <div class="card"><h3>Trades</h3><div id="bkHist"></div></div>`}
+    <div class="card"><h3>Trades <button type="button" class="ghost" id="bkCalBtn" title="Open the paper PnL calendar">PnL calendar</button></h3><div id="bkHist"></div></div>`}
 
 function kpi(l,v,c){return `<div class="pb-kpi"><span>${l}</span><b class="${c||''}">${v}</b></div>`}
 function mytDate(off){const fmt=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kuala_Lumpur',year:'numeric',month:'2-digit',day:'2-digit'});
@@ -260,27 +262,140 @@ function fillBook(){
   const orders=a.orders||[];
   document.getElementById('bkOrd').innerHTML=orders.length?orders.map(o=>`<div class="pb-ord"><span><a href="/token/${esc(o.mint)}" data-tok="${esc(o.mint)}">$${esc(o.symbol||'?')}</a> ${o.side} @ ${pxTxt(o.limit_px)} · ${o.side==='buy'?solTxt(o.sol):fmtQty(o.qty)} · ${when(o.created_at)}${o.last_error?`<br><small class="dn">${esc(o.last_error)}</small>`:''}</span><button type="button" class="linkbtn" data-cancel="${esc(o.id)}">Cancel</button></div>`).join('')
     :'<p class="muted">No resting limits.</p>';
-  const cal=calendar(a.daily||{});
-  document.getElementById('bkCal').innerHTML=cal.html;
-  document.getElementById('bkCalNote').textContent=`Realised paper SOL by day (Asia/Kuala_Lumpur). This window: ${solTxt(cal.sum,true)} across ${cal.n} days with a close. Unrealised PnL is not on the calendar.`;
+  paintCal();
   const trades=(a.trades||[]).slice().reverse().slice(0,80);
   document.getElementById('bkHist').innerHTML=trades.length?`<div class="tablewrap"><table class="tkt"><thead><tr><th>When</th><th>Side</th><th>Token</th><th>SOL</th><th>Fill</th><th>Fee</th><th>Realised</th><th></th></tr></thead><tbody>`+
     trades.map(t=>`<tr><td>${when(t.ts)}</td><td class="${t.side==='buy'?'up':'dn'}">${esc(t.side)}${t.kind==='limit'?' lim':''}</td><td><a href="/token/${esc(t.mint)}" data-tok="${esc(t.mint)}">$${esc(t.symbol||'?')}</a></td><td>${solTxt(t.sol)}</td><td>${pxTxt(t.fill_px_usd)}</td><td>${solTxt(t.fee_sol)}</td><td class="${clsPn(t.realized_sol)}">${t.realized_sol==null?'—':solTxt(t.realized_sol,true)}</td><td>${t.side==='sell'?`<button type="button" class="linkbtn" data-share="${esc(t.id)}">Card</button>`:''}</td></tr>`).join('')+'</tbody></table></div>'
     :'<p class="muted">No paper trades yet.</p>'}
 
-function calendar(daily){
-  const today=mytDate(0);const sinceMon=(weekday(today)+6)%7;const start=-(sinceMon+15*7);
-  const cells=16*7;const vals=[];let sum=0,n=0;
-  for(let i=0;i<cells;i++){const v=daily[mytDate(start+i)];if(v){sum+=+v;n++;vals.push(Math.abs(+v))}}
-  const max=Math.max(0.01,...vals,0.01);
-  let html='<div class="pb-calhead">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<span>${d}</span>`).join('')+'</div><div class="pb-cal">';
-  for(let i=0;i<cells;i++){const off=start+i,key=mytDate(off),v=Object.prototype.hasOwnProperty.call(daily,key)?+daily[key]:null;
-    let cls='empty',style='';
-    if(off>0)cls='future';
-    else if(v!=null&&v!==0){cls=v>0?'up':'dn';style=` style="opacity:${(0.28+0.72*Math.min(1,Math.abs(v)/max)).toFixed(2)}"`}
-    else if(v===0)cls='flat';
-    html+=`<i class="${cls}"${style} title="${key}${v!=null?' · '+solTxt(v,true):' · no close'}"></i>`}
-  return {html:html+'</div>',sum,n}}
+function calendar(daily){return monthGrid(daily, CAL.y, CAL.m)}
+
+const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const CAL={open:false,y:null,m:null,bound:false,drag:null};
+function mytParts(){const fmt=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kuala_Lumpur',year:'numeric',month:'2-digit',day:'2-digit'});
+  const [y,m,d]=fmt.format(new Date()).split('-').map(Number);return {y,m,d}}
+function calLoad(){
+  const now=mytParts();
+  try{const s=JSON.parse(localStorage.getItem('xs_cal_ym_v1')||'null');if(s&&s.y&&s.m){CAL.y=s.y;CAL.m=s.m}else{CAL.y=now.y;CAL.m=now.m}}catch(e){CAL.y=now.y;CAL.m=now.m}
+  if(!CAL.y){CAL.y=now.y;CAL.m=now.m}
+  try{CAL.open=localStorage.getItem('xs_cal_open_v1')==='1'}catch(e){CAL.open=false}
+}
+function calSave(){try{localStorage.setItem('xs_cal_open_v1',CAL.open?'1':'0');localStorage.setItem('xs_cal_ym_v1',JSON.stringify({y:CAL.y,m:CAL.m}))}catch(e){}}
+function monthGrid(daily,y,m){
+  daily=daily||{};
+  const first=y+'-'+String(m).padStart(2,'0')+'-01';
+  const lead=(weekday(first)+6)%7;
+  const dim=new Date(Date.UTC(y,m,0)).getUTCDate();
+  const now=mytParts();
+  const cells=[];let sum=0,n=0;
+  for(let i=0;i<lead;i++)cells.push({empty:true});
+  for(let d=1;d<=dim;d++){
+    const key=y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const has=Object.prototype.hasOwnProperty.call(daily,key);
+    const v=has?+daily[key]:null;
+    if(v){sum+=v;n++}
+    const future=y>now.y||(y===now.y&&(m>now.m||(m===now.m&&d>now.d)));
+    const today=y===now.y&&m===now.m&&d===now.d;
+    cells.push({d,key,v,has,future,today});
+  }
+  while(cells.length%7)cells.push({empty:true});
+  return {cells,sum,n,y,m};
+}
+function calCardHTML(){
+  return `<div class="cal-head" data-caldrag="1">
+      <button type="button" class="cal-nav" id="calPrev" aria-label="Previous month">‹</button>
+      <b id="calTitle">—</b>
+      <button type="button" class="cal-nav" id="calNext" aria-label="Next month">›</button>
+      <span class="cal-total" id="calTotal">—</span>
+      <button type="button" class="it-ico" id="calClose" title="Close PnL calendar" aria-label="Close">×</button>
+    </div>
+    <div class="cal-dow">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<span>${d}</span>`).join('')}</div>
+    <div class="cal-grid" id="calGrid"></div>
+    <p class="cal-note">PAPER · Realised PnL · Asia/Kuala_Lumpur</p>`;
+}
+function ensureCal(){
+  let el=document.getElementById('calCard');
+  if(!el){
+    el=document.createElement('aside');
+    el.id='calCard';el.className='cal-card hidden';
+    el.setAttribute('role','dialog');el.setAttribute('aria-label','Paper PnL calendar');
+    document.body.appendChild(el);
+    el.innerHTML=calCardHTML();
+    bindCal(el);
+  }
+  return el;
+}
+function bindCal(el){
+  if(CAL.bound)return;CAL.bound=true;
+  el.addEventListener('click',e=>{
+    const t=e.target.closest('button');if(!t)return;
+    if(t.id==='calClose'){e.preventDefault();setCalOpen(false);return}
+    if(t.id==='calPrev'){e.preventDefault();CAL.m--;if(CAL.m<1){CAL.m=12;CAL.y--}calSave();paintCal();return}
+    if(t.id==='calNext'){e.preventDefault();CAL.m++;if(CAL.m>12){CAL.m=1;CAL.y++}calSave();paintCal();return}
+  });
+  el.addEventListener('pointerdown',e=>{
+    if(!e.target.closest('[data-caldrag]'))return;
+    if(e.target.closest('button'))return;
+    const r=el.getBoundingClientRect();
+    CAL.drag={dx:e.clientX-r.left,dy:e.clientY-r.top,pid:e.pointerId};
+    try{el.setPointerCapture(e.pointerId)}catch(err){}
+    e.preventDefault();
+  });
+  el.addEventListener('pointermove',e=>{
+    if(!CAL.drag||(CAL.drag.pid!=null&&e.pointerId!==CAL.drag.pid))return;
+    const x=Math.max(8,Math.min(window.innerWidth-el.offsetWidth-8,e.clientX-CAL.drag.dx));
+    const y=Math.max(8,Math.min(window.innerHeight-el.offsetHeight-8,e.clientY-CAL.drag.dy));
+    el.style.left=x+'px';el.style.top=y+'px';el.style.right='auto';el.style.bottom='auto';
+  });
+  const end=e=>{
+    if(!CAL.drag)return;
+    if(CAL.drag.pid!=null&&e.pointerId!==CAL.drag.pid&&e.type==='pointerup')return;
+    try{localStorage.setItem('xs_cal_pos_v1',JSON.stringify({left:el.style.left,top:el.style.top}))}catch(err){}
+    CAL.drag=null;
+  };
+  el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);
+}
+function defaultCalPos(el){
+  try{const pos=JSON.parse(localStorage.getItem('xs_cal_pos_v1')||'null');
+    if(pos&&pos.left&&pos.top){el.style.left=pos.left;el.style.top=pos.top;el.style.right='auto';el.style.bottom='auto';return}}catch(e){}
+  el.style.left=Math.max(16,window.innerWidth-392)+'px';
+  el.style.top='96px';el.style.right='auto';el.style.bottom='auto';
+}
+function setCalOpen(on){
+  CAL.open=!!on;calSave();
+  const el=ensureCal();
+  el.classList.toggle('hidden',!CAL.open);
+  el.setAttribute('aria-hidden',CAL.open?'false':'true');
+  if(CAL.open){if(!el.style.left)defaultCalPos(el);paintCal()}
+  document.querySelectorAll('#dockCal,#bkCalBtn').forEach(b=>{if(b){b.classList.toggle('on',CAL.open);b.setAttribute('aria-pressed',CAL.open?'true':'false')}});
+}
+function paintCal(){
+  document.querySelectorAll('#dockCal,#bkCalBtn').forEach(b=>{if(b){b.classList.toggle('on',!!CAL.open);b.setAttribute('aria-pressed',CAL.open?'true':'false')}});
+  const el=document.getElementById('calCard');if(!el)return;
+  el.classList.toggle('hidden',!CAL.open);
+  if(!CAL.open)return;
+  if(!CAL.y)calLoad();
+  const g=monthGrid((PB.acct&&PB.acct.daily)||{},CAL.y,CAL.m);
+  const title=document.getElementById('calTitle');if(title)title.textContent=MONTHS[CAL.m-1]+' '+CAL.y;
+  const tot=document.getElementById('calTotal');
+  if(tot){tot.textContent=solCompact(g.sum,true);tot.className='cal-total '+(g.sum>0?'up':g.sum<0?'dn':'')}
+  const grid=document.getElementById('calGrid');if(!grid)return;
+  grid.innerHTML=g.cells.map(c=>{
+    if(c.empty)return'<div class="cal-cell empty"></div>';
+    const cls=['cal-cell',c.today?'today':'',c.future?'future':'',c.v>0?'up':c.v<0?'dn':c.has?'flat':''].filter(Boolean).join(' ');
+    const pnl=c.has&&c.v!=null?`<small>${c.v===0?'0.00':solCompact(c.v,true).replace(' SOL','')}</small>`:'';
+    return `<div class="${cls}" title="${c.key}${c.has?' · '+solTxt(c.v,true):' · no close'}"><span>${c.d}</span>${pnl}</div>`;
+  }).join('');
+}
+window.paperToggleCal=function(force){calLoad();setCalOpen(force==null?!CAL.open:!!force)};
+function bindCalChrome(){
+  const dock=document.getElementById('dockCal');
+  if(dock&&!dock.dataset.bound){dock.dataset.bound='1';dock.addEventListener('click',e=>{e.preventDefault();window.paperToggleCal()})}
+  document.addEventListener('click',e=>{
+    const b=e.target.closest('#bkCalBtn');if(!b)return;e.preventDefault();window.paperToggleCal();
+  });
+  calLoad();ensureCal();setCalOpen(!!CAL.open);
+}
 
 function drawCard(opts){
   const c=document.createElement('canvas');c.width=1200;c.height=675;const g=c.getContext('2d');if(!g)return c;
@@ -476,10 +591,10 @@ function itCardHTML(){
     </div>
     <div class="it-foot">
       <div class="it-kpis">
-        <span>Bought <b id="itBought">—</b></span>
-        <span>Sold <b id="itSold">—</b></span>
-        <span>Holding <b id="itHolding">—</b></span>
-        <span>PnL <b id="itPnl">—</b></span>
+        <div class="it-kpi"><span>Bought</span><b id="itBought">—</b></div>
+        <div class="it-kpi"><span>Sold</span><b id="itSold">—</b></div>
+        <div class="it-kpi"><span>Holding</span><b id="itHolding">—</b></div>
+        <div class="it-kpi"><span>PnL</span><b id="itPnl">—</b></div>
       </div>
       <div class="it-foot-l"><small>PAPER · Simulation</small><button type="button" class="linkbtn hidden" id="itDepGo">+ Deposit</button></div>
       <div class="it-dep hidden" id="itDepBox"><span class="sol-amt">${sm}<input id="itDep" type="number" min="0" step="any" placeholder="10" inputmode="decimal" aria-label="Paper SOL to deposit"></span>
@@ -591,11 +706,11 @@ function paintInstant(){
   }
   const init=document.getElementById('itSellInit');
   if(init)init.classList.toggle('hidden',!(st.holdQty>0));
-  const set=(id,txt,cls)=>{const n=document.getElementById(id);if(!n)return;n.textContent=txt;if(cls!=null)n.className=cls};
-  set('itBought',mint?solTxt(st.bought):'—');
-  set('itSold',mint?solTxt(st.sold):'—');
-  set('itHolding',st.holdSol!=null?solTxt(st.holdSol):(st.holdQty?fmtQty(st.holdQty)+' '+sym:'—'));
-  set('itPnl',st.pnl==null?'—':solTxt(st.pnl,true),clsPn(st.pnl));
+  const set=(id,txt,cls)=>{const n=document.getElementById(id);if(!n)return;n.textContent=txt;n.className=cls||''};
+  set('itBought',mint?solCompact(st.bought):'—','buy');
+  set('itSold',mint?solCompact(st.sold):'—','sell');
+  set('itHolding',st.holdSol!=null?solCompact(st.holdSol):(st.holdUsd!=null?usdCompact(st.holdUsd):'—'),'hold');
+  set('itPnl',st.pnl==null?'—':solCompact(st.pnl,true),clsPn(st.pnl));
   const cash=PB.acct?+(PB.acct.cash_sol||0):0;
   const dep=document.getElementById('itDepGo');
   if(dep)dep.classList.toggle('hidden',cash>0);
@@ -675,6 +790,7 @@ document.addEventListener('xschart',e=>{const d=e.detail||{};PB.chartMint=d.mint
 
 async function boot(){
   bindInstantChrome();
+  bindCalChrome();
   await refreshCsrf();
   let state={};try{state=await (await fetch('/api/paper/book',{credentials:'same-origin'})).json()}catch(e){}
   PB.signed=!!state.signed_in;
