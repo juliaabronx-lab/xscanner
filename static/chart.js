@@ -51,11 +51,11 @@ function mountChart(c){
   const el=document.getElementById('chNative');
   if(!window.LightweightCharts){chMsg('<span class="spin"></span> Loading chart…');ensureCharts().then(ok=>{if(CH.coin!==c)return;if(!ok||!window.LightweightCharts){chMsg('Chart library failed to load. Showing the DexScreener chart instead.');setMode('dex');return}mountChart(c)});return}
   const LC=window.LightweightCharts;
-  CH.chart=LC.createChart(el,{width:el.clientWidth,height:CH.h||300,layout:{background:{type:'solid',color:'#0a0a0a'},textColor:'#7d8187',fontFamily:'Geist, system-ui, sans-serif',fontSize:11},
-    grid:{vertLines:{color:'#1f2228'},horzLines:{color:'#1f2228'}},rightPriceScale:{borderColor:'#1f2228'},
+  CH.chart=LC.createChart(el,{width:el.clientWidth,height:CH.h||300,layout:{background:{type:'solid',color:'#0d0e11'},textColor:'#76798b',fontFamily:'Geist, system-ui, sans-serif',fontSize:11},
+    grid:{vertLines:{color:'#20252c'},horzLines:{color:'#20252c'}},rightPriceScale:{borderColor:'#1f2228'},
     timeScale:{borderColor:'#1f2228',timeVisible:true,secondsVisible:false},crosshair:{mode:0},
     localization:{priceFormatter:fmtAxis,timeFormatter:t=>new Date(t*1000).toLocaleString('en-GB',{timeZone:'Asia/Kuala_Lumpur',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}});
-  CH.cs=CH.chart.addCandlestickSeries({upColor:'#00c703',downColor:'#e66565',borderVisible:false,wickUpColor:'#00c703',wickDownColor:'#e66565',
+  CH.cs=CH.chart.addCandlestickSeries({upColor:'#14ab7d',downColor:'#ec397a',borderVisible:false,wickUpColor:'#14ab7d',wickDownColor:'#ec397a',
     priceFormat:{type:'custom',formatter:fmtAxis,minMove:1e-12},
     autoscaleInfoProvider:orig=>{const r=orig();if(r&&r.priceRange&&r.priceRange.minValue<0)r.priceRange.minValue=0;return r}});
   CH.vs=CH.chart.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},lastValueVisible:false,priceLineVisible:false});

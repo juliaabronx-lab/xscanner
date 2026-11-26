@@ -385,6 +385,7 @@ async function importAnon(){
   PB.offerAnon=false;toast('Moved this browser’s paper book onto your account.')}
 
 window.paperShowBook=function(){document.documentElement.dataset.view='book';ensureBook();fillBook()};
+window.paperPosition=function(mint){if(!mint||!PB.acct)return null;return{pos:(PB.acct.positions||{})[mint]||null,row:((PB.summary&&PB.summary.positions)||[]).find(r=>r.mint===mint)||null}};
 window.paperOnToken=function(d){if(!d||!d.mint)return;PB.token=d;
   if(d.market&&d.market.px)PB.quotes[d.mint]={px:+d.market.px,t:Date.now()/1000};
   const el=ensurePanel();if(!el)return;

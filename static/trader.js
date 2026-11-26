@@ -123,13 +123,16 @@ function rowHTML(r,col){
   const soc=[r.tw?ext(r.tw,'𝕏','soc'):'',r.tg?ext(r.tg,'TG','soc'):'',r.web?ext(r.web,'🌐','soc'):''].join('');
   return `<div class="pimg">${tokImgDirect(r)}<button class="star" data-star="${esc(r.m)}" aria-label="Watch"></button></div>
   <div class="pmain">
-   <div class="ptop"><b class="psym">${esc(symOf(r))}</b><span class="pname">${esc(r.n||'')}</span><button class="cpy mini" data-cp="${esc(r.m)}" title="Copy CA">⧉</button><span class="page" data-cr="${r.cr||''}" data-mg="${r.mg||''}" data-col="${col}">${ageS(r.cr?now()-r.cr:null)}</span>${soc?`<span class="psoc">${soc}</span>`:''}</div>
-   <div class="pmets"><span title="Market cap">MC <b class="mcv">${usd(r.mc)}</b></span><span title="Liquidity">Liq <b>${usd(r.lq)}</b></span><span title="Volume (1h)">Vol <b>${usd(r.v1)}</b></span><span title="Buys / sells in the last hour">TX <b class="up">${b1??'—'}</b>/<b class="dn">${s1??'—'}</b></span><span title="Holders">Hold <b>${r.h!=null?r.h.toLocaleString():'—'}</b></span>${r.pc5!=null?`<span title="5 minute change">${pc1(r.pc5)}</span>`:''}</div>
-   <div class="pchips"><span class="chip ${chipCls(t10,20,35)}" title="Top 10 holders share (excluding the pool)">Top10 ${pTxt(t10,0)}</span><span class="chip ${chipCls(r.dv,3,10)}" title="Dev wallet holding">Dev ${pTxt(r.dv,1)}</span><span class="chip ${sn[0]}" title="Supply bought in the first blocks after launch (RPC check)">${sn[1]}</span><span class="chip ${bund[0]}" title="Bundle: RugCheck insider clusters or 4+ txs in one block">${bund[1]}</span></div>
-   ${tot?`<div class="bsbar" title="${bp}% of 1h transactions are buys"><i style="width:${bp}%"></i></div>`:''}
-   ${!mcc?`<div class="cvbar" title="${cv!=null?(r.cvs==='chain'?'Bonding curve progress, read from the chain':'Estimated from market cap'):'Curve progress unavailable'}"><i style="width:${cv!=null?Math.min(100,cv):0}%" class="${cv!=null&&cv>=70?'hot':''}"></i><span>${cv!=null?cv.toFixed(cv<10?1:0)+'%'+(r.cvs==='est'?' ~':''):'curve —'}${r.cv_done?' · migrating':''}</span></div>`:`<div class="cvbar done"><span>migrated${r.mg?' '+ageS(now()-r.mg)+' ago':''}${r.lpl!=null?' · LP '+Math.round(r.lpl)+'% locked/burned':''}</span></div>`}
-  </div>
-  <div class="pact"><a class="open" href="${esc(jupLink(r.m))}" target="_blank" rel="noopener noreferrer" title="Opens Jupiter in a new tab. xScanner never trades for you." data-noopen>Jupiter ↗</a><a class="open alt" href="${esc(axLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Axiom ↗</a><a class="open alt" href="${esc(phLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Photon ↗</a></div>`}
+   <div class="pline">
+    <div class="pleft">
+     <div class="ptop"><b class="psym">${esc(symOf(r))}</b><span class="pname">${esc(r.n||'')}</span><button class="cpy mini" data-cp="${esc(r.m)}" title="Copy CA">⧉</button>${soc?`<span class="psoc">${soc}</span>`:''}<span class="qlinks"><a href="${esc(jupLink(r.m))}" target="_blank" rel="noopener noreferrer" title="Opens Jupiter. xScanner never trades for you." data-noopen>Jup</a><a href="${esc(axLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Ax</a><a href="${esc(phLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Ph</a></span></div>
+     <div class="psub"><span class="page" data-cr="${r.cr||''}" data-mg="${r.mg||''}" data-col="${col}">${ageS(r.cr?now()-r.cr:null)}</span>${r.h!=null?`<span class="mut"> · ${r.h.toLocaleString()} hold</span>`:''}${r.pc5!=null?` · ${pc1(r.pc5)}`:''}</div>
+    </div>
+    <div class="pmets"><span title="Market cap">MC <b class="mcv">${usd(r.mc)}</b></span><span title="Volume (1h)">V <b>${usd(r.v1)}</b></span><span title="Liquidity">L <b>${usd(r.lq)}</b></span><span title="Buys / sells in the last hour">TX <b class="up">${b1??'—'}</b>/<b class="dn">${s1??'—'}</b></span></div>
+   </div>
+   <div class="pchips"><span class="chip ${chipCls(t10,20,35)}" title="Top 10 holders share (excluding the pool)">${pTxt(t10,0)}</span><span class="chip ${chipCls(r.dv,3,10)}" title="Dev wallet holding">${pTxt(r.dv,1)}</span><span class="chip ${sn[0]}" title="Supply bought in the first blocks after launch (RPC check)">${sn[1]}</span><span class="chip ${bund[0]}" title="Bundle: RugCheck insider clusters or 4+ txs in one block">${bund[1]}</span></div>
+   ${!mcc?`<div class="cvbar" title="${cv!=null?(r.cvs==='chain'?'Bonding curve progress, read from the chain':'Estimated from market cap'):'Curve progress unavailable'}"><i style="width:${cv!=null?Math.min(100,cv):0}%" class="${cv!=null&&cv>=70?'hot':''}"></i><span>${cv!=null?cv.toFixed(cv<10?1:0)+'%'+(r.cvs==='est'?' ~':''):''}${r.cv_done?' · migrating':''}</span></div>`:`<div class="cvbar done"><span>migrated${r.mg?' '+ageS(now()-r.mg)+' ago':''}${r.lpl!=null?' · LP '+Math.round(r.lpl)+'% locked/burned':''}</span></div>`}
+  </div>`}
 function rowEl(r,col){let el=P.els.get(r.m);
   if(!el){el=document.createElement('article');el.className='prow';el.dataset.m=r.m;el.tabIndex=0;el.setAttribute('role','link');el.setAttribute('aria-label','Open '+symOf(r));P.els.set(r.m,el);if(!P.first)el.classList.add('pin')}
   if(el._v!==r.v||el._col!==col){const prevMc=el._mc;el.innerHTML=rowHTML(r,col);el._v=r.v;el._col=col;
@@ -219,15 +222,19 @@ const trVal={v1:r=>r.v1,pc5:r=>r.pc5,pc1:r=>r.pc1,tx:r=>(r.b1==null&&r.s1==null)
 function trendRender(){
   const body=$('#trBody');if(!body)return;
   $$('#trSort button').forEach(b=>b.classList.toggle('on',b.dataset.k===TR.k));$('#trDust').checked=!!TR.dust;
-  if(P.warming&&!P.rows.size){body.innerHTML=Array.from({length:8},()=>'<tr class="skel-tr"><td colspan="13"><div class="skel" style="height:22px"></div></td></tr>').join('');return}
+  if(P.warming&&!P.rows.size){body.innerHTML=Array.from({length:8},()=>'<tr class="skel-tr"><td colspan="8"><div class="skel" style="height:22px"></div></td></tr>').join('');return}
   const f=trVal[TR.k]||trVal.v1;
   const rows=[...P.rows.values()].filter(r=>r.st&&(!TR.dust||(r.lq||0)>=1000)&&f(r)!=null).sort((a,b)=>f(b)-f(a)).slice(0,50);
-  body.innerHTML=rows.length?rows.map((r,i)=>`<tr class="trr" data-m="${esc(r.m)}"><td class="mono mut">${i+1}</td>
-   <td><span class="tcell">${tokImgDirect(r,'timg')}<span class="tnm"><b>${esc(symOf(r))}</b><small>${esc(r.n||'')}</small></span><button class="cpy mini" data-cp="${esc(r.m)}" title="Copy CA">⧉</button></span></td>
-   <td class="mono">${r.cr?ageS(now()-r.cr):'—'}</td><td class="mono">${r.px?fmtPx(r.px):'—'}</td><td class="mono">${pc1(r.pc5)}</td><td class="mono">${pc1(r.pc1)}</td><td class="mono">${pc1(r.pc24)}</td>
-   <td class="mono">${usd(r.v1)}</td><td class="mono">${usd(r.lq)}</td><td class="mono">${usd(r.mc)}</td>
-   <td class="mono"><span class="up">${r.b1??'—'}</span>/<span class="dn">${r.s1??'—'}</span></td><td class="mono">${r.h!=null?r.h.toLocaleString():'—'}</td>
-   <td class="tact"><button class="star" data-star="${esc(r.m)}" aria-label="Watch"></button><a class="open alt" href="${esc(jupLink(r.m))}" target="_blank" rel="noopener noreferrer" data-noopen>Jupiter ↗</a></td></tr>`).join(''):'<tr><td colspan="13" class="muted" style="padding:18px">Nothing matches yet. The board fills in about a minute after the server wakes up.</td></tr>';
+  body.innerHTML=rows.length?rows.map((r,i)=>{
+    const t10=r.t10!=null?r.t10:r.t10x;
+    const chips=`<div class="tr-info"><span class="chip ${chipCls(t10,20,35)}" title="Top 10 holders">${pTxt(t10,0)}</span><span class="chip ${chipCls(r.dv,3,10)}" title="Dev holding">${pTxt(r.dv,1)}</span>${r.h!=null?`<span class="chip na">${r.h.toLocaleString()} h</span>`:''}</div>`;
+    return `<tr class="trr" data-m="${esc(r.m)}"><td class="mono mut">${i+1}</td>
+   <td><span class="tcell">${tokImgDirect(r,'timg')}<span class="tnm"><b>${esc(symOf(r))}</b><small>${esc(r.n||'')} · ${r.cr?ageS(now()-r.cr):'—'}</small></span><button class="cpy mini" data-cp="${esc(r.m)}" title="Copy CA">⧉</button></span></td>
+   <td class="mono">${usd(r.mc)}${r.pc1!=null?`<div>${pc1(r.pc1)}</div>`:''}</td>
+   <td class="mono">${usd(r.lq)}</td><td class="mono">${usd(r.v1)}</td>
+   <td class="mono"><span class="up">${r.b1??'—'}</span>/<span class="dn">${r.s1??'—'}</span></td>
+   <td>${chips}</td>
+   <td class="tact"><a class="open paper-go" href="/token/${esc(r.m)}" data-tok="${esc(r.m)}">Paper</a><button class="star" data-star="${esc(r.m)}" aria-label="Watch"></button></td></tr>`}).join(''):'<tr><td colspan="8" class="muted" style="padding:18px">Nothing matches yet. The board fills in about a minute after the server wakes up.</td></tr>';
   paintStars()}
 $('#trSort').onclick=e=>{const b=e.target.closest('button[data-k]');if(!b)return;TR.k=b.dataset.k;LSs('xs_trend_k_v1',TR.k);trendRender()};
 $('#trDust').onchange=e=>{TR.dust=e.target.checked;LSs('xs_trend_dust_v1',TR.dust);trendRender()};
@@ -244,7 +251,7 @@ function tokSkeleton(m,r){
   <div id="tkStats" class="tk-stats">${Array.from({length:8},()=>'<div class="skel" style="height:46px"></div>').join('')}</div>
   <div class="tk-grid"><div class="tk-main">
     <div class="card tk-chart">${chartBlockHTML()}</div>
-    <div class="card tk-tabs"><div class="tfs" id="tkTabs"><button data-t="trades" class="on">Live trades</button><button data-t="holders">Holders</button><button data-t="traders">Top traders</button><button data-t="dev">Dev wallet</button></div><div id="tkPane" class="tk-pane"><div class="skel" style="height:160px"></div></div></div>
+    <div class="card tk-tabs"><div class="tfs" id="tkTabs" role="tablist"><button data-t="trades" class="on">Trades</button><button data-t="positions">Positions</button><button data-t="holders">Holders</button><button data-t="traders">Top traders</button><button data-t="dev">Dev tokens</button></div><div id="tkPane" class="tk-pane"><div class="skel" style="height:160px"></div></div></div>
     <div class="card" id="tkStory"><h3>Our read</h3><div class="skel" style="height:120px"></div></div>
    </div><aside class="tk-side"><div class="card" id="tkInfo"><h3>Token info</h3><div class="skel" style="height:200px"></div></div><div class="card" id="tkSec"><h3>Security</h3><div class="skel" style="height:220px"></div></div></aside></div>
   <div class="disc" role="note"><b>Not financial advice.</b> Data is public and can be wrong or late. xScanner is read-only: the buttons above open other sites in a new tab; we never hold keys or place orders.</div>`}
@@ -263,7 +270,8 @@ function tokPaint(d){
   let ce=$('#tkCurve');if(!ce){ce=document.createElement('div');ce.id='tkCurve';$('#tkStats').after(ce)}ce.innerHTML=cvEl;
   // Solscan-style key/value card: copyable addresses + explorer links
   const dv=sc.dev||{};
-  $('#tkInfo').innerHTML=`<h3>Token info</h3><div class="kvl">
+  const tiles=[{l:'Top 10 H.',v:pTxt(sec,0),c:chipCls(sec,20,35)},{l:'Dev H.',v:pTxt(sc.dev&&sc.dev.balance_pct,1),c:chipCls(sc.dev&&sc.dev.balance_pct,3,10)},{l:'Snipers H.',v:d.early&&d.early.sniper_pct!=null?pTxt(d.early.sniper_pct,1):'—',c:d.early&&d.early.sniper_pct!=null?chipCls(d.early.sniper_pct,5,15):'na'},{l:'Holders',v:sc.holders!=null?(+sc.holders).toLocaleString():'—',c:'na'},{l:'Pro / bundle',v:(d.lookup&&d.lookup.bundle)||sc.insiders?((sc.insiders&&sc.insiders.networks)||0)+' net':'—',c:'na'}];
+  $('#tkInfo').innerHTML=`<h3>Token info</h3><div class="tkinfo-tiles">${tiles.map(t=>`<div class="tile"><b class="${t.c==='red'?'dn':t.c==='grn'?'up':''}">${t.v}</b><span>${t.l}</span></div>`).join('')}</div><div class="kvl">
    ${kvRow('Mint address',addrCell(d.mint),addrBtns(d.mint,'token'))}
    ${d.pool&&d.pool!==d.mint?kvRow(mk.dex==='pumpfun'?'Bonding curve':'Pool',addrCell(d.pool),addrBtns(d.pool,'account')):''}
    ${dv.wallet?kvRow('Dev / creator',addrCell(dv.wallet),addrBtns(dv.wallet,'account')):''}
@@ -279,7 +287,7 @@ function tokPaint(d){
   const ea=d.early,ma=sc.mint_authority||{},fa=sc.freeze_authority||{};
   const bnd=TK.lookup?.bundle;
   const earlyRows=!ea?'<div class="muted" style="padding:6px 0">Checking the first blocks after launch…</div>':ea.status==='ok'?
-     secRow(!ea.bundle_flag,'Same-block bundle',ea.bundle_flag?`<b class="dn">${ea.bundle_max_txs_in_block} txs in one block</b>`:ea.bundle_max_txs_in_block+' tx/block max','4+ txs in one block near launch = bundled (Axiom’s public rule)')+
+     secRow(!ea.bundle_flag,'Same-block bundle',ea.bundle_flag?`<b class="dn">${ea.bundle_max_txs_in_block} txs in one block</b>`:ea.bundle_max_txs_in_block+' tx/block max','4 or more txs in one block near launch is treated as bundled')+
      secRow(ea.sniper_pct==null?null:ea.sniper_pct<8,'Snipers',ea.snipers!=null?`${ea.snipers} wallets · ${pTxt(ea.sniper_pct,1)} of supply`:'—','bought within ~1 s of launch (first '+ea.txs_seen+' txs seen'+(ea.partial?', partial':'')+')')+
      secRow(ea.same_block_pct==null?null:ea.same_block_pct<5,'Bought in launch block',`${ea.same_block_buyers} wallets · ${pTxt(ea.same_block_pct,1)}`,'')
      :secRow(null,'Early buyers',ea.status==='too_old'?'not assessed':'unavailable',esc(ea.reason||''));
@@ -309,6 +317,14 @@ function tkPane(){
   const pane=$('#tkPane');if(!pane)return;const d=TK.cur;const t=TK.tab;
   $$('#tkTabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
   if(t==='trades')return tapePaint();
+  if(t==='positions'){
+    const mint=d&&d.mint, snap=window.paperPosition?window.paperPosition(mint):null;
+    const pos=snap&&snap.pos, row=snap&&snap.row;
+    const qty=pos&&pos.qty!=null?pos.qty:null;
+    const qtxt=qty==null?'—':qty>=1e6?(qty/1e6).toFixed(2)+'M':qty>=1e3?(qty/1e3).toFixed(2)+'K':String(qty);
+    pane.innerHTML=pos?`<div class="tablewrap"><table class="tkt"><thead><tr><th></th><th>Qty</th><th>Avg entry</th><th>Mark</th><th>uPnL</th></tr></thead><tbody><tr><td><span class="pb-tag">PAPER</span></td><td>${qtxt}</td><td>${pos.avg_px_usd!=null?fmtPx(pos.avg_px_usd):'—'}</td><td>${row&&row.mark_px!=null?fmtPx(row.mark_px):'—'}</td><td class="${(row&&row.upnl_sol||0)>=0?'up':'dn'}">${row&&row.upnl_sol!=null?(row.upnl_sol>=0?'+':'')+Number(row.upnl_sol).toFixed(4)+' SOL':'—'}</td></tr></tbody></table></div><p class="muted" style="font-size:11px">Simulated paper position only. Not financial advice. xScanner does not hold a wallet or place real orders.</p>`
+      :`<p class="muted">No paper position in this token. Use the <b>PAPER</b> panel on the right to simulate a buy. xScanner never connects a wallet or sends a transaction. Not financial advice.</p>`;
+    return}
   if(t==='holders'){const h=d?.holders;
     pane.innerHTML=h?`<div class="tablewrap"><table class="tkt"><thead><tr><th>#</th><th>Wallet</th><th>% supply</th><th>Tags</th></tr></thead><tbody>${h.rows.map(x=>`<tr><td>${x.rank}</td><td><a href="https://solscan.io/account/${esc(x.owner)}" target="_blank" rel="noopener noreferrer"><code>${esc(shortCa(x.owner))}</code></a></td><td><div class="hbar"><i style="width:${Math.min(100,x.pct*2)}%"></i><b>${x.pct.toFixed(2)}%</b></div></td><td>${x.pool?'<span class="pill">pool / curve</span>':''}${x.dev?'<span class="pill amb">dev</span>':''}${x.insider?'<span class="pill red">insider</span>':''}</td></tr>`).join('')}</tbody></table></div><p class="muted" style="font-size:11px">Top ${h.rows.length} of ${h.total!=null?(+h.total).toLocaleString():'?'} holders · source: RugCheck (${ageS(h.age_s)} old)</p>`:'<p class="muted">Holders table is loading (RugCheck is rate limited, so it can take a moment)…</p>';return}
   if(t==='traders'){const tr=TK.tape;
@@ -347,7 +363,7 @@ async function tokLoad(m){
     try{const d=await api('/api/token/'+m);if(seq!==TK.seq)return;
       if(d.found===false){$('#tokBody').innerHTML=`<div class="card"><h3>No market found</h3><p class="muted">${esc((d.notes||[])[0]||'This token has no trading pair yet.')}</p><p><a href="#pulse" onclick="location.hash='pulse';history.pushState({},'','/#pulse');show('pulse');return false">← Back to Pulse</a></p></div>`;return}
       const first=!TK.cur||TK.cur.mint!==m;TK.cur=d;tokPaint(d);
-      if(first||!CH.coin){CH.h=window.innerWidth<700?320:470;mountChart({pool:d.pool,mint:d.mint,symbol:d.symbol})}
+      if(first||!CH.coin){CH.h=window.innerWidth<700?260:340;mountChart({pool:d.pool,mint:d.mint,symbol:d.symbol})}
       if(first){tapePoll();clearInterval(TK.tapeTimer);TK.tapeTimer=setInterval(tapePoll,10000)}
       clearTimeout(TK.detailTimer);TK.detailTimer=setTimeout(()=>{if(view==='token'&&seq===TK.seq)tokLoad(m)},(d.pending||[]).length?4000:12000);return}
     catch(e){if(i===2){$('#tokBody').innerHTML=`<div class="card"><h3>Could not load this token</h3><p class="muted">${esc(e.message)}</p><p><button class="ghost" onclick="openToken('${esc(m)}')">Retry</button></p></div>`;return}await sleep(1500)}}}
