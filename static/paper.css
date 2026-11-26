@@ -169,3 +169,8 @@
 @media(max-width:700px){
   .cal-card{width:min(370px,calc(100vw - 12px));left:6px!important;right:6px;top:auto!important;bottom:44px;max-height:calc(100vh - 96px);overflow:auto}
 }
+
+.pb-ptabs{display:flex;gap:4px;margin:6px 0 8px;flex-wrap:wrap}
+.pb-ptabs button{flex:1;min-width:0;font:600 11px/1.2 var(--sans,system-ui);padding:6px 8px;border-radius:6px;border:1px solid var(--line,rgba(255,255,255,.12));background:transparent;color:var(--muted,#9aa);cursor:pointer}
+.pb-ptabs button.on{color:#fff;border-color:rgba(80,220,140,.55);background:rgba(40,180,90,.18)}
+.pb-adv label{display:block;margin:6px 0;font-size:12px}

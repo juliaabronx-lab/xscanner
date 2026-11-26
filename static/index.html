@@ -10,10 +10,10 @@
 <link rel="alternate" type="text/html" href="/text" title="Plain HTML view of the latest scan">
 <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
 <link rel="apple-touch-icon" href="/static/logo.svg">
-<link rel="stylesheet" href="/static/style.css?v=fix16">
-<link rel="stylesheet" href="/static/trader.css?v=fix16">
-<link rel="stylesheet" href="/static/terminal.css?v=fix16">
-<link rel="stylesheet" href="/static/paper.css?v=fix16">
+<link rel="stylesheet" href="/static/style.css?v=fix17">
+<link rel="stylesheet" href="/static/trader.css?v=fix17">
+<link rel="stylesheet" href="/static/terminal.css?v=fix17">
+<link rel="stylesheet" href="/static/paper.css?v=fix17">
 <link rel="prefetch" href="/static/vendor/lightweight-charts.js?v=4.2.3" as="script">
 </head><body>
 <svg xmlns="http://www.w3.org/2000/svg" id="solSprite" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false">
@@ -45,7 +45,7 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
   </nav>
   <form id="searchForm" class="tbsearch" autocomplete="off" role="search">
     <span class="sicon" aria-hidden="true">⌕</span>
-    <input id="searchIn" type="text" spellcheck="false" placeholder="Search token or CA" aria-label="Token contract address">
+    <input id="searchIn" type="text" spellcheck="false" placeholder="Search token or CA" aria-label="Token contract address"><kbd class="kbd-hint" title="Press / to search">/</kbd>
     <button id="pasteBtn" type="button" class="iconbtn" title="Paste from clipboard" aria-label="Paste">⧉</button>
     <button id="searchBtn" type="submit" class="iconbtn go" title="Go" aria-label="Scan">→</button>
   </form>
@@ -57,15 +57,21 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
   </div>
 </header>
 <div id="paperBar" class="paperbar dock" role="status">
+  <button type="button" class="dock-p1" id="dockP1" title="Paper preset P1">P1</button>
   <span class="pb-tag">PAPER</span>
   <span class="dock-solamt"><svg class="solmark" viewBox="0 0 398 312" width="12" height="10" aria-hidden="true"><use href="#solLogo"/></svg><b id="pbBarCash">0.00 SOL</b></span>
   <span id="pbBarU"></span>
   <span id="pbBarR">PnL 0.00 SOL</span>
+  <span class="dock-tools">
+    <button type="button" id="goWatchDock" class="iconbtn" title="Watchlist" aria-label="Watchlist">☆</button>
+    <button type="button" id="dockWallets" class="iconbtn" title="Wallets" aria-label="Wallets">⌘</button>
+    <button type="button" id="dockCal" class="linkbtn" title="Paper PnL calendar">PnL</button>
+    <button type="button" id="dockInstant" class="linkbtn">⚡ Instant</button>
+  </span>
+  <span id="dockTickers" class="dock-tickers" aria-label="Live index prices"><span class="dtk">BTC —</span><span class="dtk">ETH —</span><span class="dtk">SOL —</span><span class="dtk">BNB —</span></span>
   <span id="dockSol" class="dock-sol"><svg class="solmark" viewBox="0 0 398 312" width="12" height="10" aria-hidden="true"><use href="#solLogo"/></svg><span id="dockSolTxt">SOL —</span></span>
   <span class="dock-live"><i id="dockLiveDot"></i><span id="dockLiveTxt">Live</span></span>
-  <small id="pbBarHint">Simulation · Not financial advice</small>
-  <button type="button" id="dockInstant" class="linkbtn">⚡ Instant</button>
-  <button type="button" id="dockCal" class="linkbtn" title="Paper PnL calendar">PnL</button>
+  <small id="pbBarHint">PAPER · Simulation · NFA</small>
   <button type="button" id="dockPaper" class="linkbtn">Paper book</button>
 </div>
 <div id="searchMsg" class="searchmsg hidden"></div>
@@ -85,14 +91,21 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
 <main>
   <section id="v-pulse" class="view">
     <div class="disc" role="note"><b>Not financial advice.</b> xScanner is read-only analysis of public data: it holds no keys and cannot buy or sell. Memecoins are extremely risky and most go to zero. “Open in Jupiter / Axiom / Photon” links leave this site.</div>
-    <div class="pbar-top">
+    <div class="pbar-top pbar-axiom">
+      <h2 class="ptitle">Pulse</h2>
       <div class="plive"><i id="pLiveDot"></i><span id="pLiveTxt">connecting…</span><button class="linkbtn" id="pSrcBtn" type="button" title="Data sources">sources</button></div>
       <div class="ppresets" id="pPresets" role="group" aria-label="Presets"></div>
-      <button class="ghost" id="pFiltBtn" type="button" aria-expanded="false">Filters <span id="pFiltN" class="nbadge hidden"></span></button>
-      <div class="pqbar" id="pqBar" title="Optional: one-click paper buys on Pulse cards. Off by default. Simulation only.">
-        <button type="button" class="ghost" id="pqBuyBtn" aria-pressed="false">⚡ Quick Buy</button>
-        <label class="pqamt hidden" id="pqAmtWrap"><svg class="solmark" viewBox="0 0 398 312" width="12" height="10" aria-hidden="true"><use href="#solLogo"/></svg><input id="pqAmt" type="number" min="0.01" step="0.1" value="0.1" aria-label="Quick buy paper SOL amount"> SOL</label>
+      <button class="ghost iconbtn" id="pDispBtn" type="button" aria-expanded="false" title="Display">Display</button>
+      <button class="ghost iconbtn" id="pFiltBtn" type="button" aria-expanded="false" title="Filters">Filters <span id="pFiltN" class="nbadge hidden"></span></button>
+      <div class="pqbar" id="pqBar" title="One-click paper buys on Pulse cards. Simulation only.">
+        <button type="button" class="ghost on" id="pqBuyBtn" aria-pressed="true">⚡ Quick Buy</button>
+        <label class="pqamt" id="pqAmtWrap"><svg class="solmark" viewBox="0 0 398 312" width="12" height="10" aria-hidden="true"><use href="#solLogo"/></svg><input id="pqAmt" type="number" min="0.01" step="0.1" value="0.1" aria-label="Quick buy paper SOL amount"> SOL</label>
       </div>
+    </div>
+    <div id="pDispBox" class="disp-pop hidden" role="menu">
+      <label>Row density <select id="pDens"><option value="comfy">Comfy</option><option value="compact" selected>Compact</option></select></label>
+      <label>Button size <select id="pBtnSz"><option value="sm" selected>Small</option><option value="md">Medium</option></select></label>
+      <label class="chk"><input type="checkbox" id="pShowMets" checked> Metric chips</label>
     </div>
     <div id="pSrcBox" class="srcbox hidden"></div>
     <form id="pFilters" class="pfilters hidden" autocomplete="off">
@@ -110,9 +123,36 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
     </form>
     <div class="pseg" id="pSeg" role="tablist"><button data-c="new" class="on">New pairs <b></b></button><button data-c="final">Final stretch <b></b></button><button data-c="migrated">Migrated <b></b></button></div>
     <div class="pboard" id="pBoard">
-      <section class="pcol on" data-c="new"><header><h3>New pairs <b class="pcnt"></b></h3><small>Just created on a bonding curve (under 70%)</small></header><div class="plist"></div></section>
-      <section class="pcol" data-c="final"><header><h3>Final stretch <b class="pcnt"></b></h3><small>On the curve at 70-100%, close to migrating</small></header><div class="plist"></div></section>
-      <section class="pcol" data-c="migrated"><header><h3>Migrated <b class="pcnt"></b></h3><small>Moved to an AMM pool (PumpSwap / Raydium) in the last 24 h</small></header><div class="plist"></div></section>
+      <section class="pcol on" data-c="new"><header>
+        <h3>New pairs <b class="pcnt"></b></h3>
+        <div class="col-tools">
+          <input type="search" data-colq placeholder="Search by ticker..." aria-label="Search New pairs">
+          <label class="col-amt">⚡ <input data-colamt type="number" min="0.01" step="0.05" value="0.1" aria-label="New pairs quick buy amount"></label>
+          <span class="col-pills"><button type="button" data-colp="0.1">P1</button><button type="button" data-colp="0.5">P2</button><button type="button" data-colp="1">P3</button></span>
+          <button type="button" class="col-filt" data-colfilt title="Column filter" aria-label="Filter New pairs">⚙</button>
+        </div>
+        <small>Just created on a bonding curve (under 70%)</small>
+      </header><div class="plist"></div></section>
+      <section class="pcol " data-c="final"><header>
+        <h3>Final stretch <b class="pcnt"></b></h3>
+        <div class="col-tools">
+          <input type="search" data-colq placeholder="Search by ticker..." aria-label="Search Final stretch">
+          <label class="col-amt">⚡ <input data-colamt type="number" min="0.01" step="0.05" value="0.1" aria-label="Final stretch quick buy amount"></label>
+          <span class="col-pills"><button type="button" data-colp="0.1">P1</button><button type="button" data-colp="0.5">P2</button><button type="button" data-colp="1">P3</button></span>
+          <button type="button" class="col-filt" data-colfilt title="Column filter" aria-label="Filter Final stretch">⚙</button>
+        </div>
+        <small>On the curve at 70-100%, close to migrating</small>
+      </header><div class="plist"></div></section>
+      <section class="pcol " data-c="migrated"><header>
+        <h3>Migrated <b class="pcnt"></b></h3>
+        <div class="col-tools">
+          <input type="search" data-colq placeholder="Search by ticker..." aria-label="Search Migrated">
+          <label class="col-amt">⚡ <input data-colamt type="number" min="0.01" step="0.05" value="0.1" aria-label="Migrated quick buy amount"></label>
+          <span class="col-pills"><button type="button" data-colp="0.1">P1</button><button type="button" data-colp="0.5">P2</button><button type="button" data-colp="1">P3</button></span>
+          <button type="button" class="col-filt" data-colfilt title="Column filter" aria-label="Filter Migrated">⚙</button>
+        </div>
+        <small>Moved to an AMM pool (PumpSwap / Raydium) in the last 24 h</small>
+      </header><div class="plist"></div></section>
     </div>
     <p class="muted pnote">Rows come from free public APIs (GeckoTerminal, DexScreener, Jupiter, the Solana RPC) and are rate limited, so some fields fill in a few seconds after a token appears. <b>—</b> means not available yet, never “safe”. Bundle and sniper flags only show once a token has been checked. Bundle = RugCheck / holder clustering; “4+ in one block” = 4 or more txs in one block near launch; sniper % = supply bought in the first blocks.</p>
   </section>
@@ -228,11 +268,11 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
 <div id="scrim" class="scrim"></div>
 <footer><b>Not financial advice.</b> Read-only analysis. No wallet keys, signing or real trades. Paper buys and sells are a simulation. Score ≥65 worth a look · 50–64 watch · &lt;50 skip. Juliaa gives the final yes.</footer>
 <script>window.__h0=location.hash</script>
-<script src="/static/motion.js?v=fix16"></script>
-<script src="/static/chart.js?v=fix16"></script>
-<script src="/static/app.js?v=fix16"></script>
-<script src="/static/xfeed.js?v=fix16"></script>
-<script src="/static/trader.js?v=fix16"></script>
-<script src="/static/sync.js?v=fix16"></script>
-<script src="/static/paper.js?v=fix16"></script>
+<script src="/static/motion.js?v=fix17"></script>
+<script src="/static/chart.js?v=fix17"></script>
+<script src="/static/app.js?v=fix17"></script>
+<script src="/static/xfeed.js?v=fix17"></script>
+<script src="/static/trader.js?v=fix17"></script>
+<script src="/static/sync.js?v=fix17"></script>
+<script src="/static/paper.js?v=fix17"></script>
 </body></html>

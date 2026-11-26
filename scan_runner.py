@@ -57,6 +57,11 @@ def _host(url):
 
 
 def _once(url, timeout):
+    try:
+        import pace
+        pace.before_request(url, "bg")   # same bucket as the parent process (file under LIVE_DIR)
+    except Exception:
+        pass
     req = urllib.request.Request(url, headers=scan.UA)
     h = _host(url)
     with _sems[h]:

@@ -398,3 +398,53 @@ code.addr{font-family:var(--font-mono);font-size:11px;color:#f9f9f8;word-break:b
 }
 
 .chartcard [data-unit][disabled],.chartcard [data-unit].off{opacity:.4;cursor:not-allowed}
+
+/* fix17: mobile no-overflow, Axiom chrome, EMA labels, MCap pill room */
+html,body{max-width:100%;overflow-x:hidden}
+#tokBody,.tk-grid,.tk-main,.tk-chart,.chartcard,.chwrap,.view,main{max-width:100%;min-width:0}
+.chhead{display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.chhead .tfs{overflow-x:auto;max-width:100%;flex-wrap:nowrap}
+.ch-legend,.ch-hud{max-width:calc(100% - 100px);overflow:hidden}
+.ch-ema{display:inline-flex;gap:6px;margin-left:8px;font:600 10px var(--font-sans);letter-spacing:.04em}
+.ch-ema .e9{color:#38bdf8}.ch-ema .e21{color:#a78bfa}
+.ch-limited{font:600 10px var(--font-sans);color:#f5c542;border:1px solid rgba(245,197,66,.35);border-radius:999px;padding:1px 7px}
+.kbd-hint{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;margin:0 6px 0 0;border:1px solid #2a2e38;border-radius:4px;color:#76798b;font:600 10px var(--font-sans)}
+.tbar{justify-content:flex-start}
+.ptitle{margin:0 10px 0 0;font:700 16px var(--font-sans);color:#f9f9f8}
+.disp-pop{position:absolute;z-index:20;background:#101319;border:1px solid #1e222b;border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;font-size:12px}
+.pcol header .col-tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0 2px}
+.pcol header [data-colq]{flex:1;min-width:90px;max-width:160px;background:#0d0e11;border:1px solid #1e222b;border-radius:6px;color:#f9f9f8;font:12px var(--font-sans);padding:4px 8px}
+.col-amt{display:inline-flex;align-items:center;gap:2px;font-size:12px;color:#2fe3ac}
+.col-amt input{width:48px;background:#0d0e11;border:1px solid rgba(47,227,172,.35);border-radius:6px;color:#f9f9f8;padding:3px 4px}
+.col-pills{display:inline-flex;gap:3px}
+.col-pills button,.dock-p1{height:22px;padding:0 7px;border:1px solid rgba(255,255,255,.1);border-radius:999px;background:#14171c;color:#f9f9f8;font:600 10px var(--font-sans);cursor:pointer}
+.pqbuy{border-radius:999px;background:#0e3;background:rgba(0,245,160,.12);border:1px solid rgba(0,245,160,.45);color:#00f5a0;font:600 11px var(--font-sans);padding:3px 8px}
+.prow .pimg{width:56px;height:56px;border-radius:10px;position:relative}
+.prow .pimg img,.prow .pimg .timg{width:56px;height:56px;border-radius:9px;object-fit:cover}
+.prow .pimg.ring-new{box-shadow:0 0 0 2px #3a86ff}
+.prow .pimg.ring-final{box-shadow:0 0 0 2px #00f5a0}
+.prow .pimg.ring-mig{box-shadow:0 0 0 2px #a78bfa}
+.prow .pimg.ring-risk{box-shadow:0 0 0 2px #ff3b7a}
+.pmets b,.psym{color:#fff;font-weight:700}
+.page{color:#00f5a0;font-weight:600}
+.col-hide{display:none!important}
+.dock-tickers{display:inline-flex;gap:8px;margin-left:auto;font:600 11px var(--font-sans)}
+.dock-tickers .dtk b{margin-right:3px}
+.dock-tickers .btc b{color:#f7931a}.dock-tickers .eth b{color:#627eea}.dock-tickers .sol b{color:#14f195}.dock-tickers .bnb b{color:#f3ba2f}
+.dock-tools{display:inline-flex;align-items:center;gap:4px}
+.tk-side #tkInfo{padding:8px 10px}
+.tk-side #tkInfo .kvr,.tk-side #tkInfo p{margin:3px 0;font-size:12px}
+#chLive{right:4px;z-index:4}
+@media(max-width:480px){
+  html,body,main,.view,#tokBody{overflow-x:hidden;max-width:100vw}
+  .tbar,.paperbar.dock{max-width:100vw}
+  .tk-head,.tk-stats{flex-wrap:wrap;height:auto;overflow:visible;max-width:100%}
+  .tk-grid{display:flex;flex-direction:column;width:100%}
+  .tk-side{width:100%;max-width:100%}
+  .chartcard,.chwrap,.tk-chart{width:100%;max-width:100%;min-width:0}
+  .chhead{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .ch-legend,.ch-hud{max-width:calc(100% - 88px);font-size:11px}
+  .it-card,.cal-card{max-width:calc(100vw - 16px)!important;left:8px!important;right:8px!important}
+  .pboard{display:block}
+  .kbd-hint{display:none}
+}

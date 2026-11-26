@@ -371,3 +371,21 @@ $('#searchIn').addEventListener('paste',e=>{const t=(e.clipboardData||window.cli
 $('#pasteBtn').onclick=async()=>{try{const t=await navigator.clipboard.readText();$('#searchIn').value=t;runLookup(t)}catch(e){$('#searchIn').focus();sMsg('Clipboard blocked by the browser — long-press / Ctrl+V into the box instead.','warn')}};
 // deep link: /?ca=<mint> runs the same lookup as pasting the address and opens its detail drawer
 (()=>{try{const ca=new URLSearchParams(location.search).get('ca');if(ca)setTimeout(()=>runLookup(ca),400)}catch(e){}})();
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='/'&&!e.metaKey&&!e.ctrlKey&&!e.altKey){
+    const tag=(e.target&&e.target.tagName||'').toLowerCase();
+    if(tag==='input'||tag==='textarea'||e.target.isContentEditable)return;
+    const inp=document.getElementById('searchIn');if(inp){e.preventDefault();inp.focus();inp.select()}
+  }
+});
+document.addEventListener('DOMContentLoaded',()=>{
+  const disp=document.getElementById('pDispBtn'),box=document.getElementById('pDispBox');
+  if(disp&&box){disp.addEventListener('click',e=>{e.preventDefault();box.classList.toggle('hidden');disp.setAttribute('aria-expanded',box.classList.contains('hidden')?'false':'true')});
+    document.addEventListener('click',e=>{if(!box.classList.contains('hidden')&&!e.target.closest('#pDispBox,#pDispBtn'))box.classList.add('hidden')})}
+  const dens=document.getElementById('pDens');if(dens){dens.addEventListener('change',()=>{document.getElementById('pBoard')&&document.getElementById('pBoard').classList.toggle('dense',dens.value==='compact')})}
+  const mets=document.getElementById('pShowMets');if(mets){mets.addEventListener('change',()=>{document.body.classList.toggle('hide-mets',!mets.checked)})}
+  const w=document.getElementById('dockWallets');if(w)w.addEventListener('click',e=>{e.preventDefault();if(window.show)show('wallets')});
+  const wd=document.getElementById('goWatchDock');if(wd)wd.addEventListener('click',e=>{e.preventDefault();if(window.show)show('watch')});
+  const p1=document.getElementById('dockP1');if(p1)p1.addEventListener('click',e=>{e.preventDefault();if(window.paperToggleInstant)window.paperToggleInstant(true)});
+});

@@ -148,7 +148,15 @@ def detail(mint, deadline_s=8.0):
     sec["top10_pct"] = au.get("topHoldersPercentage") if au.get("topHoldersPercentage") is not None else (row or {}).get("t10")
     sec["dev"] = {"wallet": (jt or {}).get("dev") or (raw or {}).get("creator"), "balance_pct": au.get("devBalancePercentage"), "launched": au.get("devMints"),
                   "creator_rugged": (raw or {}).get("rugged") if raw else None}
-    sec["holders"] = holders_ct if holders_ct is not None else (raw or {}).get("holders") if raw else (row or {}).get("h")
+    # One source for the header count: Jupiter first. Do not later overwrite it with a conflicting RugCheck total.
+    if holders_ct is not None:
+        sec["holders"], sec["holders_source"] = holders_ct, "jupiter"
+    elif raw and raw.get("holders") is not None:
+        sec["holders"], sec["holders_source"] = raw.get("holders"), "rugcheck"
+    elif row and row.get("h") is not None:
+        sec["holders"], sec["holders_source"] = row.get("h"), "pulse"
+    else:
+        sec["holders"], sec["holders_source"] = None, None
     sec["insiders"] = {"networks": len((raw or {}).get("insider_networks") or []), "wallets": (raw or {}).get("insiders_detected"),
                        "top_holders_flagged": sum(1 for h in (raw or {}).get("top") or [] if h.get("insider"))} if raw else None
     sec["risks"] = (raw or {}).get("risks") if raw else None

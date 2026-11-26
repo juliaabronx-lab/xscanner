@@ -6,7 +6,7 @@ The only side effect is POST /api/scan, which runs `python3 scan.py` (disabled w
 DexScreener + RugCheck refresh, reusing the last x_raw.json; scan.py itself never calls X).
 No wallets, keys, signing, trading or posting anywhere.
 """
-import asyncio, json, os, re, subprocess, sys, threading, time
+import asyncio, json, os, re, subprocess, sys, threading, time, urllib.parse
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request
 import lookup as lk
@@ -20,6 +20,8 @@ import story as st_
 import pulse
 import trader as trd
 import tokenpage as tkp
+import pace
+import trades_tape
 import paperbook
 import accounts as acc
 from fastapi.responses import Response
@@ -59,6 +61,8 @@ app.add_middleware(_HeadAsGet)
 from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "HEAD", "OPTIONS"], allow_headers=["*"],
                    allow_credentials=False, max_age=3600)
+# Outermost: an /api request is interactive, so a background 429 does not make it wait.
+app.add_middleware(pace.UserPriorityMiddleware)
 
 
 def load(path, default):
@@ -897,6 +901,9 @@ def scan_status():
 # ---- X Live Feed (read-only; data/x_feed.json is written by xfeed_ingest.py from agent X searches)
 XFEED = os.environ.get("XFEED_PATH", os.path.join(HERE, "data", "x_feed.json"))
 XQUERIES = os.path.join(HERE, "data", "xfeed_queries.json")
+# Before chart pre-warm and the startup loops. One shared bucket for GeckoTerminal,
+# DexScreener and the rest, with a reserve left for lookups and the trades tape.
+pace.install()
 if live.ENABLED:  # hosted live mode: serve data the server-side loop keeps refreshing (snapshot until first scan)
     SCANNER, XFEED = live.prepare(SCANNER, XFEED)
     LEDGER = live.prepare_ledger(LEDGER)
@@ -1262,9 +1269,12 @@ def api_token(mint: str):
 
 @app.get("/api/trades/{pool}")
 def api_trades(pool: str, token: str = ""):
-    """Live trades tape of a pool (GeckoTerminal) plus top traders summed from it."""
+    """Live trades tape of a pool plus top traders summed from it.
+
+    GeckoTerminal when it answers; a Solana RPC swap read when it is rate-limited.
+    Concurrent viewers of one pool share a single fetch."""
     pool = _valid_mint_or_400(pool)
-    return JSONResponse(trd.trades(pool, token or None), headers=_NOSTORE)
+    return JSONResponse(trades_tape.trades(pool, token or None), headers=_NOSTORE)
 
 
 @app.get("/api/dev/{wallet}")
@@ -1308,6 +1318,65 @@ def api_tick(mint: str):
     if not q.get("ok") and not q.get("px") and q.get("stale") and q.get("retry_s"):
         return JSONResponse(q, status_code=429, headers=headers)
     return JSONResponse(q, headers=headers)
+
+
+_ticker_cache = {"t": 0, "data": None}
+_TICKER_TTL = 15
+_BINANCE_SYMS = [("BTC", "BTCUSDT"), ("ETH", "ETHUSDT"), ("SOL", "SOLUSDT"), ("BNB", "BNBUSDT")]
+
+
+@app.get("/api/tickers")
+def api_tickers():
+    """Lightweight BTC/ETH/SOL/BNB USD tickers for the dock. Cached ~15s; returns stale on failure."""
+    now = time.time()
+    c = _ticker_cache
+    if c["data"] and now - c["t"] < _TICKER_TTL:
+        return JSONResponse({**c["data"], "cached": True}, headers=_NOSTORE)
+    data = None
+    try:
+        import net
+        url = "https://api.binance.com/api/v3/ticker/price?symbols=" + urllib.parse.quote(json.dumps([s for _, s in _BINANCE_SYMS]), safe="")
+        d = net.get_json(url, timeout=4, fresh_s=_TICKER_TTL, errors="raise", scope="tickers")
+        rows = d if isinstance(d, list) else []
+        by = {r.get("symbol"): r for r in rows if isinstance(r, dict)}
+        out = {}
+        for name, sym in _BINANCE_SYMS:
+            px = None
+            try:
+                px = float((by.get(sym) or {}).get("price"))
+            except (TypeError, ValueError):
+                px = None
+            if px and px > 0:
+                out[name] = px
+        if out:
+            data = {"ok": True, "prices": out, "t": int(now), "source": "binance"}
+    except Exception:
+        data = None
+    if data is None:
+        try:
+            import net
+            d = net.get_json("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin&vs_currencies=usd",
+                             timeout=5, fresh_s=_TICKER_TTL, errors="raise", scope="tickers")
+            m = {"bitcoin": "BTC", "ethereum": "ETH", "solana": "SOL", "binancecoin": "BNB"}
+            prices = {}
+            if isinstance(d, dict):
+                for k, name in m.items():
+                    try:
+                        px = float((d.get(k) or {}).get("usd"))
+                    except (TypeError, ValueError):
+                        px = None
+                    if px and px > 0:
+                        prices[name] = px
+            if prices:
+                data = {"ok": True, "prices": prices, "t": int(now), "source": "coingecko"}
+        except Exception:
+            data = None
+    if data is None and c["data"]:
+        return JSONResponse({**c["data"], "stale": True}, headers=_NOSTORE)
+    if data is None:
+        return JSONResponse({"ok": False, "prices": {}, "t": int(now)}, headers=_NOSTORE)
+    _ticker_cache["t"], _ticker_cache["data"] = now, data
+    return JSONResponse(data, headers=_NOSTORE)
 
 
 @app.api_route("/token/{mint}", methods=["GET", "HEAD"], include_in_schema=False)

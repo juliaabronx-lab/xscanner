@@ -522,11 +522,15 @@ def load():
     _loaded = True
     try:
         d = json.load(open(STORE))
-        if time.time() - d.get("t", 0) < 2 * 3600:
-            with _lock:
-                for m, r in (d.get("rows") or {}).items():
-                    r["_v"] = 0; U[m] = r
-            if d.get("sol"): _sol.update(d["sol"])
+        # Always restore a persisted board for the first paint, even if the file is older than 2 h.
+        with _lock:
+            for m, r in (d.get("rows") or {}).items():
+                r["_v"] = 0
+                U[m] = r
+                _touched.add(m)
+        if d.get("sol"): _sol.update(d["sol"])
+        if U:
+            _recompute()
     except Exception:
         pass
 
@@ -553,15 +557,19 @@ def source_status():
 
 def payload(since=0, h=""):
     """Incremental board payload: rows changed since `since`, plus the column order unless the client already has it (h)."""
+    load()  # first GET after boot serves the last persisted snapshot immediately
     _viewer["t"] = time.time(); _viewer["n"] += 1
     _wake.set()
     with _lock:
         ids_changed = h != _cols_hash
         if since > VER: since = 0                    # server restarted: client re-syncs fully
         rows = []
-        if ids_changed or since < VER:
+        if ids_changed or since < VER or since <= 0:
             wanted = set(m for v in _cols.values() for m in v)
-            rows = [_pub(U[m]) for m in wanted if m in U and U[m].get("_v", 0) > since]
+            if since <= 0:
+                rows = [_pub(U[m]) for m in wanted if m in U]
+            else:
+                rows = [_pub(U[m]) for m in wanted if m in U and U[m].get("_v", 0) > since]
         out = {"ver": VER, "h": _cols_hash, "t": int(time.time()), "rows": rows, "sol_usd": _sol["usd"],
                "counts": {k: len(v) for k, v in _cols.items()}, "universe": len(U), "warming": not any(_cols.values()),
                "active": True}

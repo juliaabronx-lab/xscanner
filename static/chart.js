@@ -4,7 +4,7 @@ const CH={tf:localStorage.getItem('chartTf')||'15m',mode:'native',coin:null,char
   style:(localStorage.getItem('xs_chart_style_v1')||'candles'),unit:'px',tool:'cross',magnet:true,log:false,ema:localStorage.getItem('xs_chart_ema_v1')!=='0',
   drawings:[],lines:[],pending:null,supply:null,clock:null,lastBars:[],lastBarUp:true};
 if(!['candles','glow','line'].includes(CH.style))CH.style='candles';
-const TFS=['1m','5m','15m','1h','4h','1d'];
+const TFS=['1s','15s','30s','1m','5m','15m','1h','4h','1d'];
 const UP='#00f5a0', UPW='#5effc8', DN='#ff3b7a', DNW='#ff7aa8', GRID='rgba(255,255,255,0.045)', BG='rgba(9,11,16,0)';
 const EMA9='#38bdf8', EMA21='#a78bfa';
 const SUBS='₀₁₂₃₄₅₆₇₈₉';
@@ -34,6 +34,8 @@ function fmtCompact(v){
 }
 function fmtPx(v){if(v==null||!isFinite(+v))return'—';if(CH.unit==='mcap')return'$'+fmtCompact(v);const t=fmtNum(v);return t==='—'?t:'$'+t}
 function fmtAxis(v){if(v==null||!isFinite(+v)||v<0)return'';return CH.unit==='mcap'?'$'+fmtCompact(v):fmtNum(v)}
+function rawPx(){return (CH.lastUsd!=null&&isFinite(+CH.lastUsd))?+CH.lastUsd:((CH.lastPx!=null&&CH.unit!=='mcap')?+CH.lastPx:null)}
+function fmtLive(){const raw=rawPx();if(raw==null)return'—';return fmtPx(scalePx(raw))}
 const ico=d=>`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const RAIL=[
   ['cross','Crosshair',ico('<path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="2"/>')],
@@ -53,7 +55,7 @@ function chartBlockHTML(){
         <span class="chdiv"></span>
         <div class="tfs" data-role="unit"><button data-unit="px" class="on">Price</button><button data-unit="mcap">MCap</button></div>
         <div class="tfs" data-role="style"><button data-style="candles" class="${CH.style==='candles'?'on':''}">Candles</button><button data-style="glow" class="${CH.style==='glow'?'on':''}">3D Glow</button><button data-style="line" class="${CH.style==='line'?'on':''}">Line</button></div>
-        <div class="tfs" data-role="ema"><button type="button" data-ema="1" class="${CH.ema?'on':''}" title="Toggle EMA 9 and EMA 21 ribbons">EMA</button></div>
+        <span id="chLimited" class="ch-limited hidden">Limited history</span><div class="tfs" data-role="ema"><button type="button" data-ema="1" class="${CH.ema?'on':''}" title="Toggle EMA 9 and EMA 21 ribbons">EMA</button></div>
       </div>
       <div class="chctl-right tfs">
         <button type="button" id="itToggle" class="ch-instant" aria-pressed="false" title="Optional Instant Paper Trade card. Simulation only.">⚡ Instant</button>
@@ -145,20 +147,35 @@ function setUnit(unit,opts){
   if(CH.lastBars&&CH.lastBars.length)pushBars(CH.lastBars);
   if(fit)fitChart();
   syncLivePrice();
-  try{document.dispatchEvent(new CustomEvent('xschart',{detail:{mint:(CH.coin||{}).mint,last:CH.lastPx,candles:CH.lastBars,unit:CH.unit}}))}catch(e){}
+  try{document.dispatchEvent(new CustomEvent('xschart',{detail:{mint:(CH.coin||{}).mint,last:rawPx(),candles:CH.lastBars,unit:CH.unit}}))}catch(e){}
   return true;
 }
 function barOf(k){return {time:k.t,open:scalePx(k.o),high:scalePx(k.h),low:scalePx(k.l),close:scalePx(k.c)}}
+function windowChg(){
+  if(!CH.lastBars||!CH.lastBars.length)return null;
+  let from=CH.lastBars[0].o, to=CH.lastBars[CH.lastBars.length-1].c;
+  try{
+    const r=CH.chart&&CH.chart.timeScale().getVisibleLogicalRange();
+    if(r&&isFinite(r.from)){
+      const i=Math.max(0,Math.min(CH.lastBars.length-1,Math.floor(r.from)));
+      if(CH.lastBars[i]&&isFinite(CH.lastBars[i].o))from=CH.lastBars[i].o;
+    }
+  }catch(e){}
+  if(!from||!isFinite(from))return null;
+  return ((to-from)/from)*100;
+}
 function paintLegend(bar,chg){
   const el=document.getElementById('chLegOHLC'),title=document.getElementById('chLegTitle');
   const sym=(CH.coin&&CH.coin.symbol)||'TOKEN';
   if(title)title.textContent=`$${sym} · ${CH.tf}`;
   if(!el)return;
   if(!bar){el.textContent='';return}
-  const cls=bar.close>=bar.open?'up':'dn';
-  const badge=chg==null?'':`<span class="ch-pct ${cls}">${chg>=0?'+':''}${chg.toFixed(2)}%</span>`;
+  const win=windowChg();
+  const cls=(win==null?(bar.close>=bar.open):(win>=0))?'up':'dn';
+  const badge=win==null?'':`<span class="ch-pct ${cls}">${win>=0?'+':''}${win.toFixed(2)}%</span>`;
   const f=v=>CH.unit==='mcap'?('$'+fmtCompact(v)):fmtNum(v);
-  el.innerHTML=`<span class="ch-ohlc">O ${f(bar.open)}  H ${f(bar.high)}  L ${f(bar.low)}  C <span class="${cls}">${f(bar.close)}</span></span> ${badge}`;
+  const ema=CH.ema?`<span class="ch-ema"><span class="e9">EMA9</span><span class="e21">EMA21</span></span>`:'';
+  el.innerHTML=`<span class="ch-ohlc">O ${f(bar.open)}  H ${f(bar.high)}  L ${f(bar.low)}  C <span class="${bar.close>=bar.open?'up':'dn'}">${f(bar.close)}</span></span> ${badge}${ema}`;
 }
 function clearDrawings(){
   (CH.drawings||[]).forEach(s=>{try{CH.chart.removeSeries(s)}catch(e){}});
@@ -206,24 +223,28 @@ function applyEma(){
   try{localStorage.setItem('xs_chart_ema_v1',on?'1':'0')}catch(e){}
 }
 function emaPts(cd,period){
-  const out=[];if(!cd||cd.length<period)return out;
-  let s=0;for(let i=0;i<period;i++)s+=scalePx(cd[i].c);
-  let e=s/period;out.push({time:cd[period-1].t,value:e});
-  const k=2/(period+1);
-  for(let i=period;i<cd.length;i++){e=scalePx(cd[i].c)*k+e*(1-k);out.push({time:cd[i].t,value:e})}
+  const out=[];if(!cd||!cd.length)return out;
+  let e=scalePx(cd[0].c);if(!isFinite(e))return out;
+  const k=2/(Math.max(1,period)+1);
+  out.push({time:cd[0].t,value:e});
+  for(let i=1;i<cd.length;i++){
+    const v=scalePx(cd[i].c);if(!isFinite(v))continue;
+    e=v*k+e*(1-k);out.push({time:cd[i].t,value:e});
+  }
   return out;
 }
 function syncLivePrice(){
   const el=document.getElementById('chLive');if(!el)return;
   const series=CH.style==='line'?(CH.area||CH.ls):CH.cs;
-  if(!series||CH.lastPx==null||!CH.chart){el.classList.add('hidden');return}
-  let y=null;try{y=series.priceToCoordinate(CH.lastPx)}catch(e){y=null}
+  const live=scalePx(rawPx());
+  if(!series||live==null||!isFinite(live)||!CH.chart){el.classList.add('hidden');return}
+  let y=null;try{y=series.priceToCoordinate(live)}catch(e){y=null}
   if(y==null||!isFinite(y)||y<0){el.classList.add('hidden');return}
   el.classList.remove('hidden');
   el.classList.toggle('up',CH.lastBarUp!==false);
   el.classList.toggle('dn',CH.lastBarUp===false);
   el.style.transform='translateY('+y+'px)';
-  const px=document.getElementById('chLivePx');if(px)px.textContent=fmtPx(CH.lastPx);
+  const px=document.getElementById('chLivePx');if(px)px.textContent=fmtLive();
   el.setAttribute('aria-hidden','false');
 }
 
@@ -287,7 +308,7 @@ function tickClock(){
   el.textContent=new Date().toLocaleString('en-GB',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',second:'2-digit'})+' MYT';
 }
 function mountChart(c){
-  unmountChart();CH.coin=c;CH.lastT=null;CH.lastPx=null;CH.fit=true;CH.pending=null;CH.drawings=[];CH.lines=[];CH.lastBars=[];CH.supply=null;resolveSupply(c);
+  unmountChart();CH.coin=c;CH.lastT=null;CH.lastPx=null;CH.lastUsd=null;CH.fit=true;CH.pending=null;CH.drawings=[];CH.lines=[];CH.lastBars=[];CH.supply=null;resolveSupply(c);
   try{const u=localStorage.getItem('xs_chart_unit_v1');if(u==='mcap'||u==='px')CH.unit=u}catch(e){}
   if(CH.unit==='mcap'&&!validSupply(CH.supply))CH.unit='px';
   resolveSupply(c);
@@ -307,7 +328,7 @@ function mountChart(c){
   const opts={width:el.clientWidth,height:h,
     layout:{background:{type:'solid',color:BG},textColor:'#8b90a0',fontFamily:'Geist Mono, Geist, system-ui, sans-serif',fontSize:11},
     grid:{vertLines:{color:GRID,style:1},horzLines:{color:GRID,style:1}},
-    rightPriceScale:{borderColor:'rgba(255,255,255,0.06)',scaleMargins:{top:0.08,bottom:0.22}},
+    rightPriceScale:{borderColor:'rgba(255,255,255,0.06)',scaleMargins:{top:0.08,bottom:0.22},minimumWidth:84,entireTextOnly:false},
     timeScale:{borderColor:'rgba(255,255,255,0.06)',timeVisible:true,secondsVisible:false,rightOffset:6},
     crosshair:{mode:CH.magnet?1:0,vertLine:{color:'rgba(0,245,160,0.28)',style:2,width:1},horzLine:{color:'rgba(0,245,160,0.28)',style:2,width:1}},
     localization:{priceFormatter:fmtAxis,timeFormatter:t=>new Date(t*1000).toLocaleString('en-GB',{timeZone:'Asia/Kuala_Lumpur',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}};
@@ -320,8 +341,8 @@ function mountChart(c){
     priceFormat:pxFmt,
     autoscaleInfoProvider:orig=>{const r=orig();if(r&&r.priceRange&&r.priceRange.minValue<0)r.priceRange.minValue=0;return r}});
   CH.ls=CH.chart.addLineSeries({color:UP,lineWidth:2,visible:false,lastValueVisible:false,priceLineVisible:false,priceFormat:pxFmt});
-  CH.ema9=CH.chart.addLineSeries({color:EMA9,lineWidth:2,visible:!!CH.ema,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,priceFormat:pxFmt});
-  CH.ema21=CH.chart.addLineSeries({color:EMA21,lineWidth:2,visible:!!CH.ema,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,priceFormat:pxFmt});
+  CH.ema9=CH.chart.addLineSeries({color:EMA9,lineWidth:2,visible:!!CH.ema,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,priceFormat:pxFmt,lineStyle:0});
+  CH.ema21=CH.chart.addLineSeries({color:EMA21,lineWidth:2,visible:!!CH.ema,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,priceFormat:pxFmt,lineStyle:0});
   CH.vs=CH.chart.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},lastValueVisible:false,priceLineVisible:false});
   CH.chart.priceScale('vol').applyOptions({scaleMargins:{top:0.82,bottom:0},visible:false});
   CH.cs.priceScale().applyOptions({scaleMargins:{top:0.08,bottom:0.22}});
@@ -355,7 +376,8 @@ function pushBars(cd){
   if(!bars.length)return;
   const last=bars[bars.length-1],first=bars[0];
   CH.lastBarUp=!(last&&last.close<last.open);
-  if(last)CH.lastPx=last.close;
+  const raw=cd[cd.length-1]&&cd[cd.length-1].c;
+  if(raw!=null&&isFinite(+raw)){CH.lastUsd=+raw;CH.lastPx=+raw}
   if(CH.area)CH.area.setData(bars.map(k=>({time:k.time,value:k.close})));
   CH.cs.setData(bars);
   CH.ls.setData(bars.map(k=>({time:k.time,value:k.close})));
@@ -396,15 +418,19 @@ async function load(showLoading){
       chMsg(`<span class="spin"></span> Chart loading… <a href="#" onclick="setMode('dex');return false">Use the DexScreener chart</a>`);
     }
     return}
-  const cd=saneCandles(j.candles||[]);
+  let cd=saneCandles(j.candles||[]);
+  if(['1s','15s','30s'].includes(tf)){
+    const syn=synthBars(tf);
+    if(syn.length>=cd.length)cd=syn;
+  }
   if(!cd.length){chMsg(`No trades in this timeframe yet. Try a longer timeframe or <a href="#" onclick="setMode('dex');return false">the DexScreener chart</a>.`);CH.cs.setData([]);if(CH.vs)CH.vs.setData([]);if(CH.ls)CH.ls.setData([]);return}
   chMsg('');
   pushBars(cd);
   if(CH.fit){fitChart();CH.fit=false}
   CH.lastT=cd[cd.length-1].t;
-  const last=scalePx(cd[cd.length-1].c),first=scalePx(cd[0].o),chg=first?((last-first)/first*100):null;
+  const last=scalePx(cd[cd.length-1].c),first=scalePx(cd[0].o),chg=windowChg();
   const priceEl=document.getElementById('chPrice');
-  const prevPx=CH.lastPx;
+  const prevPx=scalePx(rawPx());
   const simple=isFinite(last)&&Math.abs(last)>=1e-4&&(prevPx==null||Math.abs(prevPx)>=1e-4);
   if(priceEl){
     if(prevPx!=null&&prevPx!==last&&simple&&window.XS&&XS.motionOn()){
@@ -413,7 +439,7 @@ async function load(showLoading){
       XS.flash(priceEl);
     }else{priceEl.innerHTML=fmtPx(last)}
   }
-  CH.lastPx=last;
+  if(isFinite(+cd[cd.length-1].c)){CH.lastUsd=+cd[cd.length-1].c;CH.lastPx=+cd[cd.length-1].c}
   const winH=(cd[cd.length-1].t-cd[0].t)/3600, winTxt=winH<48?Math.max(1,Math.round(winH))+'h':Math.round(winH/24)+'d';
   const chgEl=document.getElementById('chChg');
   if(chgEl)chgEl.innerHTML=chg==null?'':`${pct(chg)} <small class="muted">over ${winTxt}</small>`;
@@ -421,17 +447,39 @@ async function load(showLoading){
   if(srcEl){const nm={jupiter:'Jupiter (real candles)',geckoterminal:'GeckoTerminal','geckoterminal-direct':'GeckoTerminal (your browser)','geckoterminal+snapshots':'GeckoTerminal + our price snapshots',snapshots:'our own price snapshots (no volume)',derived:'approximate, from DexScreener 5m/1h/24h changes'}[j.source]||j.source||'GeckoTerminal';
     srcEl.textContent='Candles: '+nm+(j.approximate?' · approximate':'')+' · 15s'}
   const lim=document.getElementById('chLim');
-  if(lim){const on=!!j.limited||j.source==='derived'||j.source==='snapshots';lim.classList.toggle('hidden',!on);
-    lim.title=on?(j.limited_reason||'Exchange candles are rate-limited right now, so this chart is built from our own price snapshots (no volume).'):''}
+  const thin=cd.length<=7;
+  const on=thin||!!j.limited||j.source==='derived'||j.source==='snapshots';
+  if(lim){lim.classList.toggle('hidden',!on);lim.textContent=thin?'Limited history':(j.limited?'Limited history':'Limited history');
+    lim.title=thin?'This token has very few candles in this timeframe yet.':(j.limited_reason||'Exchange candles are rate-limited right now, so this chart is built from our own price snapshots (no volume).')}
+  const lim2=document.getElementById('chLimited');if(lim2){lim2.classList.toggle('hidden',!thin)}
   const ft=j.fetched_at?new Date(j.fetched_at*1000):new Date();
   const upd=document.getElementById('chUpd');
   if(upd)upd.textContent=' · updated '+ft.toLocaleTimeString('en-GB',{timeZone:'Asia/Kuala_Lumpur'})+' MYT'+(j.stale?' (delayed)':'');
-  try{document.dispatchEvent(new CustomEvent('xschart',{detail:{mint:c.mint,last:last,candles:cd}}))}catch(e){}
+  try{document.dispatchEvent(new CustomEvent('xschart',{detail:{mint:c.mint,last:cd[cd.length-1].c,candles:cd}}))}catch(e){}
 }
 
-function tfSec(tf){return ({'1s':1,'1m':60,'5m':300,'15m':900,'1h':3600,'4h':14400,'1d':86400})[tf]||900}
+function tfSec(tf){return ({'1s':1,'15s':15,'30s':30,'1m':60,'5m':300,'15m':900,'1h':3600,'4h':14400,'1d':86400})[tf]||900}
 function bucketT(t,tf){const s=tfSec(tf||CH.tf);return Math.floor(t/s)*s}
 function stopLiveTick(){if(CH.tickTimer){clearTimeout(CH.tickTimer);CH.tickTimer=null}CH.tickGen=(CH.tickGen||0)+1}
+
+function recordTick(px,ts){
+  if(!(px>0))return;
+  CH.tickBuf=CH.tickBuf||[];
+  CH.tickBuf.push({t:ts||Date.now()/1000,px:+px});
+  if(CH.tickBuf.length>3600)CH.tickBuf=CH.tickBuf.slice(-2400);
+}
+function synthBars(tf){
+  const step=tfSec(tf);const src=CH.tickBuf||[];
+  if(!src.length)return [];
+  const out=[];
+  for(const p of src){
+    const t=bucketT(p.t,tf);
+    const last=out[out.length-1];
+    if(!last||last.t!==t)out.push({t,o:p.px,h:p.px,l:p.px,c:p.px,v:0});
+    else{if(p.px>last.h)last.h=p.px;if(p.px<last.l)last.l=p.px;last.c=p.px}
+  }
+  return out;
+}
 function startLiveTick(){
   stopLiveTick();
   CH.tickBackoff=1000;
@@ -489,13 +537,14 @@ function applyLiveTick(j){
             if(CH.ema21&&e21.length)CH.ema21.update(e21[e21.length-1]);
           }
         }catch(e){}
-        CH.lastPx=bar.close;CH.lastT=bar.time;CH.lastBarUp=bar.close>=bar.open;
-        const chg=(k.o&&isFinite(scalePx(k.o)))?((scalePx(k.c)-scalePx(k.o))/scalePx(k.o))*100:null;
-        paintLegend(bar,chg);syncLivePrice();
+        CH.lastUsd=px;CH.lastPx=px;CH.lastT=bar.time;CH.lastBarUp=bar.close>=bar.open;
+        recordTick(px);
+        paintLegend(bar,windowChg());syncLivePrice();
       }
     }
   }
   paintTokenLive(j);
+  try{if(j.sol_usd&&typeof paintSol==='function')paintSol(j.sol_usd)}catch(e){}
   try{window.paperOnTick&&window.paperOnTick(j)}catch(e){}
 }
 function paintTokenLive(j){

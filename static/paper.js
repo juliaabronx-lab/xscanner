@@ -3,7 +3,7 @@
 // The fill math lives in papertrade.py; this file only previews, waits, and draws.
 (function(){
 'use strict';
-const PB={acct:null,user:null,signed:false,csrf:'',sol:null,summary:null,token:null,quotes:{},tab:'buy',limSide:'buy',
+const PB={acct:null,user:null,signed:false,csrf:'',sol:null,summary:null,token:null,quotes:{},tab:'buy',limSide:'buy',ptab:'P1',
   busy:false,marking:false,seq:0,entryLine:null,candles:null,chartMint:null,shareUrl:null,panelMint:null};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const read=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}};
@@ -26,7 +26,7 @@ function posOf(mint){return PB.acct&&PB.acct.positions&&PB.acct.positions[mint]}
 function rowOf(mint){return((PB.summary&&PB.summary.positions)||[]).find(r=>r.mint===mint)}
 function livePx(mint){const q=PB.quotes[mint];if(q&&q.px&&Date.now()/1000-q.t<45)return q.px;
   if(PB.token&&PB.token.mint===mint&&PB.token.market&&PB.token.market.px)return+PB.token.market.px;
-  if(PB.chartMint===mint&&typeof CH!=='undefined'&&CH.lastPx)return CH.lastPx;return q&&q.px||null}
+  if(PB.chartMint===mint&&typeof CH!=='undefined'){const raw=(CH.lastUsd!=null&&isFinite(+CH.lastUsd))?+CH.lastUsd:((CH.unit!=='mcap'&&CH.lastPx)?+CH.lastPx:null);if(raw>0)return raw}return q&&q.px||null}
 function bookVisible(){const s=document.getElementById('v-book');return !!(s&&!s.classList.contains('hidden'))}
 function saveLocal(){if(PB.acct)write(key(),PB.acct)}
 function fillMsg(f){if(!f)return'Paper book updated.';
@@ -41,6 +41,7 @@ function fillMsg(f){if(!f)return'Paper book updated.';
 
 async function refreshCsrf(){
   try{const d=await (await fetch('/api/auth/status',{credentials:'same-origin'})).json();if(d.csrf)PB.csrf=d.csrf;return d}catch(e){return null}}
+PB.csrfReady=refreshCsrf();
 async function act(payload,opts,retried){
   opts=opts||{};
   const body=Object.assign({},payload);
@@ -48,7 +49,8 @@ async function act(payload,opts,retried){
   if(body.action==='adopt')body.account=payload.account;
   else if(!PB.signed)body.account=PB.acct;
   if(body.sol_usd==null&&PB.sol)body.sol_usd=PB.sol;
-  if(!PB.csrf)await refreshCsrf();
+  try{await PB.csrfReady}catch(e){}
+  if(!PB.csrf){PB.csrfReady=refreshCsrf();await PB.csrfReady}
   const r=await fetch('/api/paper/book/act',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':PB.csrf||''},body:JSON.stringify(body)});
   const j=await r.json().catch(()=>({}));
   if(r.status===403&&j.csrf_failed&&!retried){await refreshCsrf();return act(payload,opts,true)}
@@ -108,16 +110,9 @@ function panelShell(){
     <div class="pb-px"><span>Price <b id="pbPx">—</b></span><span>SOL <span class="sol-inline">${typeof solMark==='function'?solMark():''}<b id="pbSolUsd">—</b></span></span></div>
     <div class="pb-tabs pb-sides" role="tablist"><button type="button" data-pbt="buy">Buy</button><button type="button" data-pbt="sell">Sell</button></div>
     <div class="pb-subtabs" role="tablist"><button type="button" data-pbmode="market" class="on">Market</button><button type="button" data-pbmode="limit">Limit</button></div>
+    <div class="pb-ptabs" role="tablist" aria-label="Presets and advanced"><button type="button" data-pbp="P1">P1</button><button type="button" data-pbp="P2">P2</button><button type="button" data-pbp="P3">P3</button><button type="button" data-pbp="Adv">Adv</button></div>
     <div id="pbForm"></div>
     <p id="pbEst" class="pb-est"></p><p id="pbErr" class="pb-err"></p>
-    <details class="pb-set"><summary>Slippage, fees, delay</summary>
-      <label>Slippage %<input id="pbSlip" type="number" min="0" max="30" step="0.1"></label>
-      <label>Priority fee (SOL)<input id="pbPri" type="number" min="0" max="0.05" step="0.0001"></label>
-      <label>Platform fee %<input id="pbPlat" type="number" min="0" max="10" step="0.1"></label>
-      <label>Simulated fill delay (ms)<input id="pbDelay" type="number" min="0" max="5000" step="50"></label>
-      <button type="button" class="ghost" id="pbSetSave">Save settings</button>
-      <p class="muted" style="margin:6px 0 0">A buy spends the SOL you type. The priority fee, then the platform fee, come out of it, and slippage worsens the fill. Sells take the same fees from the proceeds.</p>
-    </details>
     <div id="pbMine" class="pb-orders"></div>
     <p class="pb-foot"><button type="button" class="linkbtn" id="pbOpenBook">Portfolio, history and calendar</button>
       <button type="button" class="linkbtn" id="pbReset">Reset</button>
@@ -125,6 +120,14 @@ function panelShell(){
 
 function formHTML(){
   const t=PB.tab;
+  if((PB.ptab||'P1')==='Adv')return `<div class="pb-adv">
+      <label>Slippage %<input id="pbSlip" type="number" min="0" max="30" step="0.1"></label>
+      <label>Priority fee (SOL)<input id="pbPri" type="number" min="0" max="0.05" step="0.0001"></label>
+      <label>Platform fee %<input id="pbPlat" type="number" min="0" max="10" step="0.1"></label>
+      <label>Simulated fill delay (ms)<input id="pbDelay" type="number" min="0" max="5000" step="50"></label>
+      <button type="button" class="ghost" id="pbSetSave">Save settings</button>
+      <p class="muted" style="margin:6px 0 0">A buy spends the SOL you type. The priority fee, then the platform fee, come out of it, and slippage worsens the fill. Sells take the same fees from the proceeds.</p>
+    </div>`;
   if(t==='sell')return `<p class="muted" style="margin:0 0 8px;font-size:12px">Sells a share of the tokens that are not reserved by a sell limit.</p>
     <div class="pb-presets"><button type="button" data-pct="25" data-go="1">25%</button><button type="button" data-pct="50" data-go="1">50%</button><button type="button" data-pct="100" data-go="1">100%</button></div>
     <label>Custom % of free tokens<input id="pbPct" type="number" min="1" max="100" step="1" placeholder="25"></label>
@@ -135,8 +138,9 @@ function formHTML(){
     <p class="pb-fee" id="pbFee"></p><button type="button" class="pb-limit" id="pbLimGo">Place paper limit</button>
     <p class="muted" style="font-size:11px;margin:8px 0 0">A buy limit reserves the SOL now and fills when the live price is at or under the trigger. A sell limit reserves tokens and fills at or above it. The fill then uses that live price, plus slippage and fees.</p>`;
   const sm=typeof solMark==='function'?solMark():'';
-  return `<label>AMOUNT<span class="sol-amt">${sm}<input id="pbSol" type="number" min="0" step="any" inputmode="decimal" placeholder="0.5"></span></label>
-    <div class="pb-presets"><button type="button" data-sol="0.1">${sm}0.1</button><button type="button" data-sol="0.5">${sm}0.5</button><button type="button" data-sol="1">${sm}1</button><button type="button" data-sol="2">${sm}2</button></div>
+  const am=(typeof itAmounts==='function'?itAmounts():[0.1,0.5,1,2]);
+  return `<label>AMOUNT<span class="sol-amt">${sm}<input id="pbSol" type="number" min="0" step="any" inputmode="decimal" placeholder="${am[0]||0.5}"></span></label>
+    <div class="pb-presets">${am.map(v=>`<button type="button" data-sol="${v}">${sm}${v}</button>`).join('')}</div>
     <p class="pb-fee" id="pbFee"></p><button type="button" class="pb-buy" id="pbBuy">Paper Buy</button>`}
 
 function paintForm(){
@@ -146,6 +150,7 @@ function paintForm(){
   if(host)host.dataset.tab=PB.tab;
   box.innerHTML=formHTML();
   document.querySelectorAll('#tkPaper [data-pbt]').forEach(b=>b.classList.toggle('on',b.dataset.pbt===PB.tab));
+  document.querySelectorAll('#tkPaper [data-pbp]').forEach(b=>b.classList.toggle('on',b.dataset.pbp===(PB.ptab||'P1')));
   if(PB.tab==='limit'){document.querySelectorAll('#tkPaper [data-limside]').forEach(b=>b.classList.toggle('on',b.dataset.limside===PB.limSide));
     const amt=document.getElementById('pbLimAmt');
     if(amt)amt.innerHTML=PB.limSide==='sell'?`<label>% of free tokens<input id="pbLimPct" type="number" min="1" max="100" step="1" value="100"></label>`
@@ -209,10 +214,15 @@ async function market(payload,opts){
   if(PB.busy)return;const gen=++PB.seq;PB.busy=true;updatePanelFigures();paintInstant();
   const delay=opts.delay!=null?Math.max(0,+opts.delay):(+settings().exec_delay_ms||0);
   const est=document.getElementById('pbEst');if(est)est.textContent=delay?`Simulating a ${delay} ms fill…`:'Filling…';
-  await sleep(delay);
-  if(gen!==PB.seq)return;
-  const px=livePx(payload.mint);if(px)payload.px_usd=px;payload.waited_ms=delay;payload.sol_usd=PB.sol;
-  try{await act(payload)}finally{if(gen===PB.seq){PB.busy=false;updatePanelFigures();scheduleEst()}}}
+  try{
+    if(delay)await sleep(delay);
+    if(gen!==PB.seq)return;
+    const px=livePx(payload.mint);if(px)payload.px_usd=px;payload.waited_ms=delay;payload.sol_usd=PB.sol;
+    await act(payload);
+  }finally{
+    if(gen===PB.seq){PB.busy=false;updatePanelFigures();paintInstant();scheduleEst()}
+    else{const buy=document.getElementById('pbBuy');if(buy&&buy.textContent==='Filling…'){buy.disabled=false;updatePanelFigures()}}
+  }}
 
 async function doDeposit(input){
   const sol=input&&+input.value;if(!sol||sol<=0){toast('Enter an amount of paper SOL.','dn');return}
@@ -342,6 +352,9 @@ function ensureCal(){
 }
 function bindCal(el){
   if(CAL.bound)return;CAL.bound=true;
+  document.addEventListener('click',e=>{if(e.target.closest('#calClose')){e.preventDefault();e.stopPropagation();setCalOpen(false)}},true);
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&CAL.open)setCalOpen(false)});
+
   el.addEventListener('click',e=>{
     const t=e.target.closest('button');if(!t)return;
     if(t.id==='calClose'){e.preventDefault();setCalOpen(false);return}
@@ -373,8 +386,10 @@ function bindCal(el){
 function defaultCalPos(el){
   try{const pos=JSON.parse(localStorage.getItem('xs_cal_pos_v1')||'null');
     if(pos&&pos.left&&pos.top){el.style.left=pos.left;el.style.top=pos.top;el.style.right='auto';el.style.bottom='auto';return}}catch(e){}
-  el.style.left=Math.max(16,window.innerWidth-392)+'px';
-  el.style.top='96px';el.style.right='auto';el.style.bottom='auto';
+  const it=document.getElementById('itCard');
+  const itOpen=it&&!it.classList.contains('hidden');
+  el.style.left=(itOpen?16:Math.max(16,window.innerWidth-392))+'px';
+  el.style.top=(itOpen?400:96)+'px';el.style.right='auto';el.style.bottom='auto';
 }
 function setCalOpen(on){
   CAL.open=!!on;calSave();
@@ -461,6 +476,7 @@ async function onClick(e){
   if(t.dataset.sol){const input=document.getElementById('pbSol');if(input){input.value=t.dataset.sol;scheduleEst()}return}
   if(t.dataset.pbt){if(PB.tab==='limit'||PB._mode==='limit'){PB.tab='limit';PB.limSide=t.dataset.pbt;PB._mode='limit'}else{PB.tab=t.dataset.pbt;PB._mode='market'}const host=document.getElementById('tkPaper');if(host)host.dataset.tab='';paintForm();updatePanelFigures();scheduleEst();return}
   if(t.dataset.pbmode){PB._mode=t.dataset.pbmode;if(PB._mode==='limit'){PB.limSide=PB.tab==='sell'?'sell':'buy';PB.tab='limit'}else{PB.tab=PB.limSide||PB.tab||'buy';if(PB.tab==='limit')PB.tab=PB.limSide||'buy'}const host=document.getElementById('tkPaper');if(host)host.dataset.tab='';paintForm();updatePanelFigures();scheduleEst();return}
+  if(t.dataset.pbp){PB.ptab=t.dataset.pbp;if(PB.ptab!=='Adv'&&typeof IT!=='undefined'){IT.tab=PB.ptab;try{localStorage.setItem('xs_instant_preset_tab_v1',IT.tab)}catch(e){}}const host=document.getElementById('tkPaper');if(host)host.dataset.tab='';paintForm();updatePanelFigures();scheduleEst();return}
   if(t.dataset.limside){PB.limSide=t.dataset.limside;const host=document.getElementById('tkPaper');if(host)host.dataset.tab='';paintForm();updatePanelFigures();return}
   if(t.dataset.pct&&t.dataset.go&&PB.token){const pct=+t.dataset.pct;await guard(()=>market(Object.assign({action:'sell',mint:PB.token.mint,pct,px_usd:livePx(PB.token.mint)},meta())));return}
   if(t.id==='pbBuy'&&PB.token){const sol=+(document.getElementById('pbSol')||{}).value;await guard(()=>market(Object.assign({action:'buy',mint:PB.token.mint,sol,px_usd:livePx(PB.token.mint)},meta())));return}
@@ -645,7 +661,7 @@ function bindInstant(el){
     const t=e.target.closest('button, [data-itbuy], [data-itsell]');if(!t)return;
     if(t.id==='itClose'){e.preventDefault();setInstantOpen(false);return}
     if(t.id==='itEdit'){e.preventDefault();IT.editing=!IT.editing;const box=document.getElementById('itEditBox');if(box)box.classList.toggle('hidden',!IT.editing);return}
-    if(t.id==='itEditSave'){e.preventDefault();const next=[0,1,2,3].map(i=>{const inp=el.querySelector('[data-itedit="'+i+'"]');return Math.max(0,+(inp&&inp.value)||0)});IT.presets[IT.tab]=next;itSave('xs_instant_presets_v1',IT.presets);IT.editing=false;rebuildInstant();return}
+    if(t.id==='itEditSave'){e.preventDefault();const next=[0,1,2,3].map(i=>{const inp=el.querySelector('[data-itedit="'+i+'"]');return +(inp&&inp.value)});if(next.some(v=>!(v>0))){toast('Preset amounts must be greater than 0 SOL.','dn');return}IT.presets[IT.tab]=next;itSave('xs_instant_presets_v1',IT.presets);IT.editing=false;rebuildInstant();return}
     if(t.dataset.ittab){IT.tab=t.dataset.ittab;itSave('xs_instant_preset_tab_v1',IT.tab);IT.editing=false;rebuildInstant();return}
     if(t.dataset.itspeed!=null){IT.speed=+t.dataset.itspeed||0;itSave('xs_instant_speed_v1',String(IT.speed));el.querySelectorAll('[data-itspeed]').forEach(b=>b.classList.toggle('on',+b.dataset.itspeed===IT.speed));return}
     if(t.id==='itDepGo'){e.preventDefault();const box=document.getElementById('itDepBox');if(box)box.classList.toggle('hidden');return}
@@ -737,7 +753,7 @@ function paintInstant(){
   set('itPnl',st.pnl==null?'—':solCompact(st.pnl,true),clsPn(st.pnl));
   const cash=PB.acct?+(PB.acct.cash_sol||0):0;
   const dep=document.getElementById('itDepGo');
-  if(dep)dep.classList.toggle('hidden',cash>0);
+  if(dep){dep.classList.toggle('hidden',cash>0);if(cash<=0)dep.textContent='+ Deposit paper SOL'}
   el.classList.toggle('it-empty',!mint);
 }
 async function instantBuy(sol){
@@ -760,14 +776,31 @@ async function instantSell(pct){
 function instantSellInit(){
   const t=itTarget();if(!t||!t.mint)return;
   const pos=posOf(t.mint);if(!pos||!(pos.qty>0)){toast('No paper position to sell.','dn');return}
-  const px=livePx(t.mint);
-  const avg=+pos.avg_px_usd||0;
-  // Recover the initial cost basis: sell the share of the bag whose mark equals cost.
-  // If price is unchanged that is 100%. If it's up, sell a smaller %. Floor at 1%.
-  let pct=100;
-  if(px&&px>0&&avg>0)pct=Math.min(100,Math.max(1,(avg/px)*100));
+  const px=livePx(t.mint),sol=PB.sol,st=settings(),cost=+(pos.cost_sol||0),qty=+(pos.qty||0);
+  if(!(px>0)||!(sol>0)||!(qty>0)){toast('Need a live price to compute Sell Init.','dn');return}
+  const slip=1-((st.slippage_bps||0)/10000);
+  const feeBps=(st.platform_fee_bps||0)/10000;
+  const pri=+(st.priority_fee_sol||0);
+  const gross100=qty*(px*slip)/sol;
+  const net100=gross100*(1-feeBps)-pri;
+  if(!(net100>cost)){
+    toast("Position isn't in profit yet — Sell Init needs profit above your initial cost",'dn');
+    return;
+  }
+  const denom=gross100*(1-feeBps);
+  let frac=denom>0?((cost+pri)/denom):1;
+  const pct=Math.min(99,Math.max(1,frac*100));
   instantSell(pct);
 }
+document.addEventListener('keydown',e=>{
+  if(!IT.open||e.metaKey||e.ctrlKey||e.altKey)return;
+  const tag=(e.target&&e.target.tagName||'').toLowerCase();
+  if(tag==='input'||tag==='textarea'||e.target.isContentEditable)return;
+  const am=typeof itAmounts==='function'?itAmounts():[0.1,0.5,1,2];
+  if(e.key>='1'&&e.key<='4'){e.preventDefault();const sol=am[+e.key-1];if(sol>0)instantBuy(sol);return}
+  const sell={q:25,w:50,e:75,r:100}[e.key.toLowerCase()];
+  if(sell){e.preventDefault();instantSell(sell)}
+});
 window.paperToggleInstant=function(force){
   itLoad();
   setInstantOpen(force==null?!IT.open:!!force);
@@ -777,7 +810,7 @@ window.paperQuickBuy=async function(info){
   if(!info||!info.mint)return;
   IT.snap={mint:info.mint,symbol:info.symbol||'',name:info.name||'',pool:info.pool||'',px:info.px};
   if(info.px)PB.quotes[info.mint]={px:+info.px,t:Date.now()/1000};
-  const inp=document.getElementById('pqAmt');const sol=(inp&&+inp.value>0)?+inp.value:(function(){try{const v=+localStorage.getItem('xs_pulse_qbuy_amt_v1');return v>0?v:0.1}catch(e){return 0.1}})();
+  const sol=(info.sol>0)?+info.sol:((document.getElementById('pqAmt')&&+document.getElementById('pqAmt').value>0)?+document.getElementById('pqAmt').value:0.1);
   const cash=PB.acct?+(PB.acct.cash_sol||0):0;
   if(cash<=0){toast('Deposit paper SOL first to Quick Buy. Simulation only.','dn');if(window.show)window.show('book');return}
   const px=livePx(info.mint)||info.px||null;
@@ -801,7 +834,18 @@ window.paperOnToken=function(d){if(!d||!d.mint)return;PB.token=d;
   if(PB.panelMint!==d.mint||!el.querySelector('.pb')){PB.panelMint=d.mint;PB.tab='buy';el.dataset.tab='';el.innerHTML=panelShell();paintForm()}
   updatePanelFigures();paintChart();paintInstant();
   if((PB.acct&&PB.acct.orders||[]).some(o=>o.mint===d.mint)){clearTimeout(PB.markSoon);PB.markSoon=setTimeout(()=>maybeMark(true),600)}};
-window.paperLeaveToken=function(){PB.token=null;PB.entryLine=null;paintInstant()};
+
+function ensureLocalBook(){
+  if(PB.signed)return;
+  const loc=read('xs_paper_book_v1:anon');
+  if(used(loc)&&!used(PB.acct)){PB.acct=loc;try{paintBar();paintInstant();if(bookVisible())fillBook()}catch(e){}}
+}
+window.paperOnNavigate=function(v){
+  try{if(typeof setCalOpen==='function')setCalOpen(false)}catch(e){}
+  ensureLocalBook();
+};
+window.paperEnsureCsrf=function(){return PB.csrf?Promise.resolve(PB.csrf):(PB.csrfReady=refreshCsrf())};
+window.paperLeaveToken=function(){try{if(typeof setCalOpen==='function')setCalOpen(false)}catch(e){}PB.token=null;PB.entryLine=null;paintInstant()};
 
 document.addEventListener('click',e=>{onClick(e).catch(()=>{})});
 document.addEventListener('input',onInput);
@@ -820,9 +864,10 @@ async function boot(){
   PB.signed=!!state.signed_in;
   PB.user=state.user||null;
   PB.sol=state.sol_usd||null;
-  const local=read(key());
+  const local=read(key())||(!PB.signed&&read('xs_paper_book_v1:anon'));
   if(PB.signed&&state.account)PB.acct=state.account;
   else if(PB.signed&&!state.account&&used(local)){try{const j=await act({action:'adopt',account:local},{silent:true});PB.acct=j.account}catch(e){PB.acct=local}}
+  else if(used(local))PB.acct=local;
   else PB.acct=local||state.blank||null;
   const anon=PB.signed?read('xs_paper_book_v1:anon'):null;
   PB.offerAnon=!!(PB.signed&&used(anon)&&!state.account&&!used(local));
@@ -844,6 +889,10 @@ window.paperOnAuth=function(user){
     boot();
     return}
   boot()};
+(function paperWrapShow(){
+  const hook=()=>{const s=window.show;if(!s||s._paperWrapped)return;const w=function(){try{window.paperOnNavigate&&window.paperOnNavigate.apply(null,arguments)}catch(e){}return s.apply(this,arguments)};w._paperWrapped=true;window.show=w};
+  hook();document.addEventListener('DOMContentLoaded',hook);
+})();
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
 

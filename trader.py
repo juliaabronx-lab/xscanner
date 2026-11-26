@@ -21,6 +21,8 @@ GT_HDR = {**UA, "Accept": "application/json;version=20230302"}
 MINT_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 PUMP_PROGRAM = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
 WSOL = "So11111111111111111111111111111111111111112"
+USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+USDT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
 STABLES = {WSOL, "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"}
 CURVE_TOTAL_RAW = 793_100_000_000_000          # real token reserves of a fresh pump.fun curve (793.1M tokens, 6 decimals)
 SNIPE_SLOTS = 2                                 # buys within this many slots after the create tx count as "sniped"
@@ -158,6 +160,45 @@ _trades_cache = {}      # pool -> (t, payload)
 TRADES_TTL = 8.0
 
 
+
+def normalize_gt_trade(a, mint=None):
+    """One GeckoTerminal trade row in terms of `mint`.
+
+    If `mint` is the pool's quote token, invert price (usd / mint amount) and flip buy/sell
+    so the tape never shows the other side's price (e.g. TTWO when the page is GTA6).
+    """
+    if not isinstance(a, dict):
+        return None
+    vol = num(a.get("volume_in_usd"))
+    if a.get("kind") not in ("buy", "sell") or vol is None:
+        return None
+    frm, to = a.get("from_token_address"), a.get("to_token_address")
+    if mint:
+        if to == mint:
+            kind, amt = "buy", num(a.get("to_token_amount"))
+            px = num(a.get("price_to_in_usd"))
+        elif frm == mint:
+            kind, amt = "sell", num(a.get("from_token_amount"))
+            px = num(a.get("price_from_in_usd"))
+        else:
+            return None
+        if (px is None or px <= 0) and amt and amt > 0:
+            px = vol / amt
+        tok_side = mint
+    else:
+        kind = a["kind"]
+        tok_side = to if kind == "buy" else frm
+        amt = num(a.get("to_token_amount") if kind == "buy" else a.get("from_token_amount"))
+        px = num(a.get("price_to_in_usd") if kind == "buy" else a.get("price_from_in_usd"))
+    try:
+        import datetime as _dt
+        ts = int(_dt.datetime.strptime(a["block_timestamp"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=_dt.timezone.utc).timestamp())
+    except Exception:
+        return None
+    return {"t": ts, "k": kind, "usd": round(vol, 2), "px": px, "amt": amt, "w": a.get("tx_from_address"),
+            "sig": a.get("tx_hash"), "anom": bool(a.get("is_anomalous")), "tok": tok_side}
+
+
 def trades(pool, token=None):
     """Last trades of a pool (GeckoTerminal, up to 300 over 24 h) and top traders aggregated from them."""
     now = time.time()
@@ -169,21 +210,10 @@ def trades(pool, token=None):
         if c: return {**c[1], "stale": True, "stale_reason": str(e)}
         return {"available": False, "reason": "Trades tape unavailable right now (%s)." % e, "trades": [], "traders": []}
     rows = []
-    for t in d.get("data") or []:
-        a = t.get("attributes") or {}
-        vol = num(a.get("volume_in_usd"))
-        if a.get("kind") not in ("buy", "sell") or vol is None: continue
-        # the traded token's own amount / price (the non-quote side)
-        tok_side = a.get("to_token_address") if a["kind"] == "buy" else a.get("from_token_address")
-        amt = num(a.get("to_token_amount") if a["kind"] == "buy" else a.get("from_token_amount"))
-        px = num(a.get("price_to_in_usd") if a["kind"] == "buy" else a.get("price_from_in_usd"))
-        try:
-            import datetime as _dt
-            ts = int(_dt.datetime.strptime(a["block_timestamp"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=_dt.timezone.utc).timestamp())
-        except Exception:
-            continue
-        rows.append({"t": ts, "k": a["kind"], "usd": round(vol, 2), "px": px, "amt": amt, "w": a.get("tx_from_address"),
-                     "sig": a.get("tx_hash"), "anom": bool(a.get("is_anomalous")), "tok": tok_side})
+    for item in d.get("data") or []:
+        row = normalize_gt_trade(item.get("attributes") or {}, token)
+        if row:
+            rows.append(row)
     rows.sort(key=lambda r: -r["t"])
     # top traders over the trades we can see (this is NOT full on-chain PnL)
     agg = {}
@@ -299,14 +329,58 @@ def ds_tokens(mints, timeout=8):
 AMM_DEX = {"pumpswap", "raydium", "raydium-cpmm", "raydium-clmm", "meteora", "meteora-damm-v2", "orca", "fluxbeam"}
 
 
+QUOTE_PREF = {WSOL, "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"}
+
+
+def _addr(tok):
+    return (tok or {}).get("address") if isinstance(tok, dict) else None
+
+
+def pair_price_usd(p, mint):
+    """USD price of `mint` in this DexScreener pair. Inverts when mint is the quote token."""
+    if not p or not mint:
+        return None
+    base, quote = _addr(p.get("baseToken")), _addr(p.get("quoteToken"))
+    px = num(p.get("priceUsd"))
+    native = num(p.get("priceNative"))
+    if base == mint:
+        return px
+    if quote == mint:
+        if px and native and native > 0:
+            return px / native
+        # last resort: invert a unit price if it is clearly the base's
+        if px and px > 0:
+            return 1.0 / px
+    return None
+
+
+def pair_mcap_usd(p, mint, px=None):
+    """Market cap for `mint`. Prefer the pair mcap when mint is the base; otherwise px * later supply."""
+    if not p or not mint:
+        return None
+    if _addr(p.get("baseToken")) == mint:
+        return num(p.get("marketCap"), num(p.get("fdv")))
+    return None
+
+
 def best_pair(pairs, mint):
-    """Most relevant pair of `mint`: a live AMM pool of a launchpad token beats its old bonding curve; else the biggest liquidity."""
-    mine = [p for p in pairs if (p.get("baseToken") or {}).get("address") == mint]
-    if not mine: return None
+    """Most relevant pair of `mint`. Prefer mint as base quoted in SOL/USDC/USDT over exotic token/token pools."""
+    mine = []
+    for p in pairs or []:
+        base, quote = _addr(p.get("baseToken")), _addr(p.get("quoteToken"))
+        if mint in (base, quote):
+            mine.append(p)
+    if not mine:
+        return None
     def key(p):
+        base, quote = _addr(p.get("baseToken")), _addr(p.get("quoteToken"))
         liq = num((p.get("liquidity") or {}).get("usd"), 0.0) or 0.0
-        sol = (p.get("quoteToken") or {}).get("address") == WSOL
-        return (1 if sol else 0, liq)
+        mint_is_base = base == mint
+        pref_quote = (quote in QUOTE_PREF) if mint_is_base else (base in QUOTE_PREF)
+        sol = (quote == WSOL and mint_is_base) or (base == WSOL and quote == mint)
+        # 3: mint base + SOL/USDC/USDT, 2: mint quote + those, 1: mint is base vs exotic, 0: mint is quote vs exotic
+        tier = 3 if (mint_is_base and pref_quote) else 2 if pref_quote else 1 if mint_is_base else 0
+        return (tier, 1 if sol else 0, liq)
     return max(mine, key=key)
 
 
@@ -331,10 +405,15 @@ def quotes(mints, ttl=10.0, ready=None):
         for m in need:
             p = best_pair(pairs, m)
             if not p: continue
-            q = {"px": num(p.get("priceUsd")), "mc": num(p.get("marketCap"), num(p.get("fdv"))), "lq": num((p.get("liquidity") or {}).get("usd")),
+            px = pair_price_usd(p, m)
+            mc = pair_mcap_usd(p, m, px)
+            bt = p.get("baseToken") or {}
+            qt = p.get("quoteToken") or {}
+            tok = bt if _addr(bt) == m else qt if _addr(qt) == m else bt
+            q = {"px": px, "mc": mc, "lq": num((p.get("liquidity") or {}).get("usd")),
                  "pc5": num((p.get("priceChange") or {}).get("m5")), "pc1": num((p.get("priceChange") or {}).get("h1")),
-                 "pc24": num((p.get("priceChange") or {}).get("h24")), "sym": (p.get("baseToken") or {}).get("symbol"),
-                 "name": (p.get("baseToken") or {}).get("name"), "dex": p.get("dexId"), "pool": p.get("pairAddress"), "t": int(now)}
+                 "pc24": num((p.get("priceChange") or {}).get("h24")), "sym": tok.get("symbol"),
+                 "name": tok.get("name"), "dex": p.get("dexId"), "pool": p.get("pairAddress"), "t": int(now)}
             _quote_cache[m] = (now, q); out[m] = q
     return out
 
@@ -348,8 +427,50 @@ _tick_cache = {}      # mint -> (fetched_at, payload)
 _tick_flight = {}     # mint -> (Event, box)
 
 
-def derive_supply(px, mc, explicit=None):
-    """Circulating/total supply from metadata, or mc/px. Never invent 0, NaN, or 1e9."""
+_supply_cache = {}   # mint -> (t, ui_amount)
+SUPPLY_TTL_S = 300
+
+
+def token_supply(mint, timeout=2.5):
+    """Cached on-chain getTokenSupply (ui amount). Never invent 0, NaN, or 1e9."""
+    mint = (mint or "").strip()
+    if not MINT_RE.match(mint):
+        return None
+    now = time.time()
+    c = _supply_cache.get(mint)
+    if c and now - c[0] < SUPPLY_TTL_S:
+        return c[1]
+    try:
+        d = rpc.call("getTokenSupply", [mint], timeout=timeout)
+        ui = num(((d or {}).get("value") or {}).get("uiAmount"))
+        if ui is None:
+            raw = ((d or {}).get("value") or {})
+            amt, dec = num(raw.get("amount")), raw.get("decimals")
+            if amt is not None and dec is not None:
+                ui = amt / (10 ** int(dec))
+        if ui and 0 < ui < 1e18:
+            _supply_cache[mint] = (now, ui)
+            return ui
+    except Exception:
+        pass
+    return c[1] if c else None
+
+
+def derive_supply(px, mc, explicit=None, onchain=None):
+    """Prefer on-chain getTokenSupply, then metadata, then mc/px. Never invent 0, NaN, or 1e9.
+
+    If mc/px disagrees with on-chain supply by more than 5× (the DEGEN $24.7M vs $224K class of bug),
+    trust the chain and recompute market cap as price × on-chain supply.
+    """
+    chain = num(onchain)
+    if chain is not None and 0 < chain < 1e18:
+        implied = None
+        px, mc = num(px), num(mc)
+        if px and mc and px > 0 and mc > 0:
+            implied = mc / px
+        if implied and implied > 0 and (implied / chain > 5 or chain / implied > 5):
+            return chain
+        return chain
     s = num(explicit)
     if s is not None and 0 < s < 1e18:
         return s
@@ -361,13 +482,17 @@ def derive_supply(px, mc, explicit=None):
     return None
 
 
-def _tick_payload(mint, px, mc=None, lq=None, sol_usd=None, source=""):
+def _tick_payload(mint, px, mc=None, lq=None, sol_usd=None, source="", supply=None):
     px, mc = num(px), num(mc)
-    supply = derive_supply(px, mc)
-    if px and supply and mc is None:
-        mc = px * supply
+    onchain = token_supply(mint)
+    supply = derive_supply(px, mc, explicit=supply, onchain=onchain)
+    if px and supply:
+        implied = (mc / px) if (mc and px) else None
+        if mc is None or (implied and onchain and (implied / onchain > 5 or onchain / implied > 5)):
+            mc = px * supply
     return {"ok": True, "mint": mint, "px": px, "mc": mc, "lq": num(lq),
-            "supply": supply, "sol_usd": num(sol_usd), "t": int(time.time()), "source": source}
+            "supply": supply, "sol_usd": num(sol_usd), "t": int(time.time()), "source": source,
+            "supply_source": "chain" if (onchain and supply == onchain) else ("implied" if supply else None)}
 
 
 def tick(mint, ready=None, sol_usd=None):
@@ -382,14 +507,7 @@ def tick(mint, ready=None, sol_usd=None):
     if cached and now - cached[0] < TICK_TTL_S:
         return {**cached[1], "cached": True}
 
-    if ready and ready.get(mint) and num(ready[mint].get("px")):
-        r = ready[mint]
-        age = now - (r.get("_ds") or 0)
-        if 0 <= age < TICK_TTL_S:
-            p = _tick_payload(mint, r.get("px"), r.get("mc"), r.get("lq"), sol_usd, "pulse")
-            if p.get("px"):
-                _tick_cache[mint] = (now, p)
-                return p
+    # Pulse is not the live price source (it can lag on DexScreener). Jupiter is queried first below.
 
     with _tick_lock:
         fl = _tick_flight.get(mint)
@@ -408,39 +526,42 @@ def tick(mint, ready=None, sol_usd=None):
     retry_s = None
     payload = None
     try:
+        jup_px = None
         try:
-            d = net.get_json(DS_TOKEN + mint, timeout=6, headers=UA, fresh_s=TICK_TTL_S, errors="raise", scope="tick")
-            pairs = d if isinstance(d, list) else []
-            p = best_pair(pairs, mint)
-            if p:
-                payload = _tick_payload(mint, p.get("priceUsd"), num(p.get("marketCap"), num(p.get("fdv"))),
-                                        (p.get("liquidity") or {}).get("usd"), sol_usd, "dexscreener")
+            j = net.get_json(JUP_PRICE + mint, timeout=5, headers=UA, fresh_s=TICK_TTL_S, errors="raise", scope="tick")
+            row = None
+            if isinstance(j, dict):
+                row = j.get(mint) or (j.get("data") or {}).get(mint)
+            if isinstance(row, dict):
+                jup_px = num(row.get("usdPrice"), num(row.get("price")))
         except Exception as e:
             code = getattr(e, "code", None)
             if code in (429, 503):
                 stale, retry_s = True, 4
-        if payload is None:
-            try:
-                j = net.get_json(JUP_PRICE + mint, timeout=6, headers=UA, fresh_s=TICK_TTL_S, errors="raise", scope="tick")
-                row = None
-                if isinstance(j, dict):
-                    row = j.get(mint) or (j.get("data") or {}).get(mint)
-                if isinstance(row, dict):
-                    px = num(row.get("usdPrice"), num(row.get("price")))
-                    mc = None
-                    prev = cached[1] if cached else None
-                    if prev and prev.get("supply") and px:
-                        mc = px * prev["supply"]
-                    elif prev and prev.get("mc") and prev.get("px") and px:
-                        mc = px * (prev["mc"] / prev["px"])
-                    if px:
-                        payload = _tick_payload(mint, px, mc, None, sol_usd, "jupiter")
-                        if prev and prev.get("supply") and not payload.get("supply"):
-                            payload["supply"] = prev["supply"]
-            except Exception as e:
-                code = getattr(e, "code", None)
-                if code in (429, 503):
-                    stale, retry_s = True, (retry_s or 4)
+        ds_pair = None
+        try:
+            d = net.get_json(DS_TOKEN + mint, timeout=4, headers=UA, fresh_s=TICK_TTL_S, errors="raise", scope="tick")
+            pairs = d if isinstance(d, list) else []
+            ds_pair = best_pair(pairs, mint)
+        except Exception as e:
+            code = getattr(e, "code", None)
+            if code in (429, 503):
+                stale, retry_s = True, (retry_s or 4)
+        prev = cached[1] if cached else None
+        if jup_px and jup_px > 0:
+            mc = pair_mcap_usd(ds_pair, mint) if ds_pair else None
+            if mc is None and prev and prev.get("supply"):
+                mc = jup_px * prev["supply"]
+            elif mc is None and prev and prev.get("mc") and prev.get("px"):
+                mc = jup_px * (prev["mc"] / prev["px"])
+            lq = (ds_pair.get("liquidity") or {}).get("usd") if ds_pair else None
+            payload = _tick_payload(mint, jup_px, mc, lq, sol_usd, "jupiter", supply=(prev or {}).get("supply"))
+        elif ds_pair:
+            px = pair_price_usd(ds_pair, mint)
+            mc = pair_mcap_usd(ds_pair, mint, px)
+            if px:
+                payload = _tick_payload(mint, px, mc, (ds_pair.get("liquidity") or {}).get("usd"), sol_usd, "dexscreener",
+                                        supply=(prev or {}).get("supply"))
         if payload is None:
             if cached:
                 payload = {**cached[1], "stale": True, "retry_s": retry_s or 3}

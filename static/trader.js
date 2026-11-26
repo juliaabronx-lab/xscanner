@@ -121,8 +121,13 @@ function paintSrc(){const s=P.src;if(!s)return;const nm={gecko:'GeckoTerminal (n
     return `<div><span>${t}</span><span>${st}</span></div>`}).join('')+`<p class="muted">Free public APIs rate-limit shared servers, so a source can pause for a while; its fields then show — until it is back.</p>`}
 
 const chipCls=(v,a,b)=>v==null?'na':v>=b?'red':v>=a?'amb':'grn';
-function pulseQBuyOn(){try{return localStorage.getItem('xs_pulse_qbuy_v1')==='1'}catch(e){return false}}
-function pulseQBuyAmt(){const el=document.getElementById('pqAmt');if(el&&el.value!==''&&+el.value>0)return +el.value;try{const v=+localStorage.getItem('xs_pulse_qbuy_amt_v1');if(v>0)return v}catch(e){}return 0.1}
+function pulseQBuyOn(){try{return localStorage.getItem('xs_pulse_qbuy_v1')!=='0'}catch(e){return true}}
+function pulseQBuyAmt(col){
+  if(col){const el=document.querySelector('.pcol[data-c="'+col+'"] [data-colamt]');if(el&&+el.value>0)return +el.value}
+  const el=document.getElementById('pqAmt');if(el&&el.value!==''&&+el.value>0)return +el.value;
+  try{const v=+localStorage.getItem('xs_pulse_qbuy_amt_v1');if(v>0)return v}catch(e){}
+  return 0.1}
+
 function bustPulseRows(){if(P&&P.els)P.els.forEach(el=>{if(el)el._v=null})}
 function paintQBuy(){
   const on=pulseQBuyOn();
@@ -143,7 +148,7 @@ function rowHTML(r,col){
   const curve=!mcc?`<i class="cvline" title="${cv!=null?(r.cvs==='chain'?'Bonding curve progress, read from the chain':'Estimated from market cap'):'Curve progress unavailable'}"><i style="width:${cv!=null?Math.min(100,cv):0}%" class="${cv!=null&&cv>=70?'hot':''}"></i></i>`:`<i class="cvline done" title="migrated${r.mg?' '+ageS(now()-r.mg)+' ago':''}"></i>`;
   return `<div class="pimg ${ringCls(r,col)}">${tokImgDirect(r)}<button class="star" data-star="${esc(r.m)}" aria-label="Watch"></button><div class="pca" title="${esc(r.m)}">${esc(shortMint(r.m))}</div></div>
   <div class="pmain">
-     <div class="ptop"><b class="psym">${esc(symOf(r))}</b><span class="pname">${esc(r.n||'')}</span><button class="cpy mini" data-cp="${esc(r.m)}" title="Copy CA">⧉</button><span class="qlinks"><a href="${esc(jupLink(r.m))}" target="_blank" rel="noopener noreferrer" title="Opens Jupiter. xScanner never trades for you." data-noopen>Jup</a><a href="${esc(axLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Ax</a><a href="${esc(phLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Ph</a></span>${pulseQBuyOn()?`<button type="button" class="pqbuy" data-qbuy="${esc(r.m)}" data-sym="${esc(symOf(r))}" data-px="${r.px||''}" data-noopen title="Instant paper buy (simulation only)">⚡ ${typeof solMark==='function'?solMark():''} ${pulseQBuyAmt()}</button>`:''}</div>
+     <div class="ptop"><b class="psym">${esc(symOf(r))}</b><span class="pname">${esc(r.n||'')}</span><button class="cpy mini" data-cp="${esc(r.m)}" title="Copy CA">⧉</button><span class="qlinks"><a href="${esc(jupLink(r.m))}" target="_blank" rel="noopener noreferrer" title="Opens Jupiter. xScanner never trades for you." data-noopen>Jup</a><a href="${esc(axLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Ax</a><a href="${esc(phLink(r))}" target="_blank" rel="noopener noreferrer" data-noopen>Ph</a></span>${pulseQBuyOn()?`<button type="button" class="pqbuy" data-qbuy="${esc(r.m)}" data-sym="${esc(symOf(r))}" data-px="${r.px||''}" data-col="${col}" data-noopen title="Instant paper buy (simulation only)">⚡ ${typeof solMark==='function'?solMark():''} ${pulseQBuyAmt(col)}</button>`:''}</div>
      <div class="psub"><span class="page" data-cr="${r.cr||''}" data-mg="${r.mg||''}" data-col="${col}">${ageS(r.cr?now()-r.cr:null)}</span>${soc?`<span class="psoc">${soc}</span>`:''}${r.h!=null?`<span class="pholds" title="Holders">${r.h.toLocaleString()}</span>`:''}${r.pc5!=null?` ${pc1(r.pc5)}`:''}</div>
      <div class="pchips"><span class="chip ${chipCls(t10,20,35)}" title="Top 10 holders share (excluding the pool)">10 ${pTxt(t10,0)}</span><span class="chip ${chipCls(r.dv,3,10)}" title="Dev wallet holding">D ${pTxt(r.dv,1)}</span><span class="chip ${snC}" title="Supply bought in the first blocks after launch">S ${snTxt}</span><span class="chip ${bundC}" title="Bundle: RugCheck insider clusters or 4+ txs in one block">B ${bundTxt}</span></div>
   </div>
@@ -175,7 +180,7 @@ function skelRows(n){return Array.from({length:n},()=>`<div class="prow skel-row
 function renderAll(){if(view==='trend'){trendRender();P.first=false;return}for(const c of ['new','final','migrated'])renderCol(c);paintStars();P.first=false}
 document.addEventListener('click',e=>{const row=e.target.closest('.prow[data-m]');if(!row)return;
   const cp=e.target.closest('[data-cp]');if(cp){e.stopPropagation();copyCa(cp.dataset.cp,cp);return}
-  const qb=e.target.closest('[data-qbuy]');if(qb){e.preventDefault();e.stopPropagation();if(window.paperQuickBuy)window.paperQuickBuy({mint:qb.dataset.qbuy,symbol:qb.dataset.sym,name:'',px:qb.dataset.px?+qb.dataset.px:null});return}
+  const qb=e.target.closest('[data-qbuy]');if(qb){e.preventDefault();e.stopPropagation();const amt=pulseQBuyAmt(qb.dataset.col);if(window.paperQuickBuy)window.paperQuickBuy({mint:qb.dataset.qbuy,symbol:qb.dataset.sym,name:'',px:qb.dataset.px?+qb.dataset.px:null,sol:amt});return}
   if(e.target.closest('[data-star],[data-noopen],a,.psoc,.pqbuy'))return;
   openToken(row.dataset.m)});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.classList&&e.target.classList.contains('prow'))openToken(e.target.dataset.m)});
@@ -272,13 +277,19 @@ function tokSkeleton(m,r){
     <div id="tkLinks" class="tk-links"></div><span id="tkCurve"></span></div>
   <div class="tk-grid"><div class="tk-main">
     <div class="tk-chart">${chartBlockHTML()}</div>
-    <div class="tk-tabs"><div class="tfs" id="tkTabs" role="tablist"><button data-t="trades" class="on">Trades</button><button data-t="positions">Positions</button><button data-t="holders">Holders</button><button data-t="traders">Top traders</button><button data-t="dev">Dev tokens</button><button data-t="security">Security</button></div><div id="tkPane" class="tk-pane"><div class="skel" style="height:140px"></div></div></div>
+    <div class="tk-tabs"><div class="tfs" id="tkTabs" role="tablist"><button data-t="trades" class="on">Trades</button><button data-t="orders">Orders</button><button data-t="positions">Positions</button><button data-t="holders">Holders</button><button data-t="traders">Top traders</button><button data-t="dev">Dev tokens</button><button data-t="security">Security</button></div><div id="tkPane" class="tk-pane"><div class="skel" style="height:140px"></div></div></div>
    </div><aside class="tk-side"><div id="tkMini" class="tk-mini"></div><div class="card" id="tkInfo"><h3>Token info</h3><div class="skel" style="height:160px"></div></div><div class="card" id="tkSec"><h3>Security</h3><div class="skel" style="height:160px"></div></div><div class="card" id="tkStory"><h3>Our read</h3><div class="skel" style="height:80px"></div></div></aside></div>
   <div class="disc sr-nfa" role="note"><b>Not financial advice.</b> Data is public and can be wrong or late. xScanner is read-only: the buttons above open other sites in a new tab; we never hold keys or place orders.</div>`}
 const ma0=a=>!a||!a.known?'—':a.disabled?'<span class="up">Disabled</span>':'<b class="dn">ENABLED</b>'+(a.who?' <code class="addr">'+esc(shortCa(a.who))+'</code>':'');
 function stat(l,v,sub){return `<div class="tks"><span>${l}</span><b>${v}</b>${sub?`<small>${sub}</small>`:''}</div>`}
 function tokPaint(d){
-  TK.cur=d;const mk=d.market||{},sc=d.security||{},cv=d.curve;
+  TK.cur=d;
+  if(TK.holdersMint!==d.mint){TK.holdersLock=null;TK.holdersMint=d.mint}
+  if(d.security&&d.security.holders!=null){
+    if(TK.holdersLock==null||TK.holdersLock.source===d.security.holders_source){TK.holdersLock={n:d.security.holders,source:d.security.holders_source||'jupiter'}}
+    else d.security.holders=TK.holdersLock.n;
+  }else if(TK.holdersLock){d.security=d.security||{};d.security.holders=TK.holdersLock.n}
+const mk=d.market||{},sc=d.security||{},cv=d.curve;
   const age=mk.created?ageS(now()-mk.created):'—';
   const sec=sc.top10_pct;
   const cvEl=cv&&cv.progress!=null?`<span class="cvpill ${cv.complete||cv.progress>=100?'done':''}" title="${esc(cv.note||'Bonding curve')}"><i style="width:${Math.min(100,cv.progress)}%"></i><em>${cv.complete||cv.progress>=100?'migrated':cv.progress.toFixed(0)+'%'}</em></span>`:'';
@@ -351,6 +362,7 @@ function tkPane(){
   const pane=$('#tkPane');if(!pane)return;const d=TK.cur;const t=TK.tab;
   $$('#tkTabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
   if(t==='trades')return tapePaint();
+  if(t==='orders')return paintOrders();
   if(t==='positions'){
     const mint=d&&d.mint, snap=window.paperPosition?window.paperPosition(mint):null;
     const pos=snap&&snap.pos, row=snap&&snap.row;
@@ -386,7 +398,8 @@ function tapePaint(){
   const pane=$('#tkPane');if(!pane||TK.tab!=='trades')return;const tr=TK.tape;
   if(!tr){pane.innerHTML='<div class="skel" style="height:160px"></div>';return}
   if(!tr.available){pane.innerHTML=`<p class="muted"><b>Trades tape unavailable</b> — ${esc(tr.reason||'the free trades feed is busy')}. Retrying every 10 s.</p>`;return}
-  pane.innerHTML=`<div class="tablewrap tape"><table class="tkt"><thead><tr><th>Age</th><th>Side</th><th>USD</th><th>Price</th><th>Wallet</th><th></th></tr></thead><tbody>${tr.trades.slice(0,50).map(x=>`<tr class="${TK.seen.has(x.sig)?'':'fresh'} ${x.k==='buy'?'b':'s'}"><td>${ageS(now()-x.t)}</td><td class="${x.k==='buy'?'up':'dn'}">${x.k}</td><td>${usd(x.usd)}</td><td>${x.px?fmtPx(x.px):'—'}</td><td><code>${esc(shortCa(x.w||''))}</code></td><td><a href="https://solscan.io/tx/${esc(x.sig)}" target="_blank" rel="noopener noreferrer" title="Open the transaction">↗</a></td></tr>`).join('')}</tbody></table></div><p class="muted" style="font-size:11px">Last ${tr.n_seen} trades GeckoTerminal reports for this pool (refreshes every 10 s)${tr.stale?' · <b>delayed: '+esc(tr.stale_reason||'')+'</b>':''}. Not every on-chain trade is included.</p>`;
+  const foot=tr.note?esc(tr.note):`Last ${tr.n_seen} trades GeckoTerminal reports for this pool (refreshes every 10 s)`;
+  pane.innerHTML=`<div class="tablewrap tape"><table class="tkt"><thead><tr><th>Age</th><th>Side</th><th>USD</th><th>Price</th><th>Wallet</th><th></th></tr></thead><tbody>${tr.trades.slice(0,50).map(x=>`<tr class="${TK.seen.has(x.sig)?'':'fresh'} ${x.k==='buy'?'b':'s'}"><td>${ageS(now()-x.t)}</td><td class="${x.k==='buy'?'up':'dn'}">${x.k}</td><td>${usd(x.usd)}</td><td>${x.px?fmtPx(x.px):'—'}</td><td><code>${esc(shortCa(x.w||''))}</code></td><td><a href="https://solscan.io/tx/${esc(x.sig)}" target="_blank" rel="noopener noreferrer" title="Open the transaction">↗</a></td></tr>`).join('')}</tbody></table></div><p class="muted" style="font-size:11px">${foot}${tr.stale?' · <b>delayed: '+esc(tr.stale_reason||'')+'</b>':''}. Not every on-chain trade is included.</p>`;
   tr.trades.forEach(x=>TK.seen.add(x.sig))}
 async function tapePoll(){
   const d=TK.cur;if(!d||!d.pool||document.hidden||view!=='token')return;const seq=TK.seq;
@@ -499,3 +512,56 @@ paintStars();watchPoll(true);setInterval(()=>watchPoll(false),15000);
   if(isTok){route()}
   else{const h=(window.__h0||location.hash||'#pulse').slice(1);const v=(h in loaders)?h:'pulse';window.show(v);if(view==='pulse'&&v==='pulse'){/* started by show */}}})();
 })();
+
+
+function paintTickers(prices){
+  const el=document.getElementById('dockTickers');if(!el||!prices)return;
+  el.innerHTML=['BTC','ETH','SOL','BNB'].map(k=>{
+    const px=prices[k];if(!(px>0))return `<span class="dtk">${k} —</span>`;
+    const txt=px>=100?px.toLocaleString('en-US',{maximumFractionDigits:0}):px.toLocaleString('en-US',{maximumFractionDigits:2});
+    return `<span class="dtk ${k.toLowerCase()}"><b>${k}</b> $${txt}</span>`;
+  }).join('');
+  if(prices.SOL)paintSol(prices.SOL);
+}
+async function pollTickers(){
+  try{
+    const j=await (await fetch('/api/tickers',{cache:'no-store'})).json();
+    if(j&&j.prices)paintTickers(j.prices);
+  }catch(e){}
+}
+if(!window._tickerTimer){pollTickers();window._tickerTimer=setInterval(pollTickers,15000);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pollTickers()})}
+
+
+function bindColHeads(){
+  document.querySelectorAll('.pcol [data-colamt]').forEach(inp=>{
+    if(inp.dataset.bound)return;inp.dataset.bound='1';
+    inp.addEventListener('change',()=>{const v=+inp.value;if(v>0){try{localStorage.setItem('xs_pulse_qbuy_amt_v1',String(v));localStorage.setItem('xs_col_amt_'+inp.closest('.pcol').dataset.c,String(v))}catch(e){}}bustPulseRows();if(typeof renderAll==='function')renderAll()});
+  });
+  document.querySelectorAll('.pcol [data-colp]').forEach(btn=>{
+    if(btn.dataset.bound)return;btn.dataset.bound='1';
+    btn.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();
+      const col=btn.closest('.pcol').dataset.c;const inp=btn.closest('.pcol').querySelector('[data-colamt]');
+      if(inp){inp.value=btn.dataset.colp;inp.dispatchEvent(new Event('change'))}});
+  });
+  document.querySelectorAll('.pcol [data-colq]').forEach(inp=>{
+    if(inp.dataset.bound)return;inp.dataset.bound='1';
+    inp.addEventListener('input',()=>{const q=(inp.value||'').trim().toLowerCase();const col=inp.closest('.pcol');
+      col.querySelectorAll('.prow').forEach(row=>{
+        const lab=(row.getAttribute('aria-label')||row.textContent||'').toLowerCase();
+        row.classList.toggle('col-hide',q&&!lab.includes(q));
+      });
+    });
+  });
+}
+document.addEventListener('DOMContentLoaded',bindColHeads);
+
+function paintOrders(){
+  const pane=document.getElementById('tkPane');if(!pane||(typeof TK!=='undefined'&&TK.tab!=='orders'))return;
+  const mint=TK.cur&&TK.cur.mint;
+  const ords=(window.PB&&PB.acct&&PB.acct.orders)||[];
+  const mine=ords.filter(o=>!mint||o.mint===mint);
+  if(!mine.length){pane.innerHTML='<p class="muted">No open paper limit orders for this token. Limits are a simulation only.</p>';return}
+  pane.innerHTML='<div class="tablewrap"><table class="tkt"><thead><tr><th>Side</th><th>Trigger</th><th>Size</th><th>Status</th></tr></thead><tbody>'+
+    mine.map(o=>`<tr><td class="${o.side==='buy'?'up':'dn'}">${o.side}</td><td>${o.trigger_px||o.px||'—'}</td><td>${o.sol||o.pct||'—'}</td><td>${o.status||'open'}</td></tr>`).join('')+
+    '</tbody></table></div><p class="muted" style="font-size:11px">Paper limit orders only. Nothing is sent on-chain.</p>';
+}
