@@ -132,6 +132,7 @@ async function signedOut(clear){
   S.user=null;S.dirty={};Object.values(S.timers).forEach(clearTimeout);clearInterval(S.pullT);
   if(clear){Object.keys(KEYKIND).forEach(k=>{try{localStorage.removeItem(k)}catch(_){}});try{localStorage.removeItem(MARK)}catch(_){}snapshot();if(window.XS_reload)window.XS_reload()}
   S.state='guest';await loadMe();paint();
+  try{window.paperOnAuth&&window.paperOnAuth(S.user)}catch(e){}
 }
 async function signOut(){
   try{await api('POST','/api/auth/logout',{})}catch(e){}
@@ -172,5 +173,6 @@ window.XS_account={state:()=>({user:S.user,state:S.state,storage:S.storage})};
   snapshot();paint();
   const {now}=await loadMe();paint();
   if(now){startPolling();await pull();paint()}
+  try{window.paperOnAuth&&window.paperOnAuth(S.user)}catch(e){}
 })();
 })();

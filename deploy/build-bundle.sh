@@ -6,7 +6,7 @@ set -euo pipefail
 SRC=/workspace/platform
 OUT=${OUT:-/workspace/xscanner-deploy}
 mkdir -p "$OUT/static/vendor" "$OUT/data/img" "$OUT/deploy/data"
-cp -p "$SRC"/{app.py,auth.py,bundle.py,confidence.py,story.py,pricehist.py,seo.py,accounts.py,pulse.py,trader.py,tokenpage.py,sol_rpc.py,net.py,live.py,scan_runner.py,lookup.py,chart.py,images.py,xfeed_ingest.py,render.yaml,requirements.txt} "$OUT/"
+cp -p "$SRC"/{app.py,auth.py,bundle.py,confidence.py,story.py,pricehist.py,seo.py,accounts.py,pulse.py,trader.py,tokenpage.py,sol_rpc.py,net.py,live.py,scan_runner.py,lookup.py,chart.py,images.py,xfeed_ingest.py,papertrade.py,paperbook.py,render.yaml,requirements.txt} "$OUT/"
 # guard: every local module the app imports must be in the bundle (a missing one crashes the deploy at start-up)
 python3 - "$SRC" "$OUT" <<'PY' || { echo "ABORT: a local module imported by the app is missing from the bundle"; exit 1; }
 import ast, os, sys

@@ -152,7 +152,7 @@ def _me_payload(request: Request) -> dict[str, Any]:
     }
 
 
-_PRIVATE = ("/api/auth/", "/api/user/", "/api/me", "/login", "/logout", "/auth/")
+_PRIVATE = ("/api/auth/", "/api/user/", "/api/me", "/api/paper/book", "/login", "/logout", "/auth/")
 
 
 class AuthGateMiddleware(BaseHTTPMiddleware):

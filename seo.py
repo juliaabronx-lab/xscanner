@@ -26,6 +26,8 @@ ENDPOINTS = [
     ("/api/narratives", "JSON: X narratives and themes for the coins in the scan."),
     ("/api/risk", "JSON: risk-radar axes (paid shill, copycat, bundle, dump, rug, thin liquidity) per coin."),
     ("/api/health", "JSON: liveness, uptime, scan loop status."),
+    ("/#book", "Personal paper-trading book (JavaScript, simulation only: play SOL, no wallet, no real orders). Separate from /api/paper, the shared scanner RM ledger."),
+    ("/api/paper/book", "JSON: the signed-in user's play-money paper book, or an empty template when signed out. No prices are fetched here."),
     ("/api/docs", "OpenAPI / Swagger UI for the JSON API."),
 ]
 

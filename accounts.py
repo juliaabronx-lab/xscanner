@@ -135,6 +135,8 @@ class DB:
             pw_hash TEXT NOT NULL, created_at BIGINT NOT NULL, last_login BIGINT, pw_changed BIGINT NOT NULL, disabled INTEGER NOT NULL DEFAULT 0)""")
         self.run("""CREATE TABLE IF NOT EXISTS user_data (
             user_id BIGINT NOT NULL, kind TEXT NOT NULL, body TEXT NOT NULL, ver BIGINT NOT NULL, updated_at BIGINT NOT NULL, PRIMARY KEY (user_id, kind))""")
+        self.run("""CREATE TABLE IF NOT EXISTS paper_books (
+            user_id BIGINT PRIMARY KEY, body TEXT NOT NULL, updated_at BIGINT NOT NULL)""")
         self.ready = True
 
 
@@ -338,6 +340,7 @@ def create_user(username: str, password: str, email: str = "") -> dict:
 
 def delete_user(uid: int) -> None:
     db().run("DELETE FROM user_data WHERE user_id = ?", (int(uid),))
+    db().run("DELETE FROM paper_books WHERE user_id = ?", (int(uid),))
     db().run("DELETE FROM users WHERE id = ?", (int(uid),))
 
 
@@ -409,6 +412,43 @@ def put_data(uid: int, kind: str, body: Any) -> dict:
             if type(e).__name__ not in ("IntegrityError", "UniqueViolation"): raise
             db().run("UPDATE user_data SET body = ?, ver = ?, updated_at = ? WHERE user_id = ? AND kind = ?", (raw, ver + 1, t, int(uid), kind)); ver += 1
     return {"v": ver, "updated": t, "body": clean}
+
+
+
+# ------------------------------------------------------------------------------------------------ paper book (simulation only; same DB as accounts)
+
+PAPER_MAX_BODY = 200_000
+
+
+def get_paper(uid: int):
+    """The signed-in user's play-money book, or None. Body is already JSON-object shaped."""
+    row = db().run("SELECT body FROM paper_books WHERE user_id = ?", (int(uid),), "one")
+    if not row:
+        return None
+    try:
+        raw = json.loads(row[0])
+    except Exception:
+        return None
+    return raw if isinstance(raw, dict) else None
+
+
+def put_paper(uid: int, account: dict) -> None:
+    if not isinstance(account, dict):
+        raise ValueError("paper book must be an object")
+    raw = json.dumps(account, separators=(",", ":"), ensure_ascii=False)
+    if len(raw) > PAPER_MAX_BODY:
+        raise ValueError("That paper book is too large.")
+    t = _now()
+    cur = db().run("SELECT user_id FROM paper_books WHERE user_id = ?", (int(uid),), "one")
+    if cur:
+        db().run("UPDATE paper_books SET body = ?, updated_at = ? WHERE user_id = ?", (raw, t, int(uid)))
+        return
+    try:
+        db().run("INSERT INTO paper_books (user_id, body, updated_at) VALUES (?,?,?)", (int(uid), raw, t))
+    except Exception as e:
+        if type(e).__name__ not in ("IntegrityError", "UniqueViolation"):
+            raise
+        db().run("UPDATE paper_books SET body = ?, updated_at = ? WHERE user_id = ?", (raw, t, int(uid)))
 
 
 # ------------------------------------------------------------------------------------------------ session / CSRF helpers

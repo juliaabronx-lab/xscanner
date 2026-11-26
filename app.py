@@ -20,6 +20,8 @@ import story as st_
 import pulse
 import trader as trd
 import tokenpage as tkp
+import paperbook
+import accounts as acc
 from fastapi.responses import Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -651,6 +653,40 @@ def paper():
         "started": L.get("started"), "ends": L.get("ends"), "last_run": L.get("last_run"), "data_as_of": L.get("data_as_of") or meta.get("mtime"), "last_run_note": L.get("last_run_note"),
         "candidates_seen": (L.get("candidates_seen") or [])[-60:][::-1], "sources": {"ledger": meta},
     }
+
+
+
+# ---------------------------------------------------------------- Personal paper book (simulation only; does not replace the /api/paper RM ledger)
+@app.get("/api/paper/book")
+def paper_book(request: Request):
+    """The signed-in user's play-money book, or an empty template when signed out.
+
+    Signed-out books stay in the browser. Prices are not fetched here.
+    """
+    return JSONResponse(paperbook.public_state(auth.request_user(request)), headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/paper/book/act")
+async def paper_book_act(request: Request):
+    """Apply one paper action (deposit, buy, sell, limit, cancel, mark, reset).
+
+    CSRF required. The fill price comes from caches already filled by the token
+    page, quotes and Pulse. This route does not call DexScreener, GeckoTerminal or Jupiter.
+    """
+    if not acc.csrf_ok(request):
+        return JSONResponse({"ok": False, "error": "Bad or missing CSRF token.", "csrf_failed": True},
+                            status_code=403, headers={"Cache-Control": "no-store"})
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Expected a JSON object.")
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Expected a JSON object.")
+    try:
+        out = paperbook.handle_act(auth.request_user(request), body, ip=_client_ip(request))
+    except paperbook.BadRequest as e:
+        raise HTTPException(e.status, e.msg)
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 
 # ---------------------------------------------------------------- Paste-CA lookup (read-only, allowed in PUBLIC_READONLY)

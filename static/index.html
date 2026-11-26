@@ -10,9 +10,10 @@
 <link rel="alternate" type="text/html" href="/text" title="Plain HTML view of the latest scan">
 <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
 <link rel="apple-touch-icon" href="/static/logo.svg">
-<link rel="stylesheet" href="/static/style.css?v=fix10">
-<link rel="stylesheet" href="/static/trader.css?v=fix10">
-<link rel="stylesheet" href="/static/terminal.css?v=fix10">
+<link rel="stylesheet" href="/static/style.css?v=fix11">
+<link rel="stylesheet" href="/static/trader.css?v=fix11">
+<link rel="stylesheet" href="/static/terminal.css?v=fix11">
+<link rel="stylesheet" href="/static/paper.css?v=fix11">
 <link rel="prefetch" href="/static/vendor/lightweight-charts.js?v=4.2.3" as="script">
 </head><body>
 <noscript><div style="max-width:760px;margin:24px auto;padding:16px;font:16px/1.5 system-ui,sans-serif;color:#eee;background:#111;border:1px solid #444;border-radius:8px">
@@ -28,6 +29,7 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
     <button data-v="trend">Trending</button>
     <button data-v="watch" id="wNav">Watchlist <span id="wNavBadge" class="nbadge hidden"></span></button>
     <button data-v="wallets">Wallets</button>
+    <button data-v="book">Paper</button>
     <button data-v="feed" id="scNav">Scanner <span id="xNavBadge" class="nbadge hidden"></span></button>
   </nav>
   <form id="searchForm" class="tbsearch" autocomplete="off" role="search">
@@ -43,6 +45,13 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
     <div id="authBox" class="authbox"></div>
   </div>
 </header>
+<button type="button" id="paperBar" class="paperbar" hidden>
+  <span class="pb-tag">PAPER</span>
+  <b id="pbBarCash">Paper</b>
+  <span id="pbBarU"></span>
+  <span id="pbBarR"></span>
+  <small id="pbBarHint">simulation · not advice</small>
+</button>
 <div id="searchMsg" class="searchmsg hidden"></div>
 <div id="banner" class="banner hidden"></div>
 <div id="scHead" class="schead hidden">
@@ -159,11 +168,17 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
   </section>
 
   <section id="v-paper" class="view hidden">
+    <div class="disc" role="note"><b>Scanner ledger.</b> This tab is the shared RM paper book that ships with the scan snapshot. Your own play-money book (deposit, buy, sell, limits) is <button type="button" class="linkbtn" id="toMyPaper">My paper</button>.</div>
     <div id="paperKpis" class="stats inner"></div>
     <div class="grid2"><div class="card"><h3>Cumulative realised P&amp;L (RM)</h3><div id="curve"></div></div>
     <div class="card"><h3>Rules</h3><p id="rules" class="muted"></p><h3>Last run</h3><p id="lastRun" class="muted"></p></div></div>
     <div class="card"><h3>Closed paper trades</h3><div class="tablewrap"><table id="trades"></table></div></div>
     <div class="card"><h3>Candidate decisions (latest 60)</h3><div class="tablewrap"><table id="cands"></table></div></div>
+  </section>
+
+  <section id="v-book" class="view hidden">
+    <div class="disc" role="note"><b>Paper trading. Not financial advice.</b> Balances are play SOL. xScanner never connects a wallet, never asks for a seed phrase or private key, and never sends a transaction. Fills are simulated from prices this site already loaded, plus slippage, a priority fee and a platform fee.</div>
+    <div id="bookApp"></div>
   </section>
 
   <section id="v-xfeed" class="view hidden">
@@ -190,12 +205,13 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
 
 <aside id="drawer" class="drawer"><button id="dClose" class="x">✕</button><div id="dBody"></div></aside>
 <div id="scrim" class="scrim"></div>
-<footer><b>Not financial advice.</b> Read-only. No wallet keys, signing, trading or posting. Score ≥65 worth a look · 50–64 watch · &lt;50 skip. Juliaa gives the final yes.</footer>
+<footer><b>Not financial advice.</b> Read-only analysis. No wallet keys, signing or real trades. Paper buys and sells are a simulation. Score ≥65 worth a look · 50–64 watch · &lt;50 skip. Juliaa gives the final yes.</footer>
 <script>window.__h0=location.hash</script>
-<script src="/static/motion.js?v=fix10"></script>
-<script src="/static/chart.js?v=fix10"></script>
-<script src="/static/app.js?v=fix10"></script>
-<script src="/static/xfeed.js?v=fix10"></script>
-<script src="/static/trader.js?v=fix10"></script>
-<script src="/static/sync.js?v=fix10"></script>
+<script src="/static/motion.js?v=fix11"></script>
+<script src="/static/chart.js?v=fix11"></script>
+<script src="/static/app.js?v=fix11"></script>
+<script src="/static/xfeed.js?v=fix11"></script>
+<script src="/static/trader.js?v=fix11"></script>
+<script src="/static/sync.js?v=fix11"></script>
+<script src="/static/paper.js?v=fix11"></script>
 </body></html>
