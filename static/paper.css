@@ -90,52 +90,92 @@
 .pb-buy,.pb-sell,.pb-limit{width:100%;border:0;border-radius:6px;padding:10px 12px;font:inherit;font-weight:700;font-size:14px;cursor:pointer}
 .pb-tabs button.on{border-color:transparent}
 
-/* Instant Paper Trade card — optional, paper-only, Axiom-like floating chrome */
-.it-card{position:fixed;z-index:40;width:320px;max-width:calc(100vw - 16px);background:#13161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.55);color:#c8c9d1;font:12px/1.35 var(--font-sans);overflow:hidden;user-select:none}
+/* One floating trade panel. Desktop only — mobile is a bottom sheet below. */
+button.linkbtn{text-decoration:none}
+#toasts{left:50%;right:auto;top:56px;bottom:auto;transform:translateX(-50%);align-items:center;z-index:80}
+.it-card button.linkbtn,#bookApp button.linkbtn,.pb button.linkbtn{border:1px solid #2d2f36;border-radius:999px;padding:3px 9px;background:#191a24;color:#d4d4d4}
+.it-card button.linkbtn:hover,#bookApp button.linkbtn:hover,.pb button.linkbtn:hover{color:#fff;border-color:#37d6bd}
+.it-card{position:fixed;z-index:40;width:290px;min-width:290px;max-width:420px;resize:horizontal;overflow:auto;background:rgb(25,26,36);border:1px solid #2d2f36;border-radius:6px;box-shadow:0 4px 24px rgba(0,0,0,.6);color:#d4d4d4;font:12px/1.35 Inter,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;user-select:none}
 .it-card.hidden{display:none}
-.it-head{display:flex;align-items:center;gap:6px;padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.08);cursor:grab;background:#16191f}
+.it-card.it-drag{transform:scale(1.03);opacity:.9}
+.it-head{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:grab;background:#1c1d27;border-bottom:1px solid #2d2f36}
 .it-head:active{cursor:grabbing}
-.it-tabs{display:flex;gap:2px;background:#0d0e11;border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:2px}
-.it-tabs button{background:none;border:0;color:#76798b;font:700 11px var(--font-sans);padding:3px 8px;border-radius:4px;cursor:pointer}
-.it-tabs button.on{background:#262b36;color:#f9f9f8}
-.it-head .pb-tag{margin-left:4px}
-.it-ico{margin-left:auto;background:none;border:0;color:#9a9cae;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:14px;line-height:1}
-.it-head .it-ico + .it-ico{margin-left:0}
-.it-ico:hover{background:#262b36;color:#f9f9f8}
-.it-edit{padding:8px 10px;border-bottom:1px solid #1e222b}
+.it-brand{font-size:13px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:#fff}
+.it-bal{display:inline-flex;align-items:center;gap:4px;margin-left:auto;font-size:13px;font-weight:600;color:#fff}
+.it-ico{background:none;border:0;color:#9ca3af;width:26px;height:26px;border-radius:6px;cursor:pointer;font-size:14px}
+.it-ico.on,.it-ico:hover{background:#262833;color:#fff}
+.it-gear{position:relative}
+.it-gearbox{position:absolute;right:0;top:28px;width:210px;z-index:5;background:#1c1d27;border:1px solid #2d2f36;border-radius:8px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.it-gearbox.hidden{display:none}
+.it-gearbox label{display:flex;justify-content:space-between;gap:8px;font-size:12px;margin:6px 0;color:#9ca3af}
+.it-gearbox input{width:72px;background:#191a24;border:1px solid #2d2f36;color:#fff;border-radius:6px;padding:3px 6px}
+.it-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:8px 10px 0}
+.it-tabs button{background:#191a24;border:1px solid #2d2f36;color:#9ca3af;border-radius:999px;padding:4px 0;font:600 12px Inter,sans-serif;cursor:pointer}
+.it-tabs button.on{color:#fff;border-color:#37d6bd}
+.it-edit{padding:8px 10px}
+.it-edit.hidden{display:none}
 .it-edit-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0}
-.it-edit-row input{width:100%;background:#0d0e11;border:1px solid #262b36;border-radius:6px;color:#f9f9f8;padding:4px 6px;font:12px var(--font-mono)}
-.it-buy,.it-sell{padding:8px 10px 6px;border-bottom:1px solid rgba(255,255,255,.08)}
-.it-rowlab{display:flex;align-items:center;gap:6px;margin-bottom:6px;color:#c8c9d1}
-.it-rowlab b{font-size:12px;color:#f9f9f8}
-.it-hold{margin-left:auto;font:11px var(--font-mono);color:#9a9cae}
-.it-presets{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
-.it-presets button{display:inline-flex;align-items:center;justify-content:center;gap:4px;height:28px;padding:0 4px;background:transparent;border-radius:6px;border:1px solid rgba(255,255,255,.08);font:600 11px var(--font-sans);cursor:pointer;color:#f9f9f8}
-.it-buy-presets button{border-color:rgba(47,227,172,.28);color:#2fe3ac}
-.it-buy-presets button:hover{background:rgba(47,227,172,.10);border-color:rgba(47,227,172,.5)}
-.it-sell-presets{grid-template-columns:repeat(4,1fr)}
-.it-sell-presets button{border-color:rgba(236,57,122,.28);color:#ec397a}
-.it-sell-presets button:hover{background:rgba(236,57,122,.10);border-color:rgba(236,57,122,.5)}
-.it-init{grid-column:1/-1;height:26px;margin-top:2px;border:1px solid rgba(236,57,122,.28)!important;font:600 11px var(--font-sans)!important}
-.it-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;font:11px var(--font-mono);color:#76798b}
-.it-speed{display:flex;border:1px solid #262b36;border-radius:6px;overflow:hidden}
-.it-speed button{background:#0d0e11;border:0;color:#9a9cae;font:700 10px var(--font-mono);padding:2px 7px;cursor:pointer}
-.it-speed button.on{background:#262b36;color:#f9f9f8}
-.it-foot{padding:0;background:#101318;border-top:1px solid rgba(255,255,255,.08)}
-.it-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;align-items:stretch}
-.it-kpi{padding:8px 7px 7px;border-right:1px solid rgba(255,255,255,.08);min-width:0}
-.it-kpi:last-child{border-right:0}
-.it-kpi span{display:block;font-size:10px;line-height:1.2;color:#76798b;font-weight:500;letter-spacing:.02em}
-.it-kpi b{display:block;margin-top:3px;font:600 11px/1.2 var(--font-mono);font-variant-numeric:tabular-nums;color:#f9f9f8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.it-kpi b.buy,.it-kpis .up,.it-kpi .up{color:#2fe3ac}
-.it-kpi b.sell,.it-kpis .dn,.it-kpi .dn{color:#ec397a}
-.it-kpi b.hold{color:#f9f9f8}
-.it-foot-l{display:flex;align-items:center;justify-content:space-between;padding:6px 10px 8px}
-.it-foot-l small{color:#76798b;font-size:10px;letter-spacing:.04em;text-transform:uppercase}
-.it-dep{display:flex;align-items:center;gap:6px;padding:0 10px 8px}
-.it-empty .it-buy-presets button,.it-empty .it-sell-presets button{opacity:.45}
+.it-edit-row input{width:100%;background:#191a24;border:1px solid #2d2f36;border-radius:8px;color:#fff;padding:4px 6px;font:12px Inter,sans-serif}
+.it-buy,.it-sell{padding:8px 10px 4px}
+.it-rowlab{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
+.it-rowlab b{font-size:13px;color:#fff}
+.it-hold{margin-left:auto;font-size:12px;color:#9ca3af}
+.it-mc{margin-left:auto;font-size:12px;color:#9ca3af}
+.it-presets{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.it-presets button{min-height:32px;border-radius:999px;background:#191a24;font:600 14px Inter,sans-serif;cursor:pointer}
+.it-buy-presets button{color:#37d6bd;border:1px solid rgba(55,214,189,.5)}
+.it-buy-presets button:hover{border-color:rgba(55,214,189,.85);background:rgba(55,214,189,.12)}
+.it-sell-presets button{color:#f04b92;border:1px solid rgba(240,75,146,.5)}
+.it-sell-presets button:hover{border-color:rgba(240,75,146,.85);background:rgba(240,75,146,.12)}
+.it-more{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;max-height:0;overflow:hidden;opacity:0;transition:max-height .4s cubic-bezier(.23,1,.32,1),opacity .4s}
+.it-buy:hover .it-more,.it-more:focus-within{max-height:48px;opacity:1;margin-top:6px}
+.it-meta{display:flex;justify-content:space-between;gap:8px;margin:6px 0 2px;font-size:12px;color:#9ca3af}
+.it-init{display:block;width:100%;margin:6px 0 2px;background:none;border:0;color:#f04b92;font:600 13px Inter,sans-serif;cursor:pointer;text-align:left;padding:0}
+.it-foot{border-top:1px solid #2d2f36;background:#1c1d27}
+.it-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.it-kpi{padding:8px 6px;min-width:0}
+.it-kpi span{display:block;font-size:11px;color:#9ca3af}
+.it-kpi b{display:block;margin-top:2px;font:600 12px Inter,sans-serif;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.it-kpi b.buy,.it-kpi .up{color:#37d6bd}
+.it-kpi b.sell,.it-kpi .dn{color:#f04b92}
+.it-lim{border-top:1px solid #2d2f36;padding:8px 10px 10px}
+.it-lim h4{margin:0 0 6px;font-size:12px;letter-spacing:.12em;color:#9ca3af}
+.it-lim .it-tabs{padding:0 0 8px}
+.it-lim input{width:100%;background:#191a24;border:1px solid #2d2f36;border-radius:8px;color:#fff;padding:6px 8px;margin:6px 0}
+.it-place{width:100%;border:0;border-radius:999px;padding:8px;font:700 14px Inter,sans-serif;cursor:pointer;background:#f04b92;color:#fff}
+.it-place.buy{background:#37d6bd;color:#04140a}
+#tkPaper{display:none!important}
+.pnl-card{position:fixed;z-index:35;left:50%;top:168px;transform:translateX(-50%);min-width:220px;padding:10px 16px 12px;border-radius:16px;background:rgba(20,21,28,.85);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(12px);box-shadow:0 8px 28px rgba(0,0,0,.45);color:#fff;font:12px Inter,sans-serif}
+.pnl-card.hidden{display:none}
+.pnl-row{display:flex;gap:22px}
+.pnl-row span{display:block;font-size:11px;letter-spacing:.14em;color:#9ca3af}
+.pnl-row b{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums}
+.pnl-row .up{color:#37d6bd}.pnl-row .dn{color:#f04b92}
+.pnl-pos{display:none;margin-top:8px}
+.pnl-card:hover .pnl-pos{display:block}
+.pnl-pos a,.pnl-pos button{color:#d4d4d4;font-size:12px}
+.pb-port{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.pb-port canvas{width:100%;height:88px;display:block}
+.bk-tabs{display:flex;gap:6px;margin:8px 0}
+.bk-tabs button{border:1px solid #2d2f36;background:#191a24;color:#d4d4d4;border-radius:999px;padding:4px 10px;cursor:pointer}
+.bk-tabs button.on{border-color:#37d6bd;color:#fff}
+.tokico{width:16px;height:16px;border-radius:50%;vertical-align:-3px;margin-right:4px;background:#262833}
+#pbBadges{position:absolute;inset:0;pointer-events:none;z-index:4;overflow:hidden}
+.pb-badge{position:absolute;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font:700 11px Inter,sans-serif;box-shadow:0 0 0 2px rgba(255,255,255,.25)}
+.pb-badge.b{background:#37d6bd}
+.pb-badge.s{background:#f04b92}
+.pb-bgs{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.pb-bgs button{width:36px;height:24px;border-radius:6px;border:1px solid #2d2f36;cursor:pointer;padding:0}
 @media(max-width:700px){
-  .it-card{width:min(360px,calc(100vw - 12px));left:6px!important;right:6px;top:auto!important;bottom:44px;max-height:calc(100vh - 96px);overflow:auto}
+  .it-card{left:0!important;right:0!important;top:auto!important;bottom:var(--dock-h,32px)!important;width:100%!important;min-width:0;max-width:none;max-height:calc(70vh - var(--dock-h,32px));resize:none;border-radius:16px 16px 0 0;z-index:45}
+  .it-card::before{content:"";display:block;width:42px;height:4px;border-radius:4px;background:#3a3d48;margin:8px auto 0}
+  .it-presets button{min-height:44px}
+  .pnl-card{top:auto;bottom:44px;left:12px;transform:none;min-width:0;padding:6px 10px}
+  .pnl-row b{font-size:16px}
+  .pnl-card .pnl-row span{display:none}
+  .pb-port{grid-template-columns:1fr}
+  .ptop{display:grid;grid-template-columns:minmax(0,1fr) 78px;align-items:center}
+  .ptop .pqbuy{grid-column:2;justify-self:end;width:72px}
 }
 
 /* Compact Axiom-style PnL calendar pop-out */
