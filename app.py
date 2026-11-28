@@ -63,6 +63,13 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "H
                    allow_credentials=False, max_age=3600)
 # Outermost: an /api request is interactive, so a background 429 does not make it wait.
 app.add_middleware(pace.UserPriorityMiddleware)
+# fix19 public-launch hardening (pure ASGI, SSE-safe): per-IP API rate limits, request-body caps, and security headers
+# (CSP / HSTS / nosniff / frame-ancestors / Referrer-Policy / Permissions-Policy) outermost so even a 429 or 413 carries them.
+import safety
+import legal
+app.add_middleware(safety.RateLimit)
+app.add_middleware(safety.BodyLimit)
+app.add_middleware(safety.SecurityHeaders)
 
 
 def load(path, default):
@@ -552,10 +559,10 @@ _BOOT = time.time()
 
 
 @app.get("/api/health")
-def health():
+def health(request: Request):
     _, _, _, meta = build_state()
     _, lmeta = load(LEDGER, {})
-    return {"ok": True, "uptime_s": int(time.time() - _BOOT), "started_at": datetime.fromtimestamp(_BOOT, MYT).isoformat(timespec="seconds"), "readonly": True, "public_readonly": PUBLIC_READONLY, "keepalive": dict(_KEEP), "sources": {**meta, "ledger": lmeta}, "scan": scan_state_public()}
+    return {"ok": True, "version": "fix19", "ip_source": safety.ip_from(request.headers, None)[1], "uptime_s": int(time.time() - _BOOT), "started_at": datetime.fromtimestamp(_BOOT, MYT).isoformat(timespec="seconds"), "readonly": True, "public_readonly": PUBLIC_READONLY, "keepalive": dict(_KEEP), "sources": {**meta, "ledger": lmeta}, "scan": scan_state_public()}
 
 
 @app.get("/api/summary")
@@ -699,6 +706,11 @@ def _client_ip(request: Request):
     # 127.0.0.1 and the public site shares one rate-limit bucket. Uvicorn's proxy-headers handling
     # would otherwise let a client pick its own "IP" via a fake X-Forwarded-For, so any request
     # carrying that header is put into a single shared "forwarded" bucket instead.
+    # fix19: on Render the visitor address comes from Cloudflare's CF-Connecting-IP (Render's edge overwrites it), so every
+    # public visitor gets their own bucket instead of sharing one "forwarded-header" bucket.
+    ip, src = safety.ip_from(request.headers, request.client.host if request.client else None)
+    if src == "cf":
+        return ip
     if request.headers.get("x-forwarded-for") or request.headers.get("forwarded"):
         return "forwarded-header"
     return request.client.host if request.client else "unknown"
@@ -842,7 +854,7 @@ def ohlcv(pool: str, tf: str = "5m", token: str = ""):
         return JSONResponse({"detail": e.msg}, status_code=e.status if e.status in (400, 404, 503) else 503,
                             headers={"Retry-After": "20"} if e.status not in (400, 404) else None)
     except Exception as e:
-        return JSONResponse({"detail": "Chart temporarily unavailable; retrying shortly.", "error": type(e).__name__}, status_code=503,
+        return JSONResponse({"detail": "Chart temporarily unavailable; retrying shortly."}, status_code=503,
                             headers={"Retry-After": "20"})
 
 
@@ -985,7 +997,24 @@ def _start_live():
 @app.exception_handler(Exception)
 async def _json_errors(request: Request, exc: Exception):
     """Every /api failure is JSON, never an HTML error page."""
-    return JSONResponse({"detail": "Internal error; please retry shortly.", "error": type(exc).__name__}, status_code=500)
+    import logging
+    logging.getLogger("xscanner").exception("unhandled error on %s", request.url.path)
+    if not request.url.path.startswith("/api/") and request.method in ("GET", "HEAD"):
+        return legal.error_page(500)
+    # No exception class names or stack traces to the client (they map the internals for an attacker).
+    return JSONResponse({"detail": "Internal error; please retry shortly."}, status_code=500)
+
+
+from starlette.exceptions import HTTPException as _StarletteHTTPException
+from fastapi.exception_handlers import http_exception_handler as _default_http_handler
+
+
+@app.exception_handler(_StarletteHTTPException)
+async def _friendly_http_errors(request: Request, exc: _StarletteHTTPException):
+    """Browsers get a friendly HTML 404 / 405 page; /api keeps its JSON {"detail": ...} body."""
+    if exc.status_code in (404, 405) and not request.url.path.startswith("/api/") and request.method in ("GET", "HEAD"):
+        return legal.error_page(exc.status_code)
+    return await _default_http_handler(request, exc)
 
 
 @app.get("/api/ingest/cache-export", include_in_schema=False)
@@ -1262,9 +1291,29 @@ def api_token(mint: str):
         raise HTTPException(429, "The token page is busy right now. Try again in a few seconds.")
     _tok_builds.append(now)
     try:
-        return JSONResponse(tkp.detail(mint), headers=_NOSTORE)
-    except Exception as e:
-        raise HTTPException(502, "Token data is unavailable right now (%s). Try again in a moment." % type(e).__name__)
+        return JSONResponse(_clean_token(tkp.detail(mint)), headers=_NOSTORE)
+    except Exception:
+        raise HTTPException(502, "Token data is unavailable right now. Try again in a moment.")
+
+
+def _clean_token(d):
+    """fix19: names / symbols / links on the token page come from whoever launched the coin. Strip markup characters and
+    keep only plain https links (no javascript: or data: URLs)."""
+    if not isinstance(d, dict): return d
+    if "name" in d: d["name"] = safety.clean_text(d.get("name"), 64)
+    if "symbol" in d: d["symbol"] = safety.clean_text(d.get("symbol"), 24)
+    if "img" in d: d["img"] = safety.clean_url(d.get("img"))
+    soc = d.get("socials")
+    if isinstance(soc, dict):
+        d["socials"] = {k: safety.clean_url(v) for k, v in soc.items()}
+    m = d.get("market")
+    if isinstance(m, dict):
+        if "ds_url" in m: m["ds_url"] = safety.clean_url(m.get("ds_url"))
+        if "quote" in m: m["quote"] = safety.clean_text(m.get("quote"), 16)
+    links = d.get("links")
+    if isinstance(links, list):
+        d["links"] = [l for l in links if isinstance(l, dict) and safety.clean_url(l.get("url"))]
+    return d
 
 
 @app.get("/api/trades/{pool}")
@@ -1383,6 +1432,9 @@ def api_tickers():
         return JSONResponse({"ok": False, "prices": {}, "t": int(now)}, headers=_NOSTORE)
     _ticker_cache["t"], _ticker_cache["data"] = now, data
     return JSONResponse(data, headers=_NOSTORE)
+
+
+legal.install(app)
 
 
 @app.api_route("/token/{mint}", methods=["GET", "HEAD"], include_in_schema=False)

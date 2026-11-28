@@ -34,7 +34,7 @@ const addrCell=(a,kind='account')=>a?`<code class="addr" title="${esc(a)}">${esc
 const addrBtns=(a,kind='account')=>a?`<button class="cpy mini" data-cp="${esc(a)}" title="Copy">⧉</button><a class="xl" href="https://solscan.io/${kind}/${esc(a)}" target="_blank" rel="noopener noreferrer" title="Open in Solscan">Solscan ↗</a>`:'';
 const dateS=t=>t?new Date(t*1000).toLocaleString('en-GB',{timeZone:'Asia/Kuala_Lumpur',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',second:'2-digit'})+' MYT':'—';
 const tokImgDirect=(r,cls='pimgi')=>{const u=r.img&&hostOk(r.img)?r.img:imgUrl(r.m,symOf(r));
-  return `<img class="${cls}" src="${esc(u)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="if(!this.dataset.f){this.dataset.f=1;this.src='${imgUrl(r.m,symOf(r))}'}else{this.style.visibility='hidden'}">`};
+  return `<img class="${cls}" src="${esc(u)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-fb="${esc(imgUrl(r.m,symOf(r)))}" onerror="if(!this.dataset.f){this.dataset.f=1;this.src=this.dataset.fb}else{this.style.visibility='hidden'}">`};
 const jupLink=m=>'https://jup.ag/swap/SOL-'+m;
 const axLink=(r)=>'https://axiom.trade/meme/'+(r.p||r.m)+'?chain=sol';
 const phLink=(r)=>'https://photon-sol.tinyastro.io/en/lp/'+(r.p||r.m);
@@ -415,7 +415,7 @@ async function tokLoad(m){
       if(first||!CH.coin){CH.h=chartH();mountChart({pool:d.pool,mint:d.mint,symbol:d.symbol})}
       if(first){tapePoll();clearInterval(TK.tapeTimer);TK.tapeTimer=setInterval(tapePoll,10000)}
       clearTimeout(TK.detailTimer);TK.detailTimer=setTimeout(()=>{if(view==='token'&&seq===TK.seq)tokLoad(m)},(d.pending||[]).length?4000:12000);return}
-    catch(e){if(i===2){$('#tokBody').innerHTML=`<div class="card"><h3>Could not load this token</h3><p class="muted">${esc(e.message)}</p><p><button class="ghost" onclick="openToken('${esc(m)}')">Retry</button></p></div>`;return}await sleep(1500)}}}
+    catch(e){if(i===2){$('#tokBody').innerHTML=`<div class="card"><h3>Could not load this token</h3><p class="muted">${esc(e.message)}</p><p><button class="ghost" data-m="${esc(m)}" onclick="openToken(this.dataset.m)">Retry</button></p></div>`;return}await sleep(1500)}}}
 async function lookupLoad(m){
   const seq=TK.seq;
   for(let i=0;i<4&&seq===TK.seq;i++){
@@ -517,7 +517,7 @@ paintStars();watchPoll(true);setInterval(()=>watchPoll(false),15000);
 function paintTickers(prices){
   const el=document.getElementById('dockTickers');if(!el||!prices)return;
   el.innerHTML=['BTC','ETH','SOL','BNB'].map(k=>{
-    const px=prices[k];if(!(px>0))return `<span class="dtk">${k} —</span>`;
+    const px=prices[k];if(!(px>0))return `<span class="dtk ${k.toLowerCase()}">${k} —</span>`;
     const txt=px>=100?px.toLocaleString('en-US',{maximumFractionDigits:0}):px.toLocaleString('en-US',{maximumFractionDigits:2});
     return `<span class="dtk ${k.toLowerCase()}"><b>${k}</b> $${txt}</span>`;
   }).join('');

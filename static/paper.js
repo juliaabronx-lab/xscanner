@@ -41,7 +41,18 @@ function fillMsg(f){if(!f)return'Paper book updated.';
 
 async function refreshCsrf(){
   try{const d=await (await fetch('/api/auth/status',{credentials:'same-origin'})).json();if(d.csrf)PB.csrf=d.csrf;return d}catch(e){return null}}
-PB.csrfReady=refreshCsrf();
+// fix19: reuse the page's single /api/me bootstrap (chart.js) so one fresh session = one CSRF token (no first-click 403)
+PB.csrfReady=window.xsMe?window.xsMe().then(({d})=>{if(d&&d.csrf)PB.csrf=d.csrf;return d}).catch(()=>refreshCsrf()):refreshCsrf();
+/* fix19: right after page load the tick cache can be empty. Fetch one live quote instead of failing with
+   "Live price is not available yet". */
+async function ensurePx(mint){
+  let px=livePx(mint);
+  if(px>0&&PB.sol>0)return px;
+  try{const r=await fetch('/api/tick/'+encodeURIComponent(mint),{credentials:'same-origin',cache:'no-store'});const j=await r.json().catch(()=>({}));
+    if(j&&+j.px>0){PB.quotes[mint]={px:+j.px,t:Date.now()/1000};if(j.sol_usd>0)PB.sol=+j.sol_usd;px=+j.px}}catch(e){}
+  if(!(PB.sol>0)&&window.XS_SOL>0)PB.sol=+window.XS_SOL;
+  return px||null;
+}
 async function act(payload,opts,retried){
   opts=opts||{};
   const body=Object.assign({},payload);
@@ -354,6 +365,8 @@ function bindCal(el){
   if(CAL.bound)return;CAL.bound=true;
   document.addEventListener('click',e=>{if(e.target.closest('#calClose')){e.preventDefault();e.stopPropagation();setCalOpen(false)}},true);
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&CAL.open)setCalOpen(false)});
+  /* fix19: click / tap outside the calendar closes it (its own toggle buttons excluded) */
+  document.addEventListener('pointerdown',e=>{if(!CAL.open)return;const t=e.target;if(t&&t.closest&&t.closest('#calCard,#dockCal,#bkCalBtn'))return;setCalOpen(false)},true);
 
   el.addEventListener('click',e=>{
     const t=e.target.closest('button');if(!t)return;
@@ -479,7 +492,10 @@ async function onClick(e){
   if(t.dataset.pbp){PB.ptab=t.dataset.pbp;if(PB.ptab!=='Adv'&&typeof IT!=='undefined'){IT.tab=PB.ptab;try{localStorage.setItem('xs_instant_preset_tab_v1',IT.tab)}catch(e){}}const host=document.getElementById('tkPaper');if(host)host.dataset.tab='';paintForm();updatePanelFigures();scheduleEst();return}
   if(t.dataset.limside){PB.limSide=t.dataset.limside;const host=document.getElementById('tkPaper');if(host)host.dataset.tab='';paintForm();updatePanelFigures();return}
   if(t.dataset.pct&&t.dataset.go&&PB.token){const pct=+t.dataset.pct;await guard(()=>market(Object.assign({action:'sell',mint:PB.token.mint,pct,px_usd:livePx(PB.token.mint)},meta())));return}
-  if(t.id==='pbBuy'&&PB.token){const sol=+(document.getElementById('pbSol')||{}).value;await guard(()=>market(Object.assign({action:'buy',mint:PB.token.mint,sol,px_usd:livePx(PB.token.mint)},meta())));return}
+  if(t.id==='pbBuy'&&PB.token){const inp=document.getElementById('pbSol')||{};let sol=+inp.value;
+    if(!(sol>0))sol=+(inp.placeholder||0);   /* fix19: an empty box buys the amount shown as the placeholder, never sol:0 */
+    if(!(sol>0)){toast('Enter a paper SOL amount.','dn');return}
+    const mint=PB.token.mint;await guard(async()=>market(Object.assign({action:'buy',mint,sol,px_usd:await ensurePx(mint)},meta())));return}
   if(t.id==='pbSell'&&PB.token){const pct=+(document.getElementById('pbPct')||{}).value;if(!pct){toast('Enter a percent, or use 25 / 50 / 100.','dn');return}await guard(()=>market(Object.assign({action:'sell',mint:PB.token.mint,pct,px_usd:livePx(PB.token.mint)},meta())));return}
   if(t.id==='pbLimGo'&&PB.token){const limit=+(document.getElementById('pbLim')||{}).value;
     const payload=Object.assign({action:'limit',side:PB.limSide,mint:PB.token.mint,limit_px:limit},meta());
@@ -666,8 +682,8 @@ function bindInstant(el){
     if(t.dataset.itspeed!=null){IT.speed=+t.dataset.itspeed||0;itSave('xs_instant_speed_v1',String(IT.speed));el.querySelectorAll('[data-itspeed]').forEach(b=>b.classList.toggle('on',+b.dataset.itspeed===IT.speed));return}
     if(t.id==='itDepGo'){e.preventDefault();const box=document.getElementById('itDepBox');if(box)box.classList.toggle('hidden');return}
     if(t.id==='itDepOk'){e.preventDefault();const inp=document.getElementById('itDep');doDeposit(inp);return}
-    if(t.dataset.itbuy!=null){e.preventDefault();instantBuy(+t.dataset.itbuy);return}
-    if(t.dataset.itsell!=null){e.preventDefault();instantSell(+t.dataset.itsell);return}
+    if(t.dataset.itbuy!=null){e.preventDefault();instantBuy(+t.dataset.itbuy).catch(()=>{});return}
+    if(t.dataset.itsell!=null){e.preventDefault();instantSell(+t.dataset.itsell).catch(()=>{});return}
     if(t.dataset.itsellinit){e.preventDefault();instantSellInit();return}
   });
   // drag from the header
@@ -762,16 +778,18 @@ async function instantBuy(sol){
   if(!sol||sol<=0)return;
   const cash=PB.acct?+(PB.acct.cash_sol||0):0;
   if(cash<=0){toast('Deposit paper SOL first. This is a simulation.','dn');const box=document.getElementById('itDepBox');const go=document.getElementById('itDepGo');if(go)go.classList.remove('hidden');if(box)box.classList.remove('hidden');return}
-  const px=livePx(t.mint);
-  await market(Object.assign({action:'buy',mint:t.mint,sol,px_usd:px}, {symbol:t.symbol||t.s||'',name:t.name||'',pool:t.pool||''}),{delay:IT.speed});
+  const px=await ensurePx(t.mint);
+  if(!(px>0)){toast('Live price is still loading. Try again in a second.','dn');return}
+  try{await market(Object.assign({action:'buy',mint:t.mint,sol,px_usd:px}, {symbol:t.symbol||t.s||'',name:t.name||'',pool:t.pool||''}),{delay:IT.speed})}catch(e){/* toast already shown */}
 }
 async function instantSell(pct){
   const t=itTarget();
   if(!t||!t.mint){toast('Open a token to paper-sell.','dn');return}
   const pos=posOf(t.mint);
   if(!(pos&&pos.qty>0)){toast('No paper position in $'+(t.symbol||'TOKEN')+'.','dn');return}
-  const px=livePx(t.mint);
-  await market(Object.assign({action:'sell',mint:t.mint,pct,px_usd:px},{symbol:t.symbol||t.s||'',name:t.name||'',pool:t.pool||''}),{delay:IT.speed});
+  const px=await ensurePx(t.mint);
+  if(!(px>0)){toast('Live price is still loading. Try again in a second.','dn');return}
+  try{await market(Object.assign({action:'sell',mint:t.mint,pct,px_usd:px},{symbol:t.symbol||t.s||'',name:t.name||'',pool:t.pool||''}),{delay:IT.speed})}catch(e){/* toast already shown */}
 }
 function instantSellInit(){
   const t=itTarget();if(!t||!t.mint)return;
@@ -797,9 +815,9 @@ document.addEventListener('keydown',e=>{
   const tag=(e.target&&e.target.tagName||'').toLowerCase();
   if(tag==='input'||tag==='textarea'||e.target.isContentEditable)return;
   const am=typeof itAmounts==='function'?itAmounts():[0.1,0.5,1,2];
-  if(e.key>='1'&&e.key<='4'){e.preventDefault();const sol=am[+e.key-1];if(sol>0)instantBuy(sol);return}
+  if(e.key>='1'&&e.key<='4'){e.preventDefault();const sol=am[+e.key-1];if(sol>0)instantBuy(sol).catch(()=>{});return}
   const sell={q:25,w:50,e:75,r:100}[e.key.toLowerCase()];
-  if(sell){e.preventDefault();instantSell(sell)}
+  if(sell){e.preventDefault();instantSell(sell).catch(()=>{})}
 });
 window.paperToggleInstant=function(force){
   itLoad();
@@ -813,8 +831,9 @@ window.paperQuickBuy=async function(info){
   const sol=(info.sol>0)?+info.sol:((document.getElementById('pqAmt')&&+document.getElementById('pqAmt').value>0)?+document.getElementById('pqAmt').value:0.1);
   const cash=PB.acct?+(PB.acct.cash_sol||0):0;
   if(cash<=0){toast('Deposit paper SOL first to Quick Buy. Simulation only.','dn');if(window.show)window.show('book');return}
-  const px=livePx(info.mint)||info.px||null;
-  await market(Object.assign({action:'buy',mint:info.mint,sol,px_usd:px},{symbol:info.symbol||'',name:info.name||'',pool:info.pool||''}),{delay:0});
+  const px=livePx(info.mint)||info.px||await ensurePx(info.mint);
+  if(!(PB.sol>0))await ensurePx(info.mint);
+  try{await market(Object.assign({action:'buy',mint:info.mint,sol,px_usd:px},{symbol:info.symbol||'',name:info.name||'',pool:info.pool||''}),{delay:0})}catch(e){}
 };
 
 function bindInstantChrome(){

@@ -11,6 +11,7 @@ it is never invented. pump.fun's own site API is behind Cloudflare, so it is NOT
 Viewer driven: full speed only while someone has polled /api/pulse in the last few minutes, a slow trickle otherwise.
 Read-only toward the outside world. No wallets, keys, signing or trading.
 """
+import safety as _safe
 import json, os, threading, time, urllib.error, urllib.request
 from collections import deque
 
@@ -543,6 +544,15 @@ PUB = ("m", "n", "s", "p", "d", "q", "img", "cr", "mg", "mc", "lq", "px", "v5", 
 
 def _pub(r):
     o = {k: r[k] for k in PUB if r.get(k) is not None}
+    # fix19: launcher-chosen text and links are untrusted (strip markup, keep only plain http(s) links)
+    for k, n in (("n", 64), ("s", 24), ("q", 16)):
+        if k in o: o[k] = _safe.clean_text(o[k], n)
+    for k in ("img", "tw", "tg", "web"):
+        if k in o:
+            u = _safe.clean_url(o[k])
+            if u: o[k] = u
+            else: o.pop(k)
+    for k in [k for k, v in o.items() if v is None]: o.pop(k)
     o["v"] = r.get("_v", 0)
     return o
 

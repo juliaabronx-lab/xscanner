@@ -18,7 +18,9 @@ const pct=v=>v==null||v===''||!isFinite(+v)?'—':`<span class="${v>=0?'up':'dn'
 const rm=v=>v==null?'—':`<span class="${v>=0?'up':'dn'}">RM${(+v).toFixed(2)}</span>`;
 const tierCls=s=>s>=65?'t-look':s>=50?'t-watch':'t-skip';
 const AXES={paid_shill:'Paid shill',copycat:'Copycat',bundle:'Bundle',dump:'Dump/fade',rug:'Rug risk',thin_liq:'Thin liq'};
-const imgUrl=(m,sym)=>'/api/img/'+encodeURIComponent(m)+(sym?'?s='+encodeURIComponent(sym):'');
+// fix19: encodeURIComponent leaves ' ( ) * ! alone, so a token symbol could break out of an inline handler. Encode them too.
+const encQ=v=>encodeURIComponent(v).replace(/[!'()*]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase());
+const imgUrl=(m,sym)=>'/api/img/'+encQ(m)+(sym?'?s='+encQ(sym):'');
 const tokImg=(m,sym,cls='timg')=>m?`<img class="${cls}" src="${imgUrl(m,sym)}" alt="" loading="lazy" decoding="async" onerror="this.style.visibility='hidden'">`:'';
 const shortCa=m=>m?m.slice(0,4)+'…'+m.slice(-4):'';
 const ageTxt=h=>{if(h==null||!isFinite(+h))return'—';h=+h;if(h<1)return Math.max(1,Math.round(h*60))+'m';if(h<48)return h.toFixed(h<10?1:0)+'h';
@@ -176,12 +178,12 @@ async function openCoin(mint,pre){
    ${x.shill_reasons&&Object.keys(x.shill_reasons).length?`<div>${Object.entries(x.shill_reasons).map(([k,v])=>`<span class="pill red">${esc(k)}: ${v}</span>`).join('')}</div>`:''}
    ${(x.shill_accts||c.paid_accounts||[]).length?`<p class="muted">Paid accounts: ${(x.shill_accts||c.paid_accounts).slice(0,12).map(a=>'@'+esc(typeof a==='string'?a:a.username||JSON.stringify(a))).join(', ')}</p>`:''}
    ${c.narrative?`<h3>Hourly X mentions</h3>${spark(c.narrative.series)}`:''}
-   <p style="margin:10px 0"><a class="primary" style="display:inline-block;text-decoration:none" href="/token/${esc(c.mint)}" onclick="if(window.openToken){closeDrawer();openToken('${esc(c.mint)}');return false}">Open trader page →</a></p>
+   <p style="margin:10px 0"><a class="primary" style="display:inline-block;text-decoration:none" href="/token/${esc(c.mint)}" data-m="${esc(c.mint)}" onclick="if(window.openToken){closeDrawer();openToken(this.dataset.m);return false}">Open trader page →</a></p>
    <h3 style="margin-top:14px">RugCheck</h3><div class="kv"><div><span>Score</span>${rc.score??'—'}</div><div><span>Top10 / top1</span>${rc.top10??'—'}% / ${rc.top1??'—'}%</div><div><span>Holders</span>${rc.holders??'—'}</div>
    <div><span>RugCheck bundle</span>${rc.bundle_pct??'—'}% (${rc.bundle_wallets??'—'} wallets)</div><div><span>Insider networks</span>${rc.insider_networks??'—'}</div><div><span>Creator rugged</span>${rc.creator_rugged??'—'}</div>
    <div><span>Mint auth</span>${rc.mint_auth?'ON':'off'}</div><div><span>Freeze auth</span>${rc.freeze_auth?'ON':'off'}</div><div><span>Launchpad</span>${esc(rc.launchpad??'—')}</div></div>
    ${(rc.risks||[]).length?`<div>${rc.risks.map(r=>`<span class="pill amb">${esc(typeof r==='string'?r:r.name||JSON.stringify(r))}</span>`).join('')}</div>`:''}
-   <h3 style="margin-top:14px">Links</h3><p>${c.url?`<a href="${esc(c.url)}" target="_blank" rel="noopener">DexScreener</a> · `:''}<a href="https://rugcheck.xyz/tokens/${esc(c.mint)}" target="_blank" rel="noopener">RugCheck</a>${(c.organic_examples||[]).map((u,i)=>` · <a href="${esc(u)}" target="_blank" rel="noopener">organic post ${i+1}</a>`).join('')}</p>
+   <h3 style="margin-top:14px">Links</h3><p>${c.url&&/^https:\/\//i.test(c.url)?`<a href="${esc(c.url)}" target="_blank" rel="noopener">DexScreener</a> · `:''}<a href="https://rugcheck.xyz/tokens/${esc(c.mint)}" target="_blank" rel="noopener">RugCheck</a>${(c.organic_examples||[]).map((u,i)=>` · <a href="${esc(u)}" target="_blank" rel="noopener">organic post ${i+1}</a>`).join('')}</p>
    <p class="muted" style="font-size:11px;word-break:break-all">Mint ${esc(c.mint)}<br>Pool ${esc(c.pool)}</p>`;
   drawerGen++;if(typeof CH!=='undefined')CH.h=0;
   $('#drawer').classList.add('open');$('#scrim').classList.add('on');$('#scrim').classList.remove('hidden');
@@ -268,7 +270,7 @@ function show(v){
 async function loadAuth(){
   // The header Sign in / account chip and the watchlist sync live in sync.js. Here we only honour AUTH_REQUIRED.
   try{
-    const r=await fetch('/api/me'); const d=await r.json().catch(()=>({}));
+    const {r,d}=window.xsMe?await window.xsMe():await (async()=>{const r=await fetch('/api/me');return {r,d:await r.json().catch(()=>({}))}})();
     if(r.status===401 && d.required){
       location.replace('/login?next='+encodeURIComponent(location.pathname+location.search+location.hash));
     }

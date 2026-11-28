@@ -16,8 +16,11 @@ import threading, time, urllib.request
 FRESH_S = 8.0
 SWR_S = 90.0
 NEGATIVE_S = 8.0
-SIG_LIMIT = 15
-TX_LIMIT = 8
+SIG_LIMIT = 40        # fix19: look further back; parsed swaps are remembered per pool so the tape deepens over refreshes
+TX_LIMIT = 8          # new getTransaction calls per refresh (public RPC budget)
+KEEP_ROWS = 80
+DUST_USD = 0.01
+BAND = 4.0            # a swap priced more than 4x away from the live tick price is a mis-parse (fees, rent, routing), dropped
 WSOL = "So11111111111111111111111111111111111111112"
 USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 USDT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
@@ -31,6 +34,7 @@ _cache = {}          # pool -> {ts, payload, retry_at}
 _flights = {}        # pool -> (Event, box)
 _kicked = set()      # pools with a stale-while-revalidate refresh already started
 _sol = {"t": 0.0, "usd": None}
+_seen = {}           # pool -> {signature: row or None}; None = looked at, not a priced swap
 
 
 def reset():
@@ -38,6 +42,7 @@ def reset():
         _cache.clear()
         _flights.clear()
         _kicked.clear()
+        _seen.clear()
     _sol["t"] = 0.0
     _sol["usd"] = None
 
@@ -166,6 +171,36 @@ def _native_sol(tx, meta, user):
     return sol if sol > 0 else None
 
 
+def _lamport_delta(tx, meta, owner):
+    """Native SOL change of one account (e.g. a pump.fun bonding curve, which holds SOL as lamports)."""
+    pre_b, post_b = meta.get("preBalances") or [], meta.get("postBalances") or []
+    for i, key in enumerate(_keys(tx)):
+        if _pub(key) == owner and i < len(pre_b) and i < len(post_b):
+            return int(post_b[i]) - int(pre_b[i])
+    return 0
+
+
+def _ref_price(token):
+    """Live tick price of the token (Jupiter tick cache, else the Pulse row), for the sanity band."""
+    if not token:
+        return None
+    try:
+        import trader
+        c = trader._tick_cache.get(token)
+        if c and c[1].get("px") and time.time() - c[0] < 300:
+            return float(c[1]["px"])
+    except Exception:
+        pass
+    try:
+        import pulse
+        r = pulse.get_row(token)
+        if r and r.get("px"):
+            return float(r["px"])
+    except Exception:
+        pass
+    return None
+
+
 def parse_swap(tx, pool, token, signature, sol_usd):
     """One successful transaction -> one tape row, or None when it is not a priced swap.
 
@@ -215,7 +250,28 @@ def parse_swap(tx, pool, token, signature, sol_usd):
     if not amt:
         return None
     usd = None
+    # fix19: price from the COUNTERPARTY (pool vault side) first. The trader's own SOL change also carries priority fees,
+    # Jito tips, platform fees and token-account rent (~0.002 SOL), which made small trades look up to ~240x too pricey.
+    for owner, od in deltas.items():
+        if owner == user:
+            continue
+        b = od.get(base) or 0.0
+        if not b or (b > 0) == (amt > 0):
+            continue
+        for mint, v in od.items():
+            if mint in STABLES and v:
+                usd = abs(float(v)); break
+            if mint == WSOL and v and sol_usd:
+                usd = abs(float(v)) * float(sol_usd); break
+        if usd is None and sol_usd:
+            lam = _lamport_delta(tx, meta, owner)
+            if lam:
+                usd = abs(lam) / 1e9 * float(sol_usd)
+        if usd:
+            break
     for mint, v in d.items():
+        if usd is not None:
+            break
         if mint in STABLES and v:
             usd = abs(float(v))
             break
@@ -228,7 +284,7 @@ def parse_swap(tx, pool, token, signature, sol_usd):
         sol = _native_sol(tx, meta, user)
         if sol:
             usd = sol * float(sol_usd)
-    if usd is None or usd <= 0:
+    if usd is None or usd <= DUST_USD:
         return None
     amt_abs = abs(float(amt))
     return {"t": int(ts), "k": "buy" if amt > 0 else "sell", "usd": round(usd, 2),
@@ -275,22 +331,33 @@ def _default_rpc(method, params):
     return sol_rpc.call(method, params, timeout=8, gap=0)
 
 
-def _rpc_tape(pool, token, rpc, sol_usd):
+def _rpc_tape(pool, token, rpc, sol_usd, ref_px=None):
     if sol_usd is None:
         sol_usd = _default_sol_usd()
     sigs = rpc("getSignaturesForAddress", [pool, {"limit": SIG_LIMIT}]) or []
     if not isinstance(sigs, list):
         return None
-    rows = []
+    with _lock:
+        seen = dict(_seen.get(pool) or {})
+    fetched = 0
     for s in sigs:
-        if len(rows) >= TX_LIMIT:
+        if fetched >= TX_LIMIT:
             break
-        if not isinstance(s, dict) or s.get("err") or not s.get("signature"):
+        if not isinstance(s, dict) or s.get("err") or not s.get("signature") or s["signature"] in seen:
             continue
+        fetched += 1
         tx = rpc("getTransaction", [s["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
-        row = parse_swap(tx, pool, token, s["signature"], sol_usd)
-        if row:
-            rows.append(row)
+        seen[s["signature"]] = parse_swap(tx, pool, token, s["signature"], sol_usd)
+    rows = [r for r in seen.values() if r]
+    rows = sorted(rows, key=lambda r: -int(r["t"]))[:KEEP_ROWS]
+    keep = {r["sig"] for r in rows} | {s.get("signature") for s in sigs if isinstance(s, dict)}
+    with _lock:
+        _seen[pool] = {k: v for k, v in seen.items() if k in keep}
+        if len(_seen) > 300:
+            for k in list(_seen)[:100]: _seen.pop(k, None)
+    ref = ref_px if ref_px is not None else _ref_price(token)
+    if ref and ref > 0:
+        rows = [r for r in rows if r.get("px") and ref / BAND <= r["px"] <= ref * BAND]
     if not rows:
         return None
     return _assemble(rows, NOTE_RPC, "solana_rpc")

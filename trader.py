@@ -420,6 +420,8 @@ def quotes(mints, ttl=10.0, ready=None):
 
 # ---------------------------------------------------------------- fast 1s tick (single-flight, short TTL)
 TICK_TTL_S = 1.5
+JUP_HOLD_S = 45.0     # fix19: while Jupiter is rate-limited, hold its last price this long instead of mixing in DexScreener
+_tick_jup = {}        # mint -> (t, payload) of the last Jupiter-sourced tick
 JUP_PRICE = "https://lite-api.jup.ag/price/v3?ids="
 DS_TOKEN = "https://api.dexscreener.com/tokens/v1/solana/"
 _tick_lock = threading.Lock()
@@ -556,6 +558,11 @@ def tick(mint, ready=None, sol_usd=None):
                 mc = jup_px * (prev["mc"] / prev["px"])
             lq = (ds_pair.get("liquidity") or {}).get("usd") if ds_pair else None
             payload = _tick_payload(mint, jup_px, mc, lq, sol_usd, "jupiter", supply=(prev or {}).get("supply"))
+        elif (_tick_jup.get(mint) and now - _tick_jup[mint][0] < JUP_HOLD_S):
+            # Jupiter blinked (429 / timeout): DexScreener's price lags and differs by a few %, so splicing it into a
+            # Jupiter candle series drew fake 2-3% jumps. Hold the last Jupiter price (flat candle) until Jupiter answers.
+            jt0, jp = _tick_jup[mint]
+            payload = {**jp, "t": int(now), "stale": True, "held": True, "held_s": int(now - jt0), "retry_s": 1}
         elif ds_pair:
             px = pair_price_usd(ds_pair, mint)
             mc = pair_mcap_usd(ds_pair, mint, px)
@@ -576,6 +583,10 @@ def tick(mint, ready=None, sol_usd=None):
         elif stale:
             payload["stale"] = True
             payload["retry_s"] = retry_s or 4
+        if payload.get("ok") and payload.get("px") and payload.get("source") == "jupiter" and not payload.get("held"):
+            _tick_jup[mint] = (now, {k: v for k, v in payload.items() if k not in ("cached", "stale", "retry_s")})
+            if len(_tick_jup) > 256:
+                for k in sorted(_tick_jup, key=lambda k: _tick_jup[k][0])[:80]: _tick_jup.pop(k, None)
         if payload.get("ok") and payload.get("px"):
             store = {k: v for k, v in payload.items() if k not in ("cached",)}
             _tick_cache[mint] = (now, store)

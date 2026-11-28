@@ -45,7 +45,7 @@ def robots(base=None):
 
 def sitemap(base=None):
     now = datetime.now(MYT).strftime("%Y-%m-%d")
-    urls = ["/", "/pulse", "/text", "/llms.txt"]
+    urls = ["/", "/pulse", "/text", "/llms.txt", "/terms", "/privacy", "/disclaimer"]
     rows = "".join(f"<url><loc>{html.escape(_abs(base, u))}</loc><lastmod>{now}</lastmod><changefreq>hourly</changefreq></url>" for u in urls)
     return f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{rows}</urlset>\n'
 

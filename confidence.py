@@ -412,6 +412,17 @@ def evaluate(c, entry, scan_age_s=None, rc_extra=None):
         level = "high" if score >= 75 else "medium" if score >= 50 else "low"
     if problems:      # impossible numbers force LOW whatever else agrees, and the fields are named
         level, score = "low", min(score, 40)
+    # fix19: a market cap with no trading behind it is not "high confidence" data (e.g. $2.7B MCap, $0 24h volume).
+    vol = _num(ds.get("vol_h24")) if ds and "vol_h24" in ds else _num(c.get("vol24"))
+    mc_now = _num(ds.get("mcap")) if ds else None
+    mc_now = mc_now or _num(c.get("mcap"))
+    if vol is not None and vol < 100 and level != "unchecked":
+        level, score = "low", min(score, 40)
+        warnings = {**warnings, "volume": "No real trading in 24h (volume under $100): price and market cap are not backed by trades."}
+    elif vol is not None and level in ("high", "medium"):
+        if mc_now and mc_now > 1_000_000 and vol < mc_now * 0.0001:
+            if level == "high": level, score = "medium", min(score, 70)
+            warnings = {**warnings, "volume": "Very thin trading for this market cap: the price is easy to move."}
     bad = [k for k, v in res.items() if v["status"] in ("mismatch", "missing", "stale")]
     # a disagreement on supply or authorities is never "high"
     if level == "high" and any(res[k]["status"] == "mismatch" for k in ("mint_authority", "freeze_authority", "supply")):
@@ -423,6 +434,7 @@ def evaluate(c, entry, scan_age_s=None, rc_extra=None):
         if v.get("problem"):
             notes.append(f"{LABEL[k]}: {v['problem']}"); continue
         notes.append(f"{LABEL[k]} ({v['status']}" + (f": {det_s}" if det_s and v["status"] == "mismatch" else "") + ")")
+    if warnings.get("volume"): notes.append(warnings["volume"])
     return {"score": score, "level": level, "cap": CAP[level], "uncertain": [LABEL[k] for k in bad], "notes": notes,
             "fields": res, "sources": sorted({s for v in f.values() for s in v[1]}), "n_sources": n_src,
             "checked_age_s": int(now - entry["t"]) if entry else None,

@@ -1,5 +1,9 @@
 // Live coin chart for the detail view: /api/ohlcv (cached backend proxy) drawn with TradingView
 // lightweight-charts; DexScreener embed as a toggle / fallback. Market data only. No Axiom assets.
+// fix19: one shared /api/me bootstrap per page load, so parallel first requests do not each mint a different session +
+// CSRF token (that race caused a 403 on ~1 in 4 fresh loads before the retry). force=true refreshes it.
+if(typeof window!=='undefined'&&!window.xsMe){window.xsMe=function(force){if(force||!window.__xsMeP){window.__xsMeP=fetch('/api/me',{credentials:'same-origin',cache:'no-store',headers:{'Accept':'application/json'}}).then(async r=>({r,d:await r.json().catch(()=>({}))})).catch(()=>({r:{status:0,ok:false},d:{}}))}return window.__xsMeP};
+  try{if(!/^\/login/.test(location.pathname))window.xsMe()}catch(e){}}
 const CH={tf:localStorage.getItem('chartTf')||'15m',mode:'native',coin:null,chart:null,cs:null,vs:null,ls:null,area:null,ema9:null,ema21:null,timer:null,ro:null,seq:0,lastT:null,fit:true,
   style:(localStorage.getItem('xs_chart_style_v1')||'candles'),unit:'px',tool:'cross',magnet:true,log:false,ema:localStorage.getItem('xs_chart_ema_v1')!=='0',
   drawings:[],lines:[],pending:null,supply:null,clock:null,lastBars:[],lastBarUp:true};
@@ -374,7 +378,7 @@ async function directGT(c,tf){
   return {candles:Object.values(m).sort((a,b)=>a.t-b.t),source:'geckoterminal-direct'};
 }
 function pushBars(cd){
-  CH.lastBars=cd;
+  CH.lastBars=cd;CH.lastBarsTf=CH.tf;
   const bars=cd.map(barOf).filter(b=>b&&isFinite(b.open)&&isFinite(b.high)&&isFinite(b.low)&&isFinite(b.close));
   if(!bars.length)return;
   const last=bars[bars.length-1],first=bars[0];
@@ -392,6 +396,19 @@ function pushBars(cd){
   applyStyle();
   syncLivePrice();
 }
+/* fix19: sub-minute series are continuous: a second with no new price repeats the last close (flat, zero volume),
+   capped at the last 600 buckets. */
+function fillSubGaps(cd,tf){
+  if(!cd||cd.length<2)return cd||[];
+  const step=tfSec(tf),out=[];
+  for(const k of cd){
+    const last=out[out.length-1];
+    if(last&&k.t-last.t>step){const gap=Math.min(600,Math.floor((k.t-last.t)/step)-1);
+      for(let i=gap;i>=1;i--){const t=k.t-i*step;if(t>last.t)out.push({t,o:last.c,h:last.c,l:last.c,c:last.c,v:0})}}
+    out.push(k);
+  }
+  return out.slice(-600);
+}
 function isSubTf(tf){return tf==='1s'||tf==='15s'||tf==='30s'}
 function mergeBars(a,b){
   const m=new Map();
@@ -402,7 +419,9 @@ function mergeBars(a,b){
 function seedSubminute(tf){
   const syn=synthBars(tf);
   let hist=[];
-  if(CH.lastBars&&CH.lastBars.length){
+  /* fix19: only reuse bars that are already on this sub-minute grid (coarser 1m/5m bars stretched into 1s buckets looked
+     like a squeezed, gappy history) */
+  if(CH.lastBars&&CH.lastBars.length&&CH.lastBarsTf===tf){
     const step=tfSec(tf);
     const by={};
     for(const k of CH.lastBars){
@@ -412,7 +431,7 @@ function seedSubminute(tf){
     }
     hist=Object.keys(by).map(Number).sort((a,b)=>a-b).map(t=>by[t]);
   }
-  let cd=mergeBars(hist,syn);
+  let cd=fillSubGaps(mergeBars(hist,syn),tf);
   const px=rawPx();
   if(px>0){
     recordTick(px);
@@ -445,7 +464,7 @@ function paintLoaded(cd,j){
   const thin=cd.length<=7;
   const on=thin||!!j.limited||j.source==='derived'||j.source==='snapshots'||j.source==='ticks';
   if(lim){lim.classList.toggle('hidden',!on);lim.textContent='Limited history';
-    lim.title=thin?'This token has very few candles in this timeframe yet.':(j.limited_reason||j.note||'Live sub-minute candles build from /api/tick.')}
+    lim.title=thin?'This token has very few candles in this timeframe yet.':(isSubTf(CH.tf)?'Live '+CH.tf+' candles are built from live price ticks while this chart is open; earlier history is limited.':(j.limited_reason||j.note||''))}
   const lim2=document.getElementById('chLimited');if(lim2){lim2.classList.toggle('hidden',!thin)}
   const ft=j.fetched_at?new Date(j.fetched_at*1000):new Date();
   const upd=document.getElementById('chUpd');
@@ -467,7 +486,7 @@ async function loadSubminute(c,tf,seq){
     if(seq!==CH.seq||!CH.cs)return;
     if(r.ok){
       const syn=synthBars(tf);
-      const merged=mergeBars(saneCandles(j.candles||[]),syn);
+      const merged=fillSubGaps(mergeBars(saneCandles(j.candles||[]).filter(k=>k.t>=Date.now()/1000-tfSec(tf)*(tf==='1s'?180:600)),syn),tf);
       const px=rawPx();
       if(px>0){
         const t=bucketT(Date.now()/1000,tf);
@@ -586,10 +605,10 @@ function startLiveTick(){
       const r=await fetch('/api/tick/'+encodeURIComponent(mint),{credentials:'same-origin',cache:'no-store'});
       const j=await r.json().catch(()=>({}));
       if(gen!==CH.tickGen)return;
-      if(r.status===429||j.stale||j.retry_s){
+      if(r.status===429||!(j&&+j.px>0)){
         const rs=Math.max(3,Math.min(5,+(j.retry_s||3)));
         CH.tickBackoff=rs*1000;
-      }else CH.tickBackoff=1000;
+      }else CH.tickBackoff=(j.stale&&!j.held)?2000:1000;   /* fix19: a held Jupiter price keeps the 1s cadence, no skipped seconds */
       if(j&&j.px)applyLiveTick(j);
     }catch(e){CH.tickBackoff=Math.min(5000,Math.max(3000,(CH.tickBackoff||1000)+1000))}
     if(gen===CH.tickGen)CH.tickTimer=setTimeout(loop,CH.tickBackoff||1000);

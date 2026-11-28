@@ -456,3 +456,20 @@ html,body{max-width:100%;overflow-x:hidden}
   #tabs button{padding:0 7px;font-size:12px}
   #tabs button.on::after{left:7px;right:7px}
 }
+
+/* fix19: 390px bottom dock fits (no clipped PnL / Instant, ticker no longer runs off-screen); chart HUD stays out of the candles */
+@media(max-width:480px){
+  .paperbar.dock{gap:6px;padding-left:6px;padding-right:6px;overflow:hidden}
+  #pbBarU,#goWatchDock,#dockWallets,#dockP1,#pbBarHint,#dockPaper,#dockLiveTxt,#dockTickers{display:none}
+  .paperbar.dock>*{flex:none;white-space:nowrap}
+  .paperbar.dock .pb-tag{font-size:9px;padding:0 5px}
+  .paperbar.dock .solmark{display:none}
+  .paperbar.dock{gap:4px}
+  .paperbar.dock #pbBarR,.paperbar.dock .dock-solamt,.paperbar.dock .dock-sol{font-size:10px}
+  .dock-tickers .btc,.dock-tickers .eth,.dock-tickers .bnb{display:none}
+  .ch-legend,.ch-hud{top:4px;left:6px;max-width:calc(100% - 70px);font-size:10px;gap:4px;flex-wrap:nowrap;white-space:nowrap;text-overflow:ellipsis}
+  .ch-legend #chLegOHLC{display:none}
+}
+/* fix19: legal links in the footer */
+.legal-links{display:inline-flex;gap:10px;margin-left:8px}
+.legal-links a{color:#8b8fa3;text-decoration:underline}

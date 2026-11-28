@@ -335,7 +335,10 @@ def _annotate(d):
     out = {**d, "candles": cs, "n_candles": len(cs), "history_s": (cs[-1]["t"] - cs[0]["t"]) if len(cs) > 1 else 0,
            "has_volume": any((k.get("v") or 0) > 0 for k in cs)}
     out["limited"] = src in ("snapshots", "derived")      # true = our own thin history, not exchange candles
-    if out["limited"]:
+    if out.get("tf") in SUB_TF:                           # fix19: sub-minute frames are live-tick frames; say so honestly
+        out["limited"] = True
+        out["limited_reason"] = "Live %s candles are built from live price ticks; earlier history is limited." % out["tf"]
+    elif out["limited"]:
         out["limited_reason"] = ("approximate candles from price-change windows" if src == "derived"
                                  else "built from our own price snapshots; exchange candles are rate-limited right now")
     return out
@@ -396,27 +399,17 @@ def _fallback(pool, tf, token, now, why):
 # ------------------------------------------------------------------ public API
 def _subminute(pool, tf, token):
     """1s/15s/30s are live tick frames. Never 400 and never call GeckoTerminal/Jupiter with an invalid interval.
-    Seed history from our snapshots or a cached 1m/5m chart; the browser appends live /api/tick candles."""
+    fix19: seed only from our own price points bucketed on THIS grid (real timestamps); never stretch 1m/5m candles into
+    sub-minute bars (that plotted minutes as seconds). The browser fills quiet seconds and appends live /api/tick candles."""
     mint = token
-    cs, src, note = [], "ticks", "Live sub-minute candles build from /api/tick."
+    cs, src, note = [], "ticks", "Live sub-minute candles build from live price ticks while the chart is open."
     if mint:
         cs = ph.candles(mint, tf) or []
         if cs:
-            src, note = "snapshots", "Built from our own price snapshots; new candles append from /api/tick."
-        else:
-            cs = ph.candles(mint, "1m") or []
-            if cs:
-                src, note = "snapshots", "Seeded from 1-minute snapshots; live 1s/15s/30s candles append from /api/tick."
-    if not cs:
-        with _lock:
-            for k in [(pool, "1m", token), (pool, "1m", None), (pool, "5m", token), (pool, "5m", None)]:
-                e = _cache.get(k)
-                if e and (e[1] or {}).get("candles"):
-                    cs = e[1]["candles"]
-                    src, note = e[1].get("source") or "resampled", "Seeded from longer candles; live sub-minute bars append from /api/tick."
-                    break
+            src, note = "snapshots", "Earlier history comes from our own price points; new candles append from live ticks."
     return {"pool": pool, "tf": tf, "candles": cs or [], "source": src, "base": {}, "quote": {},
-            "note": note, "cached": False, "age_s": 0}
+            "note": note, "cached": False, "age_s": 0, "limited": True,
+            "limited_reason": "Live %s candles are built from live price ticks; earlier history is limited." % tf}
 
 
 def _get_ohlcv(pool, tf, token=None):

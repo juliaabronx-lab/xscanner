@@ -223,7 +223,37 @@ def password_problem(pw: str, username: str = "") -> Optional[str]:
     if len(set(pw)) < 4: return "That password is too repetitive."
     if username and username.lower() in low and len(username) >= 4 and len(pw) < len(username) + 6: return "Do not build your password from your username."
     if pw.isdigit() and (pw in "01234567890123456789" or pw in "98765432109876543210"): return "That password is a number sequence."
+    if pwned_count(pw) > 0: return "That password has appeared in a public data breach. Pick a different one."
     return None
+
+
+def pwned_check_on() -> bool:
+    """Have I Been Pwned range check (k-anonymity: only the first 5 hex chars of the SHA-1 leave the server).
+    On by default on Render, off locally/tests; PWNED_CHECK=0/1 overrides."""
+    v = _env("PWNED_CHECK").lower()
+    if v in ("0", "off", "false", "no"): return False
+    if v in ("1", "on", "true", "yes"): return True
+    return bool(_env("RENDER"))
+
+
+def pwned_count(pw: str) -> int:
+    """How often the password appears in known breaches. Fails open (0) on any network problem so sign-up never breaks."""
+    if not pwned_check_on() or not pw: return 0
+    import hashlib, urllib.request
+    h = hashlib.sha1(pw.encode("utf-8")).hexdigest().upper()
+    try:
+        req = urllib.request.Request("https://api.pwnedpasswords.com/range/" + h[:5],
+                                     headers={"User-Agent": "xScanner-signup-check", "Add-Padding": "true"})
+        with urllib.request.urlopen(req, timeout=2.5) as r:
+            body = r.read(2_000_000).decode("utf-8", "replace")
+    except Exception:
+        return 0
+    for line in body.splitlines():
+        suf, _, n = line.strip().partition(":")
+        if suf == h[5:]:
+            try: return int(n)
+            except ValueError: return 1
+    return 0
 
 
 # ------------------------------------------------------------------------------------------------ rate limits
@@ -488,8 +518,12 @@ def csrf_ok(request: Request) -> bool:
 
 
 def client_ip(request: Request) -> str:
-    """After ProxyHeadersMiddleware (trusted proxies only) request.client.host is the real client address."""
-    return request.client.host if request.client else "unknown"
+    """The visitor's address: Cloudflare's CF-Connecting-IP on Render (fix19), else the proxy-resolved peer."""
+    import safety
+    return safety.ip_from(request.headers, request.client.host if request.client else "unknown")[0]
+
+
+SESSION_MAX_AGE = int(_env("SESSION_ABSOLUTE_DAYS", "30") or 30) * 86400
 
 
 def session_user(request: Request) -> Optional[dict]:
@@ -503,6 +537,12 @@ def session_user(request: Request) -> Optional[dict]:
         return None
     if not row or row["disabled"] or int(s.get("sv") or 0) != row["pw_changed"]:
         return None
+    iat = s.get("iat")
+    if iat is None:
+        s["iat"] = _now()                       # sessions from before fix19 start their absolute lifetime now
+    elif _now() - int(iat or 0) > SESSION_MAX_AGE:
+        s.clear()                               # absolute lifetime: sign in again after SESSION_ABSOLUTE_DAYS
+        return None
     return row
 
 
@@ -515,7 +555,23 @@ def start_session(request: Request, row: dict) -> None:
     s.clear()                                   # drop anything pre-login (session fixation)
     s["user"] = {"uid": row["id"], "name": row["username"], "email": row["email"] or row["username"], "provider": "local"}
     s["sv"] = row["pw_changed"]
+    s["iat"] = _now()
     s["csrf"] = secrets.token_urlsafe(32)
+
+
+def bump_sessions(uid: int) -> int:
+    """Invalidate every existing session cookie of this user (sign out everywhere) by moving its session version."""
+    cur = db().run("SELECT pw_changed FROM users WHERE id = ?", (int(uid),), "one")
+    t = max(_now(), int(cur[0]) + 1 if cur else 0)
+    db().run("UPDATE users SET pw_changed = ? WHERE id = ?", (t, int(uid)))
+    return t
+
+
+def export_user(row: dict) -> dict:
+    """Everything stored about one account (privacy: data portability). Never includes the password hash."""
+    r = db().run("SELECT created_at, last_login FROM users WHERE id = ?", (int(row["id"]),), "one") or (None, None)
+    return {"exported_at": _now(), "account": {"username": row["username"], "email": row["email"] or None,
+            "created_at": r[0], "last_login": r[1]}, "synced": get_data(row["id"]), "paper_book": get_paper(row["id"])}
 
 
 # ------------------------------------------------------------------------------------------------ routes
@@ -570,7 +626,8 @@ def install_routes(app: FastAPI) -> None:
             if not any(secrets.compare_digest(code.encode(), c.encode()) for c in invite_codes()):
                 return _err(403, "A valid invite code is required.", field="invite")
         try:
-            row = create_user(str(d.get("username") or ""), str(d.get("password") or ""), str(d.get("email") or ""))
+            from starlette.concurrency import run_in_threadpool   # hashing + breach check off the event loop
+            row = await run_in_threadpool(create_user, str(d.get("username") or ""), str(d.get("password") or ""), str(d.get("email") or ""))
         except SignupError as e:
             return _err(e.status, e.msg, field=e.field)
         except Exception:
@@ -599,7 +656,8 @@ def install_routes(app: FastAPI) -> None:
         except Exception:
             log.exception("login lookup failed")
             return _err(503, "Accounts are temporarily unavailable. Try again shortly.")
-        ok = verify_password(row["pw_hash"] if row else None, pw) and bool(row) and not row["disabled"] and len(pw) <= MAX_PW
+        from starlette.concurrency import run_in_threadpool
+        ok = (await run_in_threadpool(verify_password, row["pw_hash"] if row else None, pw)) and bool(row) and not row["disabled"] and len(pw) <= MAX_PW
         if not ok:
             LIM.hit(akey, *RL["login_acct_fail"]); LIM.hit("lif:" + ip, *RL["login_ip_fail"])
             return _err(401, GENERIC_LOGIN)
@@ -645,6 +703,32 @@ def install_routes(app: FastAPI) -> None:
         delete_user(row["id"])
         request.session.clear()
         return _ok(csrf=csrf_token(request))
+
+    @app.post("/api/auth/logout-all", include_in_schema=False)
+    async def logout_all(request: Request):
+        """Sign out on every device (e.g. after using a shared computer or a suspected leak)."""
+        if (r := need_local()): return r
+        if not csrf_ok(request): return _err(403, "Session expired. Reload the page and try again.", csrf_failed=True)
+        row = session_user(request)
+        if not row: return _err(401, "Sign in first.")
+        if not LIM.hit("lo:%s" % row["id"], 10, 900): return _err(429, BUSY)
+        bump_sessions(row["id"])
+        request.session.clear()
+        return _ok(csrf=csrf_token(request))
+
+    @app.get("/api/user/export", include_in_schema=False)
+    def user_export(request: Request):
+        if (r := need_local()): return r
+        row = session_user(request)
+        if not row: return _err(401, "Sign in to download your data.", signin=True)
+        if not LIM.hit("ex:%s" % row["id"], 20, 3600): return _err(429, BUSY)
+        try:
+            data = export_user(row)
+        except Exception:
+            log.exception("export failed")
+            return _err(503, "Export is temporarily unavailable.")
+        return JSONResponse(data, headers={"Cache-Control": "no-store",
+                                           "Content-Disposition": 'attachment; filename="xscanner-%s.json"' % row["username"]})
 
     def gate(request: Request, write: bool):
         """-> (row, error response). Personal data needs a signed-in local account; writes also need CSRF."""

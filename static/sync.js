@@ -42,7 +42,8 @@ async function api(method,url,payload){
   const d=await r.json().catch(()=>({}));if(d&&typeof d.csrf==='string')S.csrf=d.csrf;return {r,d};
 }
 async function loadMe(){
-  try{const {r,d}=await api('GET','/api/me');
+  try{const first=!S._meOnce&&window.xsMe;S._meOnce=true;
+    const {r,d}=first?await window.xsMe():await api('GET','/api/me');if(first&&d&&typeof d.csrf==='string')S.csrf=d.csrf;
     S.local=!!d.local;S.google=!!d.google;S.signup=d.signup||'closed';S.storage=d.storage||null;S.csrf=d.csrf||S.csrf;
     const was=S.user;S.user=d.user||null;
     return {was,now:S.user}}catch(e){return {was:S.user,now:S.user,offline:true}}
@@ -109,7 +110,7 @@ function box(){
     if(S.user.provider==='local'){
       b.innerHTML=`<button type="button" class="uchip" id="uBtn" aria-haspopup="menu" aria-expanded="false"><span class="udot"></span><span class="uname">${esc(S.user.name)}</span><span class="ucar">▾</span></button>
       <div class="umenu hidden" id="uMenu" role="menu"><div class="umh">Signed in as <b>${esc(S.user.name)}</b>${S.user.email?'<small>'+esc(S.user.email)+'</small>':''}</div>
-        <button type="button" role="menuitem" data-a="pw">Change password</button><button type="button" role="menuitem" data-a="out">Sign out</button><button type="button" role="menuitem" class="danger" data-a="del">Delete account…</button></div>`;
+        <button type="button" role="menuitem" data-a="pw">Change password</button><button type="button" role="menuitem" data-a="out">Sign out</button><button type="button" role="menuitem" data-a="outall">Sign out everywhere</button><a role="menuitem" class="umlink" href="/api/user/export" download>Download my data</a><a role="menuitem" class="umlink" href="/privacy">Privacy</a><button type="button" role="menuitem" class="danger" data-a="del">Delete account…</button></div>`;
     }else{
       b.innerHTML=`<span class="uchip"><span class="udot"></span><span class="uname">${esc(S.user.name||S.user.email||'Signed in')}</span></span><a class="ghost ulogout" href="/logout">Sign out</a>`;
     }
@@ -123,7 +124,7 @@ document.addEventListener('click',e=>{
   const ub=e.target.closest('#uBtn');const menu=$('#uMenu');
   if(ub){const open=menu.classList.toggle('hidden')===false;ub.setAttribute('aria-expanded',String(open));return}
   const a=e.target.closest('#uMenu [data-a]');
-  if(a){menu.classList.add('hidden');const k=a.dataset.a;if(k==='out')signOut();else dialog(k);return}
+  if(a){menu.classList.add('hidden');const k=a.dataset.a;if(k==='out')signOut();else if(k==='outall')signOutAll();else dialog(k);return}
   if(menu&&!menu.classList.contains('hidden')&&!e.target.closest('#uMenu'))menu.classList.add('hidden');
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){const m=$('#uMenu');if(m)m.classList.add('hidden')}});
@@ -138,6 +139,12 @@ async function signOut(){
   try{await api('POST','/api/auth/logout',{})}catch(e){}
   await signedOut(true);   // a shared browser must not keep the previous user's lists
   if(window.toast)toast('Signed out. Lists synced to your account stay there; sign in again to get them back.');
+}
+
+async function signOutAll(){
+  try{await api('POST','/api/auth/logout-all',{})}catch(e){}
+  await signedOut(true);
+  if(window.toast)toast('Signed out on every device.');
 }
 
 // ---- change password / delete account dialog
