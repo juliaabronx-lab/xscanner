@@ -44,12 +44,43 @@ def _pair_summary(p):
             "created": int(p["pairCreatedAt"] / 1000) if p.get("pairCreatedAt") else None}
 
 
-def detail(mint, deadline_s=8.0):
-    """Everything the token page shows except our own score / story (those come from /api/lookup). Cached 6 s."""
+FAST_S = 2.5          # fix20: first answer as soon as the market sources are in (was: wait up to 8 s for everything)
+SWR_S = 90.0          # a cached page up to this old is served at once while a refresh runs in the background
+_flights = {}         # mint -> Event set when the full background build is done
+_flock = threading.Lock()
+
+
+def detail(mint, deadline_s=8.0, fast_s=None):
+    """Everything the token page shows except our own score / story (those come from /api/lookup). Cached 6 s.
+
+    fix20: upstream calls run in parallel and the FIRST answer returns as soon as DexScreener + Jupiter (header, price,
+    pool for the chart) are back, about FAST_S at most; RugCheck holders / authorities finish in the background and are
+    listed in `pending` so the page asks again. Repeat calls share one refresh (no 10 s second load)."""
+    now = time.time()
     c = _tok_cache.get(mint)
-    if c and time.time() - c[0] < 6: return c[1]
+    if c and now - c[0] < 6: return c[1]
+    with _flock:
+        ev = _flights.get(mint)
+        lead = ev is None
+        if lead:
+            ev = _flights[mint] = threading.Event()
+    if not lead:
+        if c and now - c[0] < SWR_S:
+            return {**c[1], "cached": True}
+        ev.wait(fast_s if fast_s is not None else FAST_S)
+        c2 = _tok_cache.get(mint)
+        if c2: return {**c2[1], "cached": True}
+        ev.wait(max(0.1, deadline_s - (time.time() - now)))
+        c2 = _tok_cache.get(mint)
+        return c2[1] if c2 else {"mint": mint, "found": True, "pending": ["market"], "notes": ["Still loading."], "fetched_at": int(now)}
+    if c and now - c[0] < SWR_S:
+        threading.Thread(target=_full, args=(mint, deadline_s, ev), daemon=True).start()
+        return {**c[1], "cached": True}
+    return _full(mint, deadline_s, ev, fast_s=FAST_S if fast_s is None else fast_s)
+
+
+def _full(mint, deadline_s, ev, fast_s=None):
     t0 = time.time()
-    out = {"mint": mint, "pending": [], "notes": [], "fetched_at": int(t0)}
     box = {}
 
     def job(name, fn):
@@ -58,16 +89,54 @@ def detail(mint, deadline_s=8.0):
             except Exception as e: box[name] = ("__err__", "%s: %s" % (type(e).__name__, e))
         th = threading.Thread(target=run, daemon=True); th.start(); return th
 
-    row = pulse.get_row(mint)
-    fresh_ds = row and time.time() - (row.get("_ds") or 0) < 20
-    ths = [job("ds", lambda: tr.ds_tokens([mint])),
-           job("jup", lambda: _jup_one(mint)),
-           job("mint", lambda: tr.mint_state(mint)),
-           job("rc", lambda: (bd.fetch_raw(mint, 6), bd.get_raw(mint)))]
-    curve_acct = row.get("cp") if row and row.get("cp") else (tr.bonding_curve_pda(mint) if mint.endswith("pump") else None)
-    if curve_acct:
-        ths.append(job("curve", lambda: tr.curves([curve_acct], ttl=3.0).get(curve_acct)))
-    for th in ths: th.join(max(0.1, deadline_s - (time.time() - t0)))
+    try:
+        row = pulse.get_row(mint)
+        ths = {"ds": job("ds", lambda: tr.ds_tokens([mint])),
+               "jup": job("jup", lambda: _jup_one(mint)),
+               "mint": job("mint", lambda: tr.mint_state(mint)),
+               "rc": job("rc", lambda: (bd.fetch_raw(mint, 6), bd.get_raw(mint)))}
+        curve_acct = row.get("cp") if row and row.get("cp") else (tr.bonding_curve_pda(mint) if mint.endswith("pump") else None)
+        if curve_acct:
+            ths["curve"] = job("curve", lambda: tr.curves([curve_acct], ttl=3.0).get(curve_acct))
+        if fast_s:
+            while time.time() - t0 < deadline_s:
+                market = ("ds" in box) + ("jup" in box)
+                if market == 2 and ("curve" in box or "curve" not in ths): break
+                if time.time() - t0 >= fast_s and (market >= 1 or row): break
+                time.sleep(0.05)
+            if all(k in box for k in ths):
+                out = _build(mint, row, dict(box), curve_acct, t0, store=True)
+                return out
+            part = _build(mint, row, dict(box), curve_acct, t0, store=False, missing=[k for k in ths if k not in box])
+            if part.get("found") and part.get("market"):
+                # shared with callers that arrive while the rest finishes (served as stale-while-revalidate, never as fresh)
+                _tok_cache[mint] = (time.time() - 6.0, part)
+
+            def finish(ev=ev):
+                try:
+                    for th in ths.values(): th.join(max(0.1, deadline_s - (time.time() - t0)))
+                    _build(mint, row, dict(box), curve_acct, t0, store=True)
+                finally:
+                    _done(mint, ev)
+            threading.Thread(target=finish, daemon=True).start()
+            ev = None          # finish() releases the flight
+            return part
+        for th in ths.values(): th.join(max(0.1, deadline_s - (time.time() - t0)))
+        return _build(mint, row, dict(box), curve_acct, t0, store=True)
+    finally:
+        if ev is not None:
+            _done(mint, ev)
+
+
+def _done(mint, ev):
+    with _flock:
+        if _flights.get(mint) is ev:
+            _flights.pop(mint, None)
+    ev.set()
+
+
+def _build(mint, row, box, curve_acct, t0, store=True, missing=()):
+    out = {"mint": mint, "pending": [], "notes": [], "fetched_at": int(time.time())}
     for k in ("ds", "jup", "mint", "rc", "curve"):
         if isinstance(box.get(k), tuple) and box[k] and box[k][0] == "__err__": out["notes"].append("%s unavailable (%s)" % (k, box[k][1]))
     pairs = box.get("ds") if isinstance(box.get("ds"), list) else []
@@ -76,9 +145,14 @@ def detail(mint, deadline_s=8.0):
     raw, raw_age = (box.get("rc") or (None, (None, None)))[1] if isinstance(box.get("rc"), tuple) and box["rc"][0] != "__err__" else (None, None)
     ms = box.get("mint") if isinstance(box.get("mint"), dict) else {}
     cv = box.get("curve") if isinstance(box.get("curve"), dict) else None
+    if "mint" in missing: out["pending"].append("security")
 
     # ---- header + market
     if best is None and row is None and jt is None:
+        if missing and ("ds" in missing or "jup" in missing):
+            out["found"] = True; out["pending"].append("market")
+            out["notes"].append("Market data is still loading.")
+            return out
         out["found"] = False
         out["notes"].append("No market found for this token yet (DexScreener has no pair and it is not on our board).")
         return out
@@ -189,6 +263,9 @@ def detail(mint, deadline_s=8.0):
     if not best: out["pending"].append("market")
     if not jt: out["notes"].append("Jupiter token stats unavailable right now (holders, top-10 and dev % may be missing).")
     out["took_s"] = round(time.time() - t0, 2)
+    if not store:
+        out["partial"] = True
+        return out
     _tok_cache[mint] = (time.time(), out)
     if len(_tok_cache) > 200:
         for k in sorted(_tok_cache, key=lambda k: _tok_cache[k][0])[:80]: _tok_cache.pop(k, None)

@@ -416,9 +416,12 @@ def evaluate(c, entry, scan_age_s=None, rc_extra=None):
     vol = _num(ds.get("vol_h24")) if ds and "vol_h24" in ds else _num(c.get("vol24"))
     mc_now = _num(ds.get("mcap")) if ds else None
     mc_now = mc_now or _num(c.get("mcap"))
-    if vol is not None and vol < 100 and level != "unchecked":
+    if (vol is None or vol < 100) and level != "unchecked":
+        # fix20: an UNKNOWN 24h volume is treated like no volume (e.g. LTC showed "high 75" with vol24 null).
         level, score = "low", min(score, 40)
-        warnings = {**warnings, "volume": "No real trading in 24h (volume under $100): price and market cap are not backed by trades."}
+        warnings = {**warnings, "volume": ("No 24h volume reported: price and market cap are not backed by visible trades."
+                                           if vol is None else
+                                           "No real trading in 24h (volume under $100): price and market cap are not backed by trades.")}
     elif vol is not None and level in ("high", "medium"):
         if mc_now and mc_now > 1_000_000 and vol < mc_now * 0.0001:
             if level == "high": level, score = "medium", min(score, 70)

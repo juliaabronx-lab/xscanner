@@ -25,7 +25,7 @@ import trades_tape
 import paperbook
 import accounts as acc
 from fastapi.responses import Response
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 SCANNER = os.environ.get("SCANNER_DIR", "/workspace/scanner")
@@ -562,7 +562,7 @@ _BOOT = time.time()
 def health(request: Request):
     _, _, _, meta = build_state()
     _, lmeta = load(LEDGER, {})
-    return {"ok": True, "version": "fix19", "ip_source": safety.ip_from(request.headers, None)[1], "uptime_s": int(time.time() - _BOOT), "started_at": datetime.fromtimestamp(_BOOT, MYT).isoformat(timespec="seconds"), "readonly": True, "public_readonly": PUBLIC_READONLY, "keepalive": dict(_KEEP), "sources": {**meta, "ledger": lmeta}, "scan": scan_state_public()}
+    return {"ok": True, "version": "fix20", "ip_source": safety.ip_from(request.headers, None)[1], "uptime_s": int(time.time() - _BOOT), "started_at": datetime.fromtimestamp(_BOOT, MYT).isoformat(timespec="seconds"), "readonly": True, "public_readonly": PUBLIC_READONLY, "keepalive": dict(_KEEP), "sources": {**meta, "ledger": lmeta}, "scan": scan_state_public()}
 
 
 @app.get("/api/summary")
@@ -592,6 +592,68 @@ def _slim_coin(c):
     return o
 
 
+_supply_warming = set()
+
+
+def _warm_supplies(mints):
+    """Fetch on-chain supply for a few card mints in the background (never blocks /api/coins)."""
+    now = time.time()
+    todo = [m for m in mints if m and m not in _supply_warming and
+            (m not in trd._supply_cache or not trd._tick_cache.get(m) or now - trd._tick_cache[m][0] > 300)][:6]
+    if not todo:
+        return
+    _supply_warming.update(todo)
+
+    def run():
+        try:
+            for m in todo:
+                try:
+                    trd.token_supply(m)
+                    trd.tick(m)          # live price x chain supply, the same number the token page shows
+                except Exception: pass
+                time.sleep(0.3)
+        finally:
+            _supply_warming.difference_update(todo)
+    threading.Thread(target=run, name="supply-warm", daemon=True).start()
+
+
+def _card_px(mint):
+    """A live-ish price from caches we already hold (DexScreener pull, RugCheck, Pulse row). Never mcap/supply (circular)."""
+    try:
+        p = num(((cf._cache.get(mint) or {}).get("ds") or {}).get("price"))
+        if p and p > 0: return p
+        a, _ = bd.get_cached(mint)
+        p = num(((a or {}).get("rc") or {}).get("price"))
+        if p and p > 0: return p
+        r = pulse.get_row(mint)
+        p = num((r or {}).get("px"))
+        if p and p > 0: return p
+    except Exception:
+        pass
+    return None
+
+
+def card_mcap(c):
+    """fix20: card market cap consistent with the token page tick: live price x cached ON-CHAIN supply.
+
+    DexScreener/report mcap can be wrong by 100x (DEGEN card $24.4M vs $218K on-chain). When the cached chain
+    supply disagrees with the report's implied supply by more than 5x, the card shows price x chain supply.
+    """
+    mint = c.get("mint") or ""
+    sup = (trd._supply_cache.get(mint) or (None, None))[1]
+    tk = trd._tick_cache.get(mint)
+    if tk and tk[1].get("mc") and tk[1].get("supply_source") == "chain" and time.time() - tk[0] < 600:
+        return num(tk[1]["mc"]), "tick"
+    px = num((tk[1] if tk else {}).get("px")) or _card_px(mint) or num((c.get("rugcheck") or {}).get("price"))
+    mc = num(c.get("mcap"))
+    if not sup or not px or px <= 0:
+        return mc, None
+    chain_mc = px * sup
+    if not mc or mc <= 0 or mc / chain_mc > 5 or chain_mc / mc > 5:
+        return chain_mc, "chain"
+    return mc, None
+
+
 @app.get("/api/coins")
 def coins(min_score: float = 0, min_liq: float = 0, pump_only: bool = False, hide_paid: bool = False,
           sort: str = "score", desc: bool = True, full: bool = False):
@@ -603,7 +665,14 @@ def coins(min_score: float = 0, min_liq: float = 0, pump_only: bool = False, hid
     else:
         out.sort(key=lambda c: num(c.get(sort), float("-inf")), reverse=desc)
     im.warm(out)
-    out = [({**c} if full else _slim_coin(c)) for c in out]
+    _warm_supplies([c.get("mint") for c in out])
+    fixed = []
+    for c in out:
+        mc, src = card_mcap(c)
+        if src and mc:
+            c = {**c, "mcap_report": c.get("mcap"), "mcap": round(mc, 2), "mcap_src": src}
+        fixed.append(c)
+    out = [({**c} if full else _slim_coin(c)) for c in fixed]
     for c in out: c["img_real"] = im.has_file(c.get("mint") or "")
     return {"count": len(out), "total": len(cs), "coins": out, "sources": meta, "slim": not full}
 
@@ -1440,6 +1509,27 @@ legal.install(app)
 @app.api_route("/token/{mint}", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/pulse", methods=["GET", "HEAD"], include_in_schema=False)
 @app.api_route("/", methods=["GET", "HEAD"])
-def index(mint: str = ""):
-    # no-cache so phones always pick up the latest page after a fix
-    return FileResponse(os.path.join(HERE, "static", "index.html"), headers={"Cache-Control": "no-cache"})
+def index(request: Request, mint: str = ""):
+    # no-cache so phones always pick up the latest page after a fix.
+    # fix20: the session cookie + CSRF token are set ON THIS HTML response and the token is written into a
+    # <meta name="xs-csrf">, so the very first click (Paper Buy, sign-in, sync) never races the /api/me bootstrap
+    # (two parallel first requests used to mint two different sessions -> a 403 on 1 of 4 fresh loads).
+    # "private" keeps Cloudflare / shared caches from ever storing a page that carries a per-visitor token.
+    return HTMLResponse(_index_html(acc.csrf_token(request) or ""),
+                        headers={"Cache-Control": "private, no-cache"})
+
+
+_INDEX = {"m": 0.0, "raw": ""}
+
+
+def _index_html(token):
+    path = os.path.join(HERE, "static", "index.html")
+    try:
+        m = os.path.getmtime(path)
+        if m != _INDEX["m"]:
+            _INDEX["raw"], _INDEX["m"] = open(path, encoding="utf-8").read(), m
+    except OSError:
+        pass
+    raw = _INDEX["raw"]
+    tag = '<meta name="xs-csrf" content="%s">' % re.sub(r"[^A-Za-z0-9_\-]", "", token or "")
+    return raw.replace('<meta charset="utf-8">', '<meta charset="utf-8">' + tag, 1)

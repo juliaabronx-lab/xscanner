@@ -221,6 +221,12 @@
 "ts": 1794647039,
 "url": "https://cdn.dexscreener.com/cms/images/9696cf94bb54f0f256e3c2fa8a24c7b0183e35dcd3ce2a2c2a65d7da94e08ac5?width=800&height=800&quality=95&format=auto"
 },
+"AGvxD62dBYCuKcxzbVs5xTRvAvYKmNQb9Xw1nnVypump": {
+"src": "metadata_uri",
+"sym": "FUGAS",
+"ts": 1795849673,
+"url": "https://ipfs.io/ipfs/bafybeicl33yu6e2vxgrzvejcgjv6yw3mhjpqhtjecsvffk3ldcvwynonr4"
+},
 "AKotzk1dhcNangAJBtvNKtT9bhbSVZc2mMhRFgkFpump": {
 "src": "dexscreener",
 "sym": "Macca",
@@ -334,6 +340,12 @@
 "sym": "DOGE",
 "ts": 1794728333,
 "url": "https://cdn.dexscreener.com/cms/images/gpdrmIjrHOAHNN7v?width=800&height=800&quality=95&format=auto"
+},
+"D7rnfpjcK32PQjQpviEScsdrEhz9eBg8mDsoP8MLwfyU": {
+"src": "metadata_uri",
+"sym": "USD1",
+"ts": 1795849877,
+"url": "https://gmgn.ai/external-res/730852f58aee80acd3ab8786f2e59afc_v2l.webp"
 },
 "DKYcjobF7HPtL9RyQBRdeRQ2iWvizpfbgWwPWNXdpump": {
 "src": "dexscreener",
@@ -532,5 +544,11 @@
 "sym": "ORE",
 "ts": 1794710388,
 "url": "https://cdn.dexscreener.com/cms/images/882b6417f93b6fe65938564e91d1bef5a7fd7b1afc70bed58be330b8eb3c4023?width=800&height=800&quality=95&format=auto"
+},
+"xWGckFQHxZvvVMJxkvHDJr4eQvLX86fnmSwodLxoTa9": {
+"src": "metadata_uri",
+"sym": "MI",
+"ts": 1795849675,
+"url": "https://gmgn.ai/external-res/55c134046f6465c5d6265524284f8f6b_v2.webp"
 }
 }

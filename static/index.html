@@ -10,11 +10,11 @@
 <link rel="alternate" type="text/html" href="/text" title="Plain HTML view of the latest scan">
 <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
 <link rel="apple-touch-icon" href="/static/logo.svg">
-<link rel="stylesheet" href="/static/style.css?v=fix19">
-<link rel="stylesheet" href="/static/trader.css?v=fix19">
-<link rel="stylesheet" href="/static/terminal.css?v=fix19">
-<link rel="stylesheet" href="/static/paper.css?v=fix19">
-<link rel="prefetch" href="/static/vendor/lightweight-charts.js?v=4.2.3" as="script">
+<link rel="stylesheet" href="/static/style.css?v=fix20">
+<link rel="stylesheet" href="/static/trader.css?v=fix20">
+<link rel="stylesheet" href="/static/terminal.css?v=fix20">
+<link rel="stylesheet" href="/static/paper.css?v=fix20">
+<link rel="prefetch" href="/static/vendor/lightweight-charts.js?v=4.2.3-fix20" as="script">
 </head><body>
 <svg xmlns="http://www.w3.org/2000/svg" id="solSprite" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false">
   <defs>
@@ -68,7 +68,7 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
     <button type="button" id="dockCal" class="linkbtn" title="Paper PnL calendar">PnL</button>
     <button type="button" id="dockInstant" class="linkbtn">⚡ Instant</button>
   </span>
-  <span id="dockTickers" class="dock-tickers" aria-label="Live index prices"><span class="dtk btc">BTC —</span><span class="dtk eth">ETH —</span><span class="dtk sol">SOL —</span><span class="dtk bnb">BNB —</span></span>
+  <span id="dockTickers" class="dock-tickers dt-wait" aria-label="Live index prices" aria-busy="true"><span class="dtk btc">BTC —</span><span class="dtk eth">ETH —</span><span class="dtk sol">SOL —</span><span class="dtk bnb">BNB —</span></span>
   <span id="dockSol" class="dock-sol"><svg class="solmark" viewBox="0 0 398 312" width="12" height="10" aria-hidden="true"><use href="#solLogo"/></svg><span id="dockSolTxt">SOL —</span></span>
   <span class="dock-live"><i id="dockLiveDot"></i><span id="dockLiveTxt">Live</span></span>
   <small id="pbBarHint">PAPER · Simulation · NFA</small>
@@ -92,20 +92,15 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
   <section id="v-pulse" class="view">
     <div class="disc" role="note"><b>Not financial advice.</b> xScanner is read-only analysis of public data: it holds no keys and cannot buy or sell. Memecoins are extremely risky and most go to zero. “Open in Jupiter / Axiom / Photon” links leave this site.</div>
     <div class="pbar-top pbar-axiom">
-      <h2 class="ptitle">Pulse</h2>
+      <h2 class="ptitle sr-only">Pulse board</h2>
       <div class="plive"><i id="pLiveDot"></i><span id="pLiveTxt">connecting…</span><button class="linkbtn" id="pSrcBtn" type="button" title="Data sources">sources</button></div>
-      <div class="ppresets" id="pPresets" role="group" aria-label="Presets"></div>
-      <button class="ghost iconbtn" id="pDispBtn" type="button" aria-expanded="false" title="Display">Display</button>
-      <button class="ghost iconbtn" id="pFiltBtn" type="button" aria-expanded="false" title="Filters">Filters <span id="pFiltN" class="nbadge hidden"></span></button>
-      <div class="pqbar" id="pqBar" title="One-click paper buys on Pulse cards. Simulation only.">
+      <div class="ppresets hidden" id="pPresets" role="group" aria-label="Presets" hidden></div>
+      <button class="ghost iconbtn hidden" id="pDispBtn" type="button" aria-expanded="false" title="Display" hidden>Display</button>
+      <button class="ghost iconbtn hidden" id="pFiltBtn" type="button" aria-expanded="false" title="Filters" hidden>Filters <span id="pFiltN" class="nbadge hidden"></span></button>
+      <div class="pqbar hidden" id="pqBar" title="One-click paper buys on Pulse cards. Simulation only." hidden>
         <button type="button" class="ghost on" id="pqBuyBtn" aria-pressed="true">⚡ Quick Buy</button>
         <label class="pqamt" id="pqAmtWrap"><svg class="solmark" viewBox="0 0 398 312" width="12" height="10" aria-hidden="true"><use href="#solLogo"/></svg><input id="pqAmt" type="number" min="0.01" step="0.1" value="0.1" aria-label="Quick buy paper SOL amount"> SOL</label>
       </div>
-    </div>
-    <div id="pDispBox" class="disp-pop hidden" role="menu">
-      <label>Row density <select id="pDens"><option value="comfy">Comfy</option><option value="compact" selected>Compact</option></select></label>
-      <label>Button size <select id="pBtnSz"><option value="sm" selected>Small</option><option value="md">Medium</option></select></label>
-      <label class="chk"><input type="checkbox" id="pShowMets" checked> Metric chips</label>
     </div>
     <div id="pSrcBox" class="srcbox hidden"></div>
     <form id="pFilters" class="pfilters hidden" autocomplete="off">
@@ -119,6 +114,9 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
       <label>Min txns 1h<input type="number" name="minTx" min="0" step="5" placeholder="0"></label>
       <label class="chk"><input type="checkbox" name="hideBundled"> Hide bundled</label>
       <label class="chk"><input type="checkbox" name="hasSocials"> Has socials</label>
+      <div id="pDispBox" class="pf-disp" role="group" aria-label="Display"><label>Row density <select id="pDens"><option value="comfy">Comfy</option><option value="compact" selected>Compact</option></select></label>
+      <label>Button size <select id="pBtnSz"><option value="sm" selected>Small</option><option value="md">Medium</option></select></label>
+      <label class="chk"><input type="checkbox" id="pShowMets" checked> Metric chips</label></div>
       <span class="pf-actions"><button type="button" class="ghost" id="pFReset">Reset</button><button type="button" class="ghost" id="pFSave">Save preset…</button></span>
     </form>
     <div class="pseg" id="pSeg" role="tablist"><button data-c="new" class="on">New pairs <b></b></button><button data-c="final">Final stretch <b></b></button><button data-c="migrated">Migrated <b></b></button></div>
@@ -268,11 +266,11 @@ and <a href="/api/coins" style="color:#8cf">/api/coins</a> (JSON). Open to every
 <div id="scrim" class="scrim"></div>
 <footer><b>Not financial advice.</b> Read-only analysis. No wallet keys, signing or real trades. Paper buys and sells are a simulation. Score ≥65 worth a look · 50–64 watch · &lt;50 skip. Juliaa gives the final yes.<span class="legal-links"><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/disclaimer">Risk disclaimer</a></span></footer>
 <script>window.__h0=location.hash</script>
-<script src="/static/motion.js?v=fix19"></script>
-<script src="/static/chart.js?v=fix19"></script>
-<script src="/static/app.js?v=fix19"></script>
-<script src="/static/xfeed.js?v=fix19"></script>
-<script src="/static/trader.js?v=fix19"></script>
-<script src="/static/sync.js?v=fix19"></script>
-<script src="/static/paper.js?v=fix19"></script>
+<script src="/static/motion.js?v=fix20"></script>
+<script src="/static/chart.js?v=fix20"></script>
+<script src="/static/app.js?v=fix20"></script>
+<script src="/static/xfeed.js?v=fix20"></script>
+<script src="/static/trader.js?v=fix20"></script>
+<script src="/static/sync.js?v=fix20"></script>
+<script src="/static/paper.js?v=fix20"></script>
 </body></html>

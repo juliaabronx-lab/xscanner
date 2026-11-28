@@ -108,7 +108,7 @@ function loadScript(src){return new Promise(res=>{const s=document.createElement
 function ensureCharts(){
   if(window.LightweightCharts) return Promise.resolve(true);
   if(_lcLoad) return _lcLoad;
-  _lcLoad=loadScript('/static/vendor/lightweight-charts.js?v=4.2.3').then(ok=>ok?true:loadScript('https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js'));
+  _lcLoad=loadScript('/static/vendor/lightweight-charts.js?v=4.2.3-fix20').then(ok=>ok?true:loadScript('https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js'));
   return _lcLoad;
 }
 function scalePx(v){if(v==null||!isFinite(+v))return v;if(CH.unit!=='mcap')return +v;if(!validSupply(CH.supply))return null;return +v*CH.supply}
@@ -226,16 +226,32 @@ function applyEma(){
   if(CH.ema21)CH.ema21.applyOptions({visible:on});
   try{localStorage.setItem('xs_chart_ema_v1',on?'1':'0')}catch(e){}
 }
+/* fix20: an EMA is only drawn once there are enough bars for it (2x its period), seeded with the simple average of the
+   first `period` closes. Starting from bar 1 made the ribbons swoop in from the top-left on a fresh 1s chart. */
 function emaPts(cd,period){
-  const out=[];if(!cd||!cd.length)return out;
-  let e=scalePx(cd[0].c);if(!isFinite(e))return out;
-  const k=2/(Math.max(1,period)+1);
-  out.push({time:cd[0].t,value:e});
-  for(let i=1;i<cd.length;i++){
-    const v=scalePx(cd[i].c);if(!isFinite(v))continue;
-    e=v*k+e*(1-k);out.push({time:cd[i].t,value:e});
-  }
+  const out=[];period=Math.max(1,period);if(!cd||cd.length<period*2)return out;
+  let sum=0,n=0;for(let i=0;i<period;i++){const v=scalePx(cd[i].c);if(isFinite(v)){sum+=v;n++}}
+  if(!n)return out;let e=sum/n;const k=2/(period+1);
+  for(let i=period;i<cd.length;i++){const v=scalePx(cd[i].c);if(!isFinite(v))continue;e=v*k+e*(1-k);out.push({time:cd[i].t,value:e})}
   return out;
+}
+/* fix20: on 1s/15s/30s the price scale fits the live bars and ignores outliers (2nd-98th percentile of recent closes,
+   always keeping the latest bar in view), so one odd wick or an old seed price can no longer squash the live candles. */
+function clipScale(orig){
+  const r=orig();
+  if(r&&r.priceRange&&r.priceRange.minValue<0)r.priceRange.minValue=0;
+  try{
+    if(!isSubTf(CH.tf)||!CH.lastBars||CH.lastBars.length<8||!r||!r.priceRange)return r;
+    const bars=CH.lastBars.slice(-300),cl=bars.map(k=>scalePx(k.c)).filter(v=>isFinite(v)&&v>0).sort((a,b)=>a-b);
+    if(cl.length<8)return r;
+    const q=f=>cl[Math.min(cl.length-1,Math.max(0,Math.floor(f*(cl.length-1))))];
+    const last=bars[bars.length-1];
+    let lo=Math.min(q(0.02),scalePx(last.l)),hi=Math.max(q(0.98),scalePx(last.h));
+    const mid=(hi+lo)/2||hi||lo||1,minSpan=Math.abs(mid)*0.004;   /* a flat price still gets a readable +-0.2% window */
+    if(!(hi-lo>=minSpan)){lo=mid-minSpan/2;hi=mid+minSpan/2}
+    const pad=(hi-lo)*0.08;
+    return {priceRange:{minValue:Math.max(0,lo-pad),maxValue:hi+pad},margins:r.margins};
+  }catch(e){return r}
 }
 function syncLivePrice(){
   const el=document.getElementById('chLive');if(!el)return;
@@ -343,13 +359,13 @@ function mountChart(c){
   try{opts.devicePixelRatio=Math.max(1,window.devicePixelRatio||1)}catch(e){}
   CH.chart=LC.createChart(el,opts);
   const pxFmt={type:'custom',formatter:fmtAxis,minMove:1e-12};
-  CH.area=CH.chart.addAreaSeries({lineColor:UP,topColor:'rgba(0,245,160,0.14)',bottomColor:'rgba(9,11,16,0)',lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,priceFormat:pxFmt});
+  CH.area=CH.chart.addAreaSeries({lineColor:UP,topColor:'rgba(0,245,160,0.14)',bottomColor:'rgba(9,11,16,0)',lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,priceFormat:pxFmt,autoscaleInfoProvider:clipScale});
   CH.cs=CH.chart.addCandlestickSeries({upColor:UP,downColor:DN,borderVisible:true,borderUpColor:UPW,borderDownColor:DNW,wickUpColor:UPW,wickDownColor:DNW,
     priceFormat:pxFmt,
-    autoscaleInfoProvider:orig=>{const r=orig();if(r&&r.priceRange&&r.priceRange.minValue<0)r.priceRange.minValue=0;return r}});
-  CH.ls=CH.chart.addLineSeries({color:UP,lineWidth:2,visible:false,lastValueVisible:false,priceLineVisible:false,priceFormat:pxFmt});
-  CH.ema9=CH.chart.addLineSeries({color:EMA9,lineWidth:2,visible:!!CH.ema,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,priceFormat:pxFmt,lineStyle:0});
-  CH.ema21=CH.chart.addLineSeries({color:EMA21,lineWidth:2,visible:!!CH.ema,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,priceFormat:pxFmt,lineStyle:0});
+    autoscaleInfoProvider:clipScale});
+  CH.ls=CH.chart.addLineSeries({color:UP,lineWidth:2,visible:false,lastValueVisible:false,priceLineVisible:false,priceFormat:pxFmt,autoscaleInfoProvider:clipScale});
+  CH.ema9=CH.chart.addLineSeries({color:EMA9,lineWidth:2,visible:!!CH.ema,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,priceFormat:pxFmt,lineStyle:0,autoscaleInfoProvider:clipScale});
+  CH.ema21=CH.chart.addLineSeries({color:EMA21,lineWidth:2,visible:!!CH.ema,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,priceFormat:pxFmt,lineStyle:0,autoscaleInfoProvider:clipScale});
   CH.vs=CH.chart.addHistogramSeries({priceScaleId:'vol',priceFormat:{type:'volume'},lastValueVisible:false,priceLineVisible:false});
   CH.chart.priceScale('vol').applyOptions({scaleMargins:{top:0.82,bottom:0},visible:false});
   CH.cs.priceScale().applyOptions({scaleMargins:{top:0.08,bottom:0.22}});
@@ -457,8 +473,8 @@ function paintLoaded(cd,j){
   if(chgEl)chgEl.innerHTML=chg==null?'':`${pct(chg)} <small class="muted">over ${winTxt}</small>`;
   const srcEl=document.getElementById('chSrc');
   if(srcEl){
-    const nm={jupiter:'Jupiter (real candles)',geckoterminal:'GeckoTerminal','geckoterminal-direct':'GeckoTerminal (your browser)','geckoterminal+snapshots':'GeckoTerminal + our price snapshots',snapshots:'our own price snapshots (no volume)',derived:'approximate, from DexScreener 5m/1h/24h changes',ticks:'live ticks'}[j.source]||j.source||(isSubTf(CH.tf)?'live ticks':'GeckoTerminal');
-    srcEl.textContent='Candles: '+nm+(j.approximate?' · approximate':'')+(isSubTf(CH.tf)?' · '+CH.tf:' · 15s');
+    const nm={jupiter:'Jupiter (real candles)',geckoterminal:'GeckoTerminal','geckoterminal-direct':'GeckoTerminal (your browser)','geckoterminal+snapshots':'GeckoTerminal + our price snapshots',snapshots:'our own price snapshots (no volume)',derived:'approximate, from DexScreener 5m/1h/24h changes',ticks:'live price ticks since you opened this chart'}[j.source]||j.source||(isSubTf(CH.tf)?'live ticks':'GeckoTerminal');
+    srcEl.textContent='Candles: '+nm+(j.approximate?' · approximate':'')+(isSubTf(CH.tf)?' · '+CH.tf+' (no earlier '+CH.tf+' history)':'');
   }
   const lim=document.getElementById('chLim');
   const thin=cd.length<=7;
@@ -476,27 +492,12 @@ function paintLoaded(cd,j){
 async function loadSubminute(c,tf,seq){
   const title=document.getElementById('chLegTitle');const sym=(c&&c.symbol)||'TOKEN';
   if(title)title.textContent=`$${sym} · ${tf}`;
-  let cd=seedSubminute(tf);
-  if(cd.length)paintLoaded(cd,{source:'ticks'});
-  else chMsg('<span class="spin"></span> Waiting for live price…');
+  /* fix20: sub-minute charts use ONLY live ticks seen while the chart is open (plus same-frame bars kept from this visit).
+     The server's minute-apart snapshots stretched onto a 1s/15s grid drew one giant seed candle pinned to the left. */
+  const cd=seedSubminute(tf);
+  if(cd.length)paintLoaded(cd,{source:'ticks',limited:true});
+  else chMsg('<span class="spin"></span> Waiting for the first live price…');
   startLiveTick();
-  try{
-    const r=await fetch(`/api/ohlcv/${encodeURIComponent(c.pool)}?tf=${encodeURIComponent(tf)}&token=${encodeURIComponent(c.mint||'')}`,{cache:'no-store'});
-    const j=await r.json().catch(()=>({}));
-    if(seq!==CH.seq||!CH.cs)return;
-    if(r.ok){
-      const syn=synthBars(tf);
-      const merged=fillSubGaps(mergeBars(saneCandles(j.candles||[]).filter(k=>k.t>=Date.now()/1000-tfSec(tf)*(tf==='1s'?180:600)),syn),tf);
-      const px=rawPx();
-      if(px>0){
-        const t=bucketT(Date.now()/1000,tf);
-        const last=merged[merged.length-1];
-        if(!last||last.t<t)merged.push({t,o:last?last.c:px,h:Math.max(last?last.c:px,px),l:Math.min(last?last.c:px,px),c:px,v:0});
-        else if(last.t===t){last.c=px;if(px>last.h)last.h=px;if(px<last.l)last.l=px}
-      }
-      if(merged.length)paintLoaded(merged,j);
-    }
-  }catch(e){}
 }
 async function load(showLoading){
   const c=CH.coin;if(!c||!c.pool||!CH.cs)return;const seq=++CH.seq,tf=CH.tf;
@@ -637,9 +638,17 @@ function applyLiveTick(j){
     }
     if(!last){
       CH.lastBars.push({t:bkt,o:px,h:px,l:px,c:px,v:0});
+      if(isSubTf(CH.tf)&&CH.cs){try{paintLoaded(CH.lastBars.slice(),{source:'ticks',limited:true})}catch(e){}}
     }else if(last.t===bkt){
       last.c=px;if(px>last.h)last.h=px;if(px<last.l)last.l=px;
     }else{
+      if(isSubTf(CH.tf)){   /* fix20: a skipped second (slow tick) becomes a flat bar, never a gap */
+        const step=tfSec(CH.tf);let t=last.t+step,n=0;
+        while(t<bkt&&n<120){const f={t,o:last.c,h:last.c,l:last.c,c:last.c,v:0};CH.lastBars.push(f);
+          try{const fb=barOf(f);if(fb){CH.cs&&CH.cs.update(fb);CH.area&&CH.area.update({time:fb.time,value:fb.close});CH.ls&&CH.ls.update({time:fb.time,value:fb.close})}}catch(e){}
+          t+=step;n++}
+        if(CH.lastBars.length>900)CH.lastBars=CH.lastBars.slice(-600);
+      }
       CH.lastBars.push({t:bkt,o:last.c,h:Math.max(last.c,px),l:Math.min(last.c,px),c:px,v:0});
     }
     const k=CH.lastBars[CH.lastBars.length-1];
@@ -651,8 +660,8 @@ function applyLiveTick(j){
       try{
         if(CH.ema){
           const e9=emaPts(CH.lastBars,9),e21=emaPts(CH.lastBars,21);
-          if(CH.ema9&&e9.length)CH.ema9.update(e9[e9.length-1]);
-          if(CH.ema21&&e21.length)CH.ema21.update(e21[e21.length-1]);
+          if(CH.ema9&&e9.length){if(e9.length<=2)CH.ema9.setData(e9);else CH.ema9.update(e9[e9.length-1])}
+          if(CH.ema21&&e21.length){if(e21.length<=2)CH.ema21.setData(e21);else CH.ema21.update(e21[e21.length-1])}
         }
       }catch(e){}
       CH.lastUsd=px;CH.lastPx=px;CH.lastT=bar.time;CH.lastBarUp=bar.close>=bar.open;

@@ -36,10 +36,14 @@ function apply(kind,b){
 function snapshot(){Object.keys(KEYKIND).forEach(k=>{S.last[k]=localStorage.getItem(k)})}
 
 // ---- network
-async function api(method,url,payload){
+async function api(method,url,payload,retried){
+  if(method!=='GET'&&!S.csrf){try{const m=document.querySelector('meta[name="xs-csrf"]');if(m&&m.content)S.csrf=m.content}catch(e){}
+    if(!S.csrf&&window.xsMe){try{const {d}=await window.xsMe();if(d&&d.csrf)S.csrf=d.csrf}catch(e){}}}
   const h={'Accept':'application/json'};if(payload!==undefined)h['Content-Type']='application/json';if(method!=='GET')h['X-CSRF-Token']=S.csrf;
   const r=await fetch(url,{method,credentials:'same-origin',headers:h,body:payload!==undefined?JSON.stringify(payload):undefined});
-  const d=await r.json().catch(()=>({}));if(d&&typeof d.csrf==='string')S.csrf=d.csrf;return {r,d};
+  const d=await r.json().catch(()=>({}));if(d&&typeof d.csrf==='string')S.csrf=d.csrf;
+  if(r.status===403&&d&&d.csrf_failed&&!retried&&method!=='GET'){try{const x=await window.xsMe(true);if(x.d&&x.d.csrf)S.csrf=x.d.csrf}catch(e){}return api(method,url,payload,true)}
+  return {r,d};
 }
 async function loadMe(){
   try{const first=!S._meOnce&&window.xsMe;S._meOnce=true;

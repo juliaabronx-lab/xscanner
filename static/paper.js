@@ -42,6 +42,7 @@ function fillMsg(f){if(!f)return'Paper book updated.';
 async function refreshCsrf(){
   try{const d=await (await fetch('/api/auth/status',{credentials:'same-origin'})).json();if(d.csrf)PB.csrf=d.csrf;return d}catch(e){return null}}
 // fix19: reuse the page's single /api/me bootstrap (chart.js) so one fresh session = one CSRF token (no first-click 403)
+try{const _m=document.querySelector('meta[name="xs-csrf"]');if(_m&&_m.content)PB.csrf=_m.content}catch(e){}  // fix20: server-set token, no first-click race
 PB.csrfReady=window.xsMe?window.xsMe().then(({d})=>{if(d&&d.csrf)PB.csrf=d.csrf;return d}).catch(()=>refreshCsrf()):refreshCsrf();
 /* fix19: right after page load the tick cache can be empty. Fetch one live quote instead of failing with
    "Live price is not available yet". */
@@ -583,7 +584,9 @@ const IT={
   open:false,tab:'P1',speed:0,editing:false,snap:null,bound:false,
 };
 function itLoad(){
-  try{IT.open=localStorage.getItem('xs_instant_open_v1')==='1'}catch(e){IT.open=false}
+  // fix20: the Instant card starts CLOSED on every page load and never auto-opens (it covered the Migrated column);
+  // it opens only when the user presses Instant / P1. The old persisted open flag is cleared.
+  if(IT._openInit==null){IT._openInit=1;IT.open=false;try{localStorage.removeItem('xs_instant_open_v1')}catch(e){}}
   try{IT.tab=localStorage.getItem('xs_instant_preset_tab_v1')||'P1'}catch(e){}
   if(!DEF_PRESETS[IT.tab])IT.tab='P1';
   try{const s=localStorage.getItem('xs_instant_speed_v1');IT.speed=s==null?0:(+s||0)}catch(e){IT.speed=0}
@@ -591,7 +594,10 @@ function itLoad(){
   for(const k of Object.keys(DEF_PRESETS)){if(!Array.isArray(IT.presets[k])||IT.presets[k].length!==4)IT.presets[k]=DEF_PRESETS[k].slice()}
 }
 function itSave(k,v){try{localStorage.setItem(k,typeof v==='string'?v:JSON.stringify(v))}catch(e){}}
-function itTarget(){if(PB.token&&PB.token.mint)return PB.token;return IT.snap}
+// fix20: on /token/<mint> the mint is known from the URL before /api/token answers, so Instant 0.1 / hotkey 1
+// works straight away (the price comes from ensurePx) instead of saying "Open a token to paper-buy."
+function urlMint(){const m=/^\/token\/([1-9A-HJ-NP-Za-km-z]{32,44})(?:[/?#]|$)/.exec(location.pathname||'');return m?m[1]:null}
+function itTarget(){if(PB.token&&PB.token.mint)return PB.token;const u=urlMint();if(u)return (IT.snap&&IT.snap.mint===u)?IT.snap:{mint:u,symbol:'',name:'',pool:''};return IT.snap}
 function itMint(){const t=itTarget();return t&&t.mint||null}
 function itSym(){const t=itTarget();return (t&&(t.symbol||t.s))||'TOKEN'}
 function itAmounts(){return (IT.presets&&IT.presets[IT.tab])||DEF_PRESETS.P1}
@@ -737,7 +743,7 @@ function defaultInstantPos(el){
   el.style.left=left+'px';el.style.top=top+'px';el.style.right='auto';el.style.bottom='auto';
 }
 function setInstantOpen(on){
-  IT.open=!!on;itSave('xs_instant_open_v1',IT.open?'1':'0');
+  IT.open=!!on;
   const el=ensureInstant();
   el.classList.toggle('hidden',!IT.open);
   el.setAttribute('aria-hidden',IT.open?'false':'true');
@@ -773,6 +779,7 @@ function paintInstant(){
   el.classList.toggle('it-empty',!mint);
 }
 async function instantBuy(sol){
+  await bootWait();
   const t=itTarget();
   if(!t||!t.mint){toast('Open a token to paper-buy.','dn');return}
   if(!sol||sol<=0)return;
@@ -783,6 +790,7 @@ async function instantBuy(sol){
   try{await market(Object.assign({action:'buy',mint:t.mint,sol,px_usd:px}, {symbol:t.symbol||t.s||'',name:t.name||'',pool:t.pool||''}),{delay:IT.speed})}catch(e){/* toast already shown */}
 }
 async function instantSell(pct){
+  await bootWait();
   const t=itTarget();
   if(!t||!t.mint){toast('Open a token to paper-sell.','dn');return}
   const pos=posOf(t.mint);
@@ -828,6 +836,7 @@ window.paperQuickBuy=async function(info){
   if(!info||!info.mint)return;
   IT.snap={mint:info.mint,symbol:info.symbol||'',name:info.name||'',pool:info.pool||'',px:info.px};
   if(info.px)PB.quotes[info.mint]={px:+info.px,t:Date.now()/1000};
+  await bootWait();
   const sol=(info.sol>0)?+info.sol:((document.getElementById('pqAmt')&&+document.getElementById('pqAmt').value>0)?+document.getElementById('pqAmt').value:0.1);
   const cash=PB.acct?+(PB.acct.cash_sol||0):0;
   if(cash<=0){toast('Deposit paper SOL first to Quick Buy. Simulation only.','dn');if(window.show)window.show('book');return}
@@ -875,6 +884,8 @@ document.addEventListener('keydown',e=>{if(e.key!=='Enter')return;
   if(e.target.id==='bkDep'){e.preventDefault();const b=document.getElementById('bkDepGo');if(b)b.click()}});
 document.addEventListener('xschart',e=>{const d=e.detail||{};PB.chartMint=d.mint;PB.candles=d.candles||[];if(d.last&&d.mint)PB.quotes[d.mint]={px:d.last,t:Date.now()/1000,src:'chart'};paintChart()});
 
+PB.bootP=new Promise(r=>{PB._bootRes=r});
+function bootWait(){return PB.acct?Promise.resolve():Promise.race([PB.bootP,new Promise(r=>setTimeout(r,6000))])}  // fix20: queue first clicks until the book loads
 async function boot(){
   bindInstantChrome();
   bindCalChrome();
@@ -895,6 +906,7 @@ async function boot(){
   const bar=document.getElementById('paperBar');if(bar)bar.hidden=false;
   const jump=document.getElementById('toMyPaper');if(jump&&!jump.dataset.bound){jump.dataset.bound='1';jump.addEventListener('click',ev=>{ev.preventDefault();if(window.show)window.show('book')})}
   if(!PB._tick){PB._tick=setInterval(()=>{pull();maybeMark(false)},20000)}
+  try{PB._bootRes&&PB._bootRes()}catch(e){}
   maybeMark(true)}
 
 window.paperOnAuth=function(user){

@@ -33,8 +33,15 @@ const kvRow=(k,v,extra='')=>`<div class="kvr"><span class="kk">${k}</span><span 
 const addrCell=(a,kind='account')=>a?`<code class="addr" title="${esc(a)}">${esc(a)}</code>`:'—';
 const addrBtns=(a,kind='account')=>a?`<button class="cpy mini" data-cp="${esc(a)}" title="Copy">⧉</button><a class="xl" href="https://solscan.io/${kind}/${esc(a)}" target="_blank" rel="noopener noreferrer" title="Open in Solscan">Solscan ↗</a>`:'';
 const dateS=t=>t?new Date(t*1000).toLocaleString('en-GB',{timeZone:'Asia/Kuala_Lumpur',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',second:'2-digit'})+' MYT':'—';
-const tokImgDirect=(r,cls='pimgi')=>{const u=r.img&&hostOk(r.img)?r.img:imgUrl(r.m,symOf(r));
-  return `<img class="${cls}" src="${esc(u)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-fb="${esc(imgUrl(r.m,symOf(r)))}" onerror="if(!this.dataset.f){this.dataset.f=1;this.src=this.dataset.fb}else{this.style.visibility='hidden'}">`};
+// fix20: every token image carries a letter avatar as its background, so a slow, blank or broken logo never shows an
+// empty ring on first paint (tremps / DLUP98 / DRILL); after two failed loads the avatar itself becomes the image.
+const SVGNS='http:/'+'/www.w3.org/2000/svg';
+const _avC=['#6c7cff','#14ab7d','#f3ba2f','#e8578a','#38bdf8','#a78bfa','#fb923c','#22c55e'];
+function avatarUri(m,sym){const t=String(sym||m||'?').replace(/^\$/,'').replace(/[^A-Za-z0-9]/g,'').slice(0,1).toUpperCase()||'?';
+  let h=0;for(const ch of String(m||sym||''))h=(h*31+ch.charCodeAt(0))>>>0;const c=_avC[h%_avC.length];
+  return 'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="${SVGNS}" viewBox="0 0 64 64"><rect width="64" height="64" rx="10" fill="${c}"/><text x="32" y="43" text-anchor="middle" font-family="Arial,sans-serif" font-weight="700" font-size="30" fill="#0b0d12" fill-opacity=".85">${t}</text></svg>`)}
+const tokImgDirect=(r,cls='pimgi')=>{const u=r.img&&hostOk(r.img)?r.img:imgUrl(r.m,symOf(r));const av=avatarUri(r.m,symOf(r));
+  return `<img class="${cls}" src="${esc(u)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" style="background:#1c2130 url(&quot;${esc(av)}&quot;) center/cover no-repeat" data-fb="${esc(imgUrl(r.m,symOf(r)))}" data-av="${esc(av)}" onerror="if(!this.dataset.f){this.dataset.f=1;this.src=this.dataset.fb}else if(this.dataset.f==='1'){this.dataset.f=2;this.src=this.dataset.av}else{this.style.visibility='hidden'}">`};
 const jupLink=m=>'https://jup.ag/swap/SOL-'+m;
 const axLink=(r)=>'https://axiom.trade/meme/'+(r.p||r.m)+'?chain=sol';
 const phLink=(r)=>'https://photon-sol.tinyastro.io/en/lp/'+(r.p||r.m);
@@ -101,15 +108,20 @@ function passes(r){const F=P.filt,age=r.cr?now()-r.cr:null;
   return true}
 function filtCount(){return Object.entries(P.filt).filter(([k,v])=>v&&v!==DEF_F[k]).length}
 function paintFilters(){const f=$('#pFilters');for(const [k,v] of Object.entries(P.filt)){const el=f.elements[k];if(!el)continue;if(el.type==='checkbox')el.checked=!!v;else el.value=v||''}
-  const n=filtCount(),b=$('#pFiltN');b.textContent=n;b.classList.toggle('hidden',!n)}
+  const n=filtCount(),b=$('#pFiltN');b.textContent=n;b.classList.toggle('hidden',!n);try{paintColFilt()}catch(e){}}
 function paintPresets(){const names=[...Object.keys(BUILTIN),...Object.keys(presets)];
   $('#pPresets').innerHTML=names.map(n=>`<button type="button" data-p="${esc(n)}" class="${n===activePreset?'on':''}">${esc(n)}${presets[n]?` <i data-del="${esc(n)}" title="Delete preset">×</i>`:''}</button>`).join('')}
 function setFilters(o,name){P.filt={...DEF_F,...o};activePreset=name||'';LSs('xs_pulse_filters_v1',P.filt);LSs('xs_pulse_active_v1',activePreset);paintFilters();paintPresets();renderAll()}
 $('#pPresets').onclick=e=>{const d=e.target.closest('[data-del]');if(d){e.stopPropagation();delete presets[d.dataset.del];LSs('xs_pulse_presets_v1',presets);if(activePreset===d.dataset.del)activePreset='';paintPresets();return}
   const b=e.target.closest('[data-p]');if(!b)return;const n=b.dataset.p;setFilters(BUILTIN[n]||presets[n]||{},n)};
 $('#pFiltBtn').onclick=()=>{const f=$('#pFilters'),open=f.classList.toggle('hidden')===false;$('#pFiltBtn').setAttribute('aria-expanded',open)};
+// fix20: the global Display / Filters / Quick Buy bar is gone; each column's gear opens the one filter + display form.
+document.addEventListener('click',e=>{const g=e.target.closest&&e.target.closest('[data-colfilt]');if(!g)return;e.preventDefault();
+  const f=$('#pFilters'),open=f.classList.toggle('hidden')===false;$$('[data-colfilt]').forEach(b=>b.setAttribute('aria-expanded',open?'true':'false'));
+  if(open){try{f.querySelector('input,select').focus({preventScroll:true})}catch(_){}}});
+function paintColFilt(){const n=filtCount();$$('[data-colfilt]').forEach(b=>{b.classList.toggle('on',n>0);b.dataset.n=n?String(n):'';b.title=n?('Filters and display ('+n+' active)'):'Filters and display'})}
 $('#pFilters').addEventListener('input',e=>{const el=e.target;if(!el.name)return;P.filt[el.name]=el.type==='checkbox'?el.checked:fNum(el.value);activePreset='';LSs('xs_pulse_filters_v1',P.filt);LSs('xs_pulse_active_v1','');paintPresets();
-  const n=filtCount(),b=$('#pFiltN');b.textContent=n;b.classList.toggle('hidden',!n);clearTimeout(P.ft);P.ft=setTimeout(renderAll,120)});
+  const n=filtCount(),b=$('#pFiltN');b.textContent=n;b.classList.toggle('hidden',!n);try{paintColFilt()}catch(e){}clearTimeout(P.ft);P.ft=setTimeout(renderAll,120)});
 $('#pFReset').onclick=()=>setFilters({}, 'All');
 $('#pFSave').onclick=()=>{const n=(prompt('Name this preset (saved in this browser only):')||'').trim().slice(0,20);if(!n)return;if(BUILTIN[n]){toast('That name is built in.');return}
   presets[n]={...P.filt};LSs('xs_pulse_presets_v1',presets);activePreset=n;LSs('xs_pulse_active_v1',n);paintPresets();toast('Saved preset “'+esc(n)+'”')};
@@ -411,9 +423,13 @@ async function tokLoad(m){
   for(let i=0;i<3&&seq===TK.seq;i++){
     try{const d=await api('/api/token/'+m);if(seq!==TK.seq)return;
       if(d.found===false){$('#tokBody').innerHTML=`<div class="card"><h3>No market found</h3><p class="muted">${esc((d.notes||[])[0]||'This token has no trading pair yet.')}</p><p><a href="#pulse" onclick="location.hash='pulse';history.pushState({},'','/#pulse');show('pulse');return false">← Back to Pulse</a></p></div>`;return}
-      const first=!TK.cur||TK.cur.mint!==m;TK.cur=d;tokPaint(d);
-      if(first||!CH.coin){CH.h=chartH();mountChart({pool:d.pool,mint:d.mint,symbol:d.symbol})}
-      if(first){tapePoll();clearInterval(TK.tapeTimer);TK.tapeTimer=setInterval(tapePoll,10000)}
+      const stub=TK.cur&&TK.cur.stub&&TK.cur.mint===m?TK.cur:null;
+      const first=!TK.cur||TK.cur.mint!==m;
+      if(d.pending&&d.pending.includes('market')&&!d.market){if(!stub)TK.cur=null;clearTimeout(TK.detailTimer);TK.detailTimer=setTimeout(()=>{if(view==='token'&&seq===TK.seq)tokLoad(m)},1500);return}
+      TK.cur=d;tokPaint(d);
+      const poolMoved=stub&&d.pool&&d.pool!==stub.pool;
+      if(first||!CH.coin||poolMoved){CH.h=chartH();mountChart({pool:d.pool,mint:d.mint,symbol:d.symbol})}
+      if(first||poolMoved){TK.tape=null;tapePoll();clearInterval(TK.tapeTimer);TK.tapeTimer=setInterval(tapePoll,10000)}
       clearTimeout(TK.detailTimer);TK.detailTimer=setTimeout(()=>{if(view==='token'&&seq===TK.seq)tokLoad(m)},(d.pending||[]).length?4000:12000);return}
     catch(e){if(i===2){$('#tokBody').innerHTML=`<div class="card"><h3>Could not load this token</h3><p class="muted">${esc(e.message)}</p><p><button class="ghost" data-m="${esc(m)}" onclick="openToken(this.dataset.m)">Retry</button></p></div>`;return}await sleep(1500)}}}
 async function lookupLoad(m){
@@ -434,6 +450,11 @@ window.openToken=function(m,opts){
   document.title=(r?'$'+symOf(r)+' · ':'')+'xScanner token page';
   setView('token');TK.mint=m;TK.seq++;TK.cur=null;TK.tape=null;TK.lookup=null;TK.tab='trades';
   $('#tokBody').innerHTML=tokSkeleton(m,r);paintStars();
+  /* fix20: when the Pulse row already knows the pool, the chart and the trades tape start NOW instead of waiting for
+     /api/token (which used to leave the chart empty for ~8 s on a cold load). */
+  if(r&&r.p&&B58.test(r.p)){TK.cur={mint:m,pool:r.p,symbol:symOf(r),stub:true};
+    try{CH.h=chartH();mountChart({pool:r.p,mint:m,symbol:symOf(r)})}catch(e){}
+    tapePoll();clearInterval(TK.tapeTimer);TK.tapeTimer=setInterval(tapePoll,10000)}
   window.scrollTo({top:0});
   tkPane();tokLoad(m);lookupLoad(m)};
 // ===================================================================== views / routing
@@ -516,8 +537,12 @@ paintStars();watchPoll(true);setInterval(()=>watchPoll(false),15000);
 
 function paintTickers(prices){
   const el=document.getElementById('dockTickers');if(!el||!prices)return;
+  // fix20: never paint "BTC — ETH —": the row stays invisible (no layout shift) until real prices arrive,
+  // and a coin with no price yet is simply left out.
+  if(!['BTC','ETH','SOL','BNB'].some(k=>prices[k]>0))return;
+  el.classList.remove('dt-wait');el.removeAttribute('aria-busy');
   el.innerHTML=['BTC','ETH','SOL','BNB'].map(k=>{
-    const px=prices[k];if(!(px>0))return `<span class="dtk ${k.toLowerCase()}">${k} —</span>`;
+    const px=prices[k];if(!(px>0))return '';
     const txt=px>=100?px.toLocaleString('en-US',{maximumFractionDigits:0}):px.toLocaleString('en-US',{maximumFractionDigits:2});
     return `<span class="dtk ${k.toLowerCase()}"><b>${k}</b> $${txt}</span>`;
   }).join('');

@@ -18,9 +18,11 @@ SWR_S = 90.0
 NEGATIVE_S = 8.0
 SIG_LIMIT = 40        # fix19: look further back; parsed swaps are remembered per pool so the tape deepens over refreshes
 TX_LIMIT = 8          # new getTransaction calls per refresh (public RPC budget)
+TX_FIRST = 24         # fix20: first fill of a pool's tape
+TX_WORKERS = 4
 KEEP_ROWS = 80
 DUST_USD = 0.01
-BAND = 4.0            # a swap priced more than 4x away from the live tick price is a mis-parse (fees, rent, routing), dropped
+BAND = 2.0            # fix20: a swap priced outside 0.5x-2x of the live tick price is a mis-parse (fees, rent, routing), dropped
 WSOL = "So11111111111111111111111111111111111111112"
 USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 USDT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
@@ -250,25 +252,32 @@ def parse_swap(tx, pool, token, signature, sol_usd):
     if not amt:
         return None
     usd = None
-    # fix19: price from the COUNTERPARTY (pool vault side) first. The trader's own SOL change also carries priority fees,
-    # Jito tips, platform fees and token-account rent (~0.002 SOL), which made small trades look up to ~240x too pricey.
+    # fix20: price PER UNIT from each counterparty (pool vault) leg, then size = unit price x the trader's amount.
+    # Routed swaps split one trade across several pools (e.g. part via a SOL pool, part via an SPCX pool). fix19
+    # divided ONE pool's quote leg by the trader's WHOLE amount, so MoonBoy rows came out 0.02x-0.3x of the tick.
+    # Legs we cannot price in USD (non SOL/stable quotes) are skipped, never guessed.
+    leg_usd, leg_base = 0.0, 0.0
     for owner, od in deltas.items():
         if owner == user:
             continue
         b = od.get(base) or 0.0
         if not b or (b > 0) == (amt > 0):
             continue
+        lu = None
         for mint, v in od.items():
-            if mint in STABLES and v:
-                usd = abs(float(v)); break
-            if mint == WSOL and v and sol_usd:
-                usd = abs(float(v)) * float(sol_usd); break
-        if usd is None and sol_usd:
+            if mint in STABLES and v and (v > 0) == (b < 0):
+                lu = abs(float(v)); break
+            if mint == WSOL and v and sol_usd and (v > 0) == (b < 0):
+                lu = abs(float(v)) * float(sol_usd); break
+        if lu is None and sol_usd:
             lam = _lamport_delta(tx, meta, owner)
-            if lam:
-                usd = abs(lam) / 1e9 * float(sol_usd)
-        if usd:
-            break
+            if lam and (lam > 0) == (b < 0) and abs(lam) > 5_000_000:   # > 0.005 SOL: not just rent / fees
+                lu = abs(lam) / 1e9 * float(sol_usd)
+        if lu:
+            leg_usd += lu
+            leg_base += abs(float(b))
+    if leg_usd > 0 and leg_base > 0:
+        usd = leg_usd / leg_base * abs(float(amt))
     for mint, v in d.items():
         if usd is not None:
             break
@@ -339,15 +348,26 @@ def _rpc_tape(pool, token, rpc, sol_usd, ref_px=None):
         return None
     with _lock:
         seen = dict(_seen.get(pool) or {})
-    fetched = 0
-    for s in sigs:
-        if fetched >= TX_LIMIT:
-            break
-        if not isinstance(s, dict) or s.get("err") or not s.get("signature") or s["signature"] in seen:
-            continue
-        fetched += 1
-        tx = rpc("getTransaction", [s["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
-        seen[s["signature"]] = parse_swap(tx, pool, token, s["signature"], sol_usd)
+    # fix20: the first look at a pool reads more transactions (TX_FIRST, 4 at a time) so the tape opens with a real
+    # page of swaps instead of ~8 rows; later refreshes only read the few new signatures.
+    limit = TX_FIRST if not seen else TX_LIMIT
+    todo = [s["signature"] for s in sigs
+            if isinstance(s, dict) and not s.get("err") and s.get("signature") and s["signature"] not in seen][:limit]
+
+    def one(sig):
+        try:
+            tx = rpc("getTransaction", [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
+            return sig, parse_swap(tx, pool, token, sig, sol_usd)
+        except Exception:
+            return sig, None
+    if len(todo) > 2:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=TX_WORKERS) as ex:
+            for sig, row in ex.map(one, todo):
+                seen[sig] = row
+    else:
+        for sig in todo:
+            seen[sig] = one(sig)[1]
     rows = [r for r in seen.values() if r]
     rows = sorted(rows, key=lambda r: -int(r["t"]))[:KEEP_ROWS]
     keep = {r["sig"] for r in rows} | {s.get("signature") for s in sigs if isinstance(s, dict)}
@@ -357,7 +377,7 @@ def _rpc_tape(pool, token, rpc, sol_usd, ref_px=None):
             for k in list(_seen)[:100]: _seen.pop(k, None)
     ref = ref_px if ref_px is not None else _ref_price(token)
     if ref and ref > 0:
-        rows = [r for r in rows if r.get("px") and ref / BAND <= r["px"] <= ref * BAND]
+        rows = [r for r in rows if in_band(r.get("px"), ref)]
     if not rows:
         return None
     return _assemble(rows, NOTE_RPC, "solana_rpc")
@@ -381,6 +401,31 @@ def _unmark(token):
         pass
 
 
+def in_band(px, ref):
+    """fix20: True when a row price is within 0.5x-2x of the live tick (or there is no tick to compare with)."""
+    if not ref or ref <= 0:
+        return True
+    return bool(px) and ref / BAND <= px <= ref * BAND
+
+
+def _banded(payload, token, ref_px=None):
+    """Drop GeckoTerminal rows priced outside the band too (routed / anomalous fills), and their trader sums."""
+    ref = ref_px if ref_px is not None else _ref_price(token)
+    rows = payload.get("trades") or []
+    if not ref or not rows:
+        return payload
+    keep = [r for r in rows if in_band(r.get("px"), ref) and not r.get("anom")]
+    if len(keep) == len(rows):
+        return payload
+    if not keep:
+        return payload       # never blank a tape because the tick itself may be off; rows stay as GT reports them
+    out = _assemble(keep, payload.get("note") or "", payload.get("source") or "geckoterminal",
+                    stale=payload.get("stale", False), stale_reason=payload.get("stale_reason"))
+    out["n_seen"] = payload.get("n_seen", len(keep))
+    out["dropped_out_of_band"] = len(rows) - len(keep)
+    return out
+
+
 def _load(pool, token, gt, rpc, sol_usd):
     gt_payload, gt_err = None, None
     try:
@@ -388,7 +433,7 @@ def _load(pool, token, gt, rpc, sol_usd):
     except Exception as e:
         gt_err = e
     if isinstance(gt_payload, dict) and gt_payload.get("available") and not gt_payload.get("stale"):
-        out = dict(gt_payload)
+        out = _banded(dict(gt_payload), token)
         out["source"] = out.get("source") or "geckoterminal"
         return out
     rpc_err = None
