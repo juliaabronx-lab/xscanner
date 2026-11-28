@@ -1,0 +1,9 @@
+xScanner paper-trading UI
+
+The floating panel, PnL card, chart markers, poster backgrounds and portfolio
+view in this tree are original xScanner code. The six poster backgrounds are
+generated in the browser (gradient, aurora, candles, moon, grid, noise). They
+are not taken from Simora or from any other product.
+
+No source was copied from paper-ape, papertrench, GhostPaper, AgentLouie/paper-trader,
+or dryflip/memecoin-paper-trading-extension. Those repositories were not vendored.

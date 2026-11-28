@@ -22,6 +22,7 @@ function fmtQty(v){if(v==null||!isFinite(+v))return'—';const n=+v,a=Math.abs(n
 function when(ts){if(!ts)return'—';try{return new Date(ts*1000).toLocaleString('en-GB',{timeZone:'Asia/Kuala_Lumpur',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}catch(e){return'—'}}
 function settings(){return(PB.acct&&PB.acct.settings)||{slippage_bps:150,priority_fee_sol:0.001,platform_fee_bps:100,exec_delay_ms:700}}
 function pxTxt(v){try{return fmtPx(v)}catch(e){return v==null||!isFinite(+v)?'—':String(v)}}
+function mcTxt(v){const n=+v;if(!isFinite(n)||n<=0)return'—';if(n>=1e9)return'$'+(n/1e9).toFixed(2)+'B';if(n>=1e6)return'$'+(n/1e6).toFixed(2)+'M';if(n>=1e3)return'$'+(n/1e3).toFixed(1)+'K';return '$'+n.toFixed(0)}
 function posOf(mint){return PB.acct&&PB.acct.positions&&PB.acct.positions[mint]}
 function rowOf(mint){return((PB.summary&&PB.summary.positions)||[]).find(r=>r.mint===mint)}
 function livePx(mint){const q=PB.quotes[mint];if(q&&q.px&&Date.now()/1000-q.t<45)return q.px;
@@ -35,8 +36,8 @@ function fillMsg(f){if(!f)return'Paper book updated.';
   if(f.side==='settings')return'Paper settings saved.';
   if(f.side==='cancel')return'Limit cancelled. Reserved paper funds are back in cash.';
   if(f.side==='limit')return'Limit placed. It fills only if the live price crosses it.';
-  if(f.side==='buy')return'Paper buy $'+(f.symbol||'')+' · spent '+solTxt(f.sol)+' · fee '+solTxt(f.fee_sol);
-  if(f.side==='sell'){const r=f.realized_sol||0;return'Paper sell $'+(f.symbol||'')+' · '+(r>=0?'+':'')+solTxt(r)+' realised';}
+  if(f.side==='buy'){const mc=PB.token&&PB.token.mint===f.mint&&PB.token.market&&PB.token.market.mc;return 'BUY: '+solTxt(f.sol)+' @ MC '+(mc?mcTxt(mc):pxTxt(f.fill_px_usd))}
+  if(f.side==='sell'){const mc=PB.token&&PB.token.mint===f.mint&&PB.token.market&&PB.token.market.mc;return 'SELL @ MC '+(mc?mcTxt(mc):pxTxt(f.fill_px_usd))}
   return'Paper book updated.'}
 
 async function refreshCsrf(){
@@ -89,7 +90,22 @@ function liveUnrealized(){
   if(!any)return 0;
   return known?u:(s&&s.unrealized_known_sol);
 }
+function paintPnlCard(){
+  let el=document.getElementById('pnlCard');
+  if(!el){el=document.createElement('div');el.id='pnlCard';el.className='pnl-card';el.innerHTML='<div class="pnl-row"><div><span>BALANCE</span><b id="pnlBal">0</b></div><div><span>PNL</span><b id="pnlPnL">0</b></div></div><div class="pnl-pos" id="pnlPos"></div>';document.body.appendChild(el)}
+  const show=onTokenPage();
+  el.classList.toggle('hidden',!show);
+  const a=PB.acct,cash=a?a.cash_sol:0,u=liveUnrealized()||0,r=a?a.realized_sol:0;
+  const bal=document.getElementById('pnlBal'),pn=document.getElementById('pnlPnL');
+  if(bal)bal.textContent=solTxt(cash);
+  if(pn){const n=(u||0)+(r||0);pn.textContent=solTxt(n,true);pn.className=clsPn(n)}
+  const pos=document.getElementById('pnlPos');
+  if(pos&&a){const rows=Object.values(a.positions||{}).slice(0,5);
+    pos.innerHTML=rows.map(p=>`<div>$${esc(p.symbol||'?')} ${fmtQty(p.qty)}</div>`).join('')+'<button type="button" class="linkbtn" id="pnlBook">Portfolio</button>';
+    const b=document.getElementById('pnlBook');if(b)b.onclick=()=>{if(window.show)window.show('book')}}
+}
 function paintBar(){
+  paintPnlCard();
   const bar=document.getElementById('paperBar');if(!bar)return;bar.hidden=false;
   const a=PB.acct,s=PB.summary;
   const cash=a?a.cash_sol:0, res=a?a.reserved_sol:0;
@@ -223,6 +239,7 @@ async function runEst(){
 async function market(payload,opts){
   opts=opts||{};
   if(PB.busy)return;const gen=++PB.seq;PB.busy=true;updatePanelFigures();paintInstant();
+  toast(payload.action==='buy'?('Buying '+(payload.sol||'')+' SOL...'):('Selling '+(payload.pct||'')+'%...'));
   const delay=opts.delay!=null?Math.max(0,+opts.delay):(+settings().exec_delay_ms||0);
   const est=document.getElementById('pbEst');if(est)est.textContent=delay?`Simulating a ${delay} ms fill…`:'Filling…';
   try{
@@ -254,16 +271,17 @@ async function saveSettings(){
 function ensureBook(){
   const root=document.getElementById('bookApp');if(!root||root.dataset.ready)return;
   root.dataset.ready='1';
-  root.innerHTML=`<div id="bkOffer"></div><div class="pb-kpis" id="bkKpis"></div>
-    <div class="grid2"><div class="card"><h3>Paper ${typeof solMark==='function'?solMark():''} SOL</h3>
-      <p class="muted">A deposit is play money. It does not come from a wallet.</p>
-      <div class="pb-row"><span class="sol-amt">${typeof solMark==='function'?solMark():''}<input id="bkDep" data-depinput type="number" min="0" step="any" placeholder="Amount" aria-label="Paper SOL to deposit"></span><button type="button" class="primary" id="bkDepGo">Deposit</button></div>
-      <div class="pb-presets"><button type="button" data-dep="5">${typeof solMark==='function'?solMark():''}5</button><button type="button" data-dep="10">${typeof solMark==='function'?solMark():''}10</button><button type="button" data-dep="25">${typeof solMark==='function'?solMark():''}25</button><button type="button" data-dep="100">${typeof solMark==='function'?solMark():''}100</button></div>
-      <p id="bkStore" class="muted"></p><button type="button" class="linkbtn" id="bkReset">Reset book</button>
-    </div><div class="card"><h3>Record</h3><div id="bkStats"></div></div></div>
-    <div class="card"><h3>Open positions</h3><div id="bkPos"></div></div>
+  root.innerHTML=`<div id="bkOffer"></div>
+    <div class="pb-port">
+      <div class="card"><h3>Balance</h3><div id="bkKpis"></div><button type="button" class="linkbtn" id="bkWallet">Wallet</button><div class="hidden" id="bkWalletBox"><div class="pb-row"><input id="bkDep" data-depinput type="number" min="0" step="any" placeholder="Amount" aria-label="Paper SOL to deposit"><button type="button" class="primary" id="bkDepGo">Deposit</button></div><p id="bkStore" class="muted"></p><button type="button" class="linkbtn" id="bkReset">Reset book</button></div></div>
+      <div class="card"><h3>Realised PnL</h3><canvas id="bkChart" width="360" height="88"></canvas></div>
+      <div class="card"><h3>Performance</h3><div id="bkBuckets"></div></div>
+    </div>
+    <div class="bk-tabs"><button type="button" data-bktab="pos" class="on">Active Positions</button><button type="button" data-bktab="hist">History</button></div>
+    <div class="card" id="bkPosCard"><h3>Open positions</h3><div id="bkPos"></div></div>
+    <div class="card hidden" id="bkHistCard"><h3>History <button type="button" class="ghost" id="bkCalBtn">PnL calendar</button></h3><div id="bkHist"></div></div>
     <div class="card"><h3>Limit orders</h3><div id="bkOrd"></div></div>
-    <div class="card"><h3>Trades <button type="button" class="ghost" id="bkCalBtn" title="Open the paper PnL calendar">PnL calendar</button></h3><div id="bkHist"></div></div>`}
+    <div id="bkStats" class="muted"></div>`}
 
 function kpi(l,v,c){return `<div class="pb-kpi"><span>${l}</span><b class="${c||''}">${v}</b></div>`}
 function mytDate(off){const fmt=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kuala_Lumpur',year:'numeric',month:'2-digit',day:'2-digit'});
@@ -301,8 +319,23 @@ function fillBook(){
   paintCal();
   const trades=(a.trades||[]).slice().reverse().slice(0,80);
   document.getElementById('bkHist').innerHTML=trades.length?`<div class="tablewrap"><table class="tkt"><thead><tr><th>When</th><th>Side</th><th>Token</th><th>SOL</th><th>Fill</th><th>Fee</th><th>Realised</th><th></th></tr></thead><tbody>`+
-    trades.map(t=>`<tr><td>${when(t.ts)}</td><td class="${t.side==='buy'?'up':'dn'}">${esc(t.side)}${t.kind==='limit'?' lim':''}</td><td><a href="/token/${esc(t.mint)}" data-tok="${esc(t.mint)}">$${esc(t.symbol||'?')}</a></td><td>${solTxt(t.sol)}</td><td>${pxTxt(t.fill_px_usd)}</td><td>${solTxt(t.fee_sol)}</td><td class="${clsPn(t.realized_sol)}">${t.realized_sol==null?'—':solTxt(t.realized_sol,true)}</td><td>${t.side==='sell'?`<button type="button" class="linkbtn" data-share="${esc(t.id)}">Card</button>`:''}</td></tr>`).join('')+'</tbody></table></div>'
-    :'<p class="muted">No paper trades yet.</p>'}
+    trades.map(t=>`<tr><td>${when(t.ts)}</td><td class="${t.side==='buy'?'up':'dn'}">${esc(t.side)}${t.kind==='limit'?' lim':''}</td><td><img class="tokico" alt="" src="${typeof imgUrl==='function'?imgUrl(t.mint,t.symbol||''):''}"><a href="/token/${esc(t.mint)}" data-tok="${esc(t.mint)}">$${esc(t.symbol||'?')}</a></td><td>${solTxt(t.sol)}</td><td>${pxTxt(t.fill_px_usd)}</td><td>${solTxt(t.fee_sol)}</td><td class="${clsPn(t.realized_sol)}">${t.realized_sol==null?'—':solTxt(t.realized_sol,true)}</td><td>${t.side==='sell'?`<button type="button" class="linkbtn" data-share="${esc(t.id)}">Card</button>`:''}</td></tr>`).join('')+'</tbody></table></div>'
+    :'<p class="muted">No paper trades yet.</p>';
+  paintBookChart();paintBuckets()}
+function paintBookChart(){
+  const c=document.getElementById('bkChart');if(!c)return;const g=c.getContext('2d');if(!g)return;
+  const w=c.width,h=c.height;g.clearRect(0,0,w,h);
+  const sells=(PB.acct&&PB.acct.trades||[]).filter(t=>t.side==='sell'&&t.realized_sol!=null).slice().sort((a,b)=>a.ts-b.ts);
+  let y=0;const pts=sells.map(t=>{y+=+t.realized_sol;return y});if(!pts.length){g.fillStyle='#9ca3af';g.font='12px Inter,sans-serif';g.fillText('No realised trades yet',8,h/2);return}
+  const min=Math.min(0,...pts),max=Math.max(0,...pts),span=(max-min)||1;
+  g.beginPath();pts.forEach((v,i)=>{const x=i/(pts.length-1||1)*(w-8)+4,yy=h-8-((v-min)/span)*(h-16);i?g.lineTo(x,yy):g.moveTo(x,yy)});
+  g.strokeStyle='#f04b92';g.lineWidth=2;g.stroke();
+  g.lineTo(w-4,h);g.lineTo(4,h);g.closePath();g.fillStyle='rgba(240,75,146,.25)';g.fill()}
+function paintBuckets(){
+  const box=document.getElementById('bkBuckets');if(!box)return;
+  const sells=(PB.acct&&PB.acct.trades||[]).filter(t=>t.side==='sell'&&t.pnl_pct!=null);
+  const bands=[['>500',p=>p>500],['200–500',p=>p>200&&p<=500],['0–200',p=>p>=0&&p<=200],['0 to −50',p=>p<0&&p>=-50],['<−50',p=>p<-50]];
+  box.innerHTML=bands.map(([name,fn])=>`<div>${name} <b>${sells.filter(t=>fn(+t.pnl_pct)).length}</b></div>`).join('')}
 
 function calendar(daily){return monthGrid(daily, CAL.y, CAL.m)}
 
@@ -440,44 +473,56 @@ function bindCalChrome(){
   calLoad();ensureCal();setCalOpen(!!CAL.open);
 }
 
+function paintBg(g,kind){
+  const W=1200,H=675;
+  if(kind==='aurora'){const grd=g.createLinearGradient(0,0,W,H);grd.addColorStop(0,'#06281f');grd.addColorStop(.5,'#12324a');grd.addColorStop(1,'#2a1030');g.fillStyle=grd;g.fillRect(0,0,W,H);return}
+  if(kind==='moon'){g.fillStyle='#070b16';g.fillRect(0,0,W,H);g.fillStyle='#f4efe4';g.beginPath();g.arc(980,140,70,0,6.3);g.fill();g.fillStyle='#070b16';g.beginPath();g.arc(1010,120,58,0,6.3);g.fill();return}
+  if(kind==='candles'){g.fillStyle='#10131a';g.fillRect(0,0,W,H);for(let i=0;i<28;i++){const x=40+i*42,up=i%3!==1,h=40+((i*37)%160);g.fillStyle=up?'#37d6bd':'#f04b92';g.fillRect(x,200+(i%5)*18,16,h)}return}
+  if(kind==='grid'){g.fillStyle='#0c1220';g.fillRect(0,0,W,H);g.strokeStyle='rgba(55,214,189,.25)';for(let x=0;x<W;x+=40){g.beginPath();g.moveTo(x,0);g.lineTo(x,H);g.stroke()}for(let y=0;y<H;y+=40){g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke()}return}
+  if(kind==='noise'){g.fillStyle='#14161c';g.fillRect(0,0,W,H);for(let i=0;i<1800;i++){g.fillStyle='rgba(255,255,255,'+(0.02+((i*17)%10)/80)+')';g.fillRect((i*97)%W,(i*53)%H,2,2)}return}
+  const grd=g.createLinearGradient(0,0,0,H);grd.addColorStop(0,'#1b2436');grd.addColorStop(1,'#0a0c10');g.fillStyle=grd;g.fillRect(0,0,W,H)}
 function drawCard(opts){
   const c=document.createElement('canvas');c.width=1200;c.height=675;const g=c.getContext('2d');if(!g)return c;
-  g.fillStyle='#0b0c0e';g.fillRect(0,0,1200,675);
-  for(let x=0;x<1200;x+=28)for(let y=0;y<675;y+=28){g.fillStyle='rgba(255,255,255,.025)';g.fillRect(x,y,2,2)}
-  const up=opts.pnlPct==null?true:opts.pnlPct>=0;
-  g.fillStyle=up?'#00c703':'#e66565';g.fillRect(0,0,14,675);
-  g.fillStyle='#9aa0a6';g.font='500 28px Geist, system-ui, sans-serif';g.fillText('xScanner   ·   paper trade',64,78);
-  g.strokeStyle=up?'#00c703':'#e66565';g.lineWidth=2;g.strokeRect(900,48,240,78);
-  g.fillStyle=up?'#00c703':'#e66565';g.font='700 30px Geist, system-ui, sans-serif';g.fillText('PAPER',962,98);
-  g.fillStyle='#f2f3f5';g.font='600 54px Geist, system-ui, sans-serif';g.fillText('$'+(opts.symbol||'?'),64,170);
-  g.font='600 132px Geist, system-ui, sans-serif';g.fillStyle=up?'#00c703':'#e66565';
-  const pct=opts.pnlPct==null?'—':(opts.pnlPct>=0?'+':'')+Number(opts.pnlPct).toFixed(1)+'%';
-  g.fillText(pct,64,340);
-  g.font='500 36px Geist, system-ui, sans-serif';g.fillStyle='#e6e8eb';
-  const line=opts.pnlSol==null?(opts.spent!=null?solTxt(opts.spent)+' spent':''):(opts.label||'PnL')+'  '+solTxt(opts.pnlSol,true);
-  g.fillText(line,64,410);
-  g.font='400 28px Geist, system-ui, sans-serif';g.fillStyle='#9aa0a6';
-  const entry=pxTxt(opts.entry),mark=pxTxt(opts.mark);
-  g.fillText('Entry  '+entry+'      Mark  '+mark,64,490);
-  g.font='400 24px Geist, system-ui, sans-serif';
-  g.fillText('Simulation only. Not financial advice. No wallet was connected and no order was sent.',64,600);
+  paintBg(g,opts.bg||PB.shareBg||'gradient');
+  const up=opts.pnlSol==null?(opts.pnlPct==null||opts.pnlPct>=0):opts.pnlSol>=0;
+  const pill=up?'#3ee08f':'#f04b92';
+  if(opts.showName!==false){g.fillStyle='#fff';g.font='600 28px Inter, system-ui, sans-serif';g.fillText('@'+(PB.user||'you'),64,70)}
+  g.fillStyle='#fff';g.font='700 44px Inter, system-ui, sans-serif';g.fillText(opts.symbol||'TOKEN',64,140);
+  const solLine=(opts.pnlSol==null?'0':(opts.pnlSol>=0?'+':'')+Number(opts.pnlSol).toFixed(3))+' SOL';
+  g.font='700 64px Inter, system-ui, sans-serif';
+  const tw=g.measureText(solLine).width;
+  g.fillStyle=pill;g.beginPath();g.roundRect(64,180,tw+64,96,18);g.fill();
+  g.fillStyle='#102018';g.fillText(solLine,96,248);
+  g.fillStyle='#fff';g.font='500 28px Inter, system-ui, sans-serif';
+  const pct=opts.pnlPct==null?'':((opts.pnlPct>=0?'+':'')+Number(opts.pnlPct).toFixed(1)+'%');
+  g.fillText('PnL    '+pct,64,360);
+  g.fillText('Invested    '+(opts.invested!=null?Number(opts.invested).toFixed(3):'—')+' SOL',64,410);
+  g.fillText('Sold    '+(opts.sold!=null?Number(opts.sold).toFixed(3):'—')+' SOL',64,460);
+  g.fillStyle='#d4d4d4';g.font='600 26px Inter, system-ui, sans-serif';g.fillText('xSCANNER',900,620);
+  g.font='400 20px Inter, system-ui, sans-serif';g.fillStyle='#9ca3af';
+  g.fillText('Simulation only. Not financial advice.',64,620);
   return c}
 
 function openShare(opts){
+  PB.shareOpts=opts;
   const c=drawCard(opts);
   let ov=document.getElementById('pbShare');
-  if(!ov){ov=document.createElement('div');ov.id='pbShare';ov.innerHTML='<div class="pb-sharebox" role="dialog" aria-label="Paper PnL card"><img alt="Paper trading PnL card"><div class="pb-sharerow"><button type="button" class="primary" id="pbShareDl">Download PNG</button><button type="button" class="ghost" id="pbShareX">Close</button></div><p class="muted">Simulation only. Not financial advice.</p></div>';
+  if(!ov){ov=document.createElement('div');ov.id='pbShare';ov.innerHTML='<div class="pb-sharebox" role="dialog" aria-label="Paper PnL card"><img alt="Paper trading PnL card"><div class="pb-bgs" id="pbBgs"></div><div class="pb-sharerow"><button type="button" class="primary" id="pbShareDl">Download PNG</button><button type="button" class="ghost" id="pbShareCopy">Copy</button><button type="button" class="ghost" id="pbShareX">Close</button></div><p class="muted">Simulation only. Not financial advice.</p></div>';
     document.body.appendChild(ov);
-    ov.addEventListener('click',e=>{if(e.target===ov||e.target.id==='pbShareX')ov.classList.remove('on')})}
+    const bgs=ov.querySelector('#pbBgs');
+    ['gradient','aurora','candles','moon','grid','noise'].forEach(k=>{const b=document.createElement('button');b.type='button';b.title=k;b.style.background=k==='aurora'?'linear-gradient(120deg,#06281f,#2a1030)':k==='moon'?'#070b16':k==='candles'?'#37d6bd':k==='grid'?'#0c1220':'#1b2436';b.onclick=()=>{PB.shareBg=k;if(PB.shareOpts)openShare(PB.shareOpts)};bgs.appendChild(b)});
+    ov.addEventListener('click',e=>{if(e.target===ov||e.target.id==='pbShareX')ov.classList.remove('on')});
+    document.getElementById('pbShareCopy').onclick=async()=>{try{const blob=await (await fetch(ov.querySelector('img').src)).blob();await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);toast('Copied the card.');}catch(err){toast('Copy is not available in this browser.','dn')}}}
   c.toBlob(blob=>{if(!blob){toast('Could not draw the card.','dn');return}
     if(PB.shareUrl)URL.revokeObjectURL(PB.shareUrl);PB.shareUrl=URL.createObjectURL(blob);
     ov.querySelector('img').src=PB.shareUrl;ov.classList.add('on');
     document.getElementById('pbShareDl').onclick=()=>{const a=document.createElement('a');a.href=PB.shareUrl;a.download='xscanner-paper-'+(opts.symbol||'pnl').replace(/[^A-Za-z0-9]+/g,'')+'.png';a.click()}})}
 
-function sharePosition(mint){const p=posOf(mint),r=rowOf(mint);if(!p)return;
-  openShare({symbol:p.symbol,pnlPct:r&&r.upnl_pct,pnlSol:r&&r.upnl_sol,entry:p.avg_px_usd,mark:r&&r.mark_px,label:'Unrealised'})}
-function shareTrade(id){const t=((PB.acct&&PB.acct.trades)||[]).find(x=>x.id===id);if(!t)return;
-  openShare({symbol:t.symbol,pnlPct:t.pnl_pct,pnlSol:t.realized_sol,entry:t.avg_px_usd,mark:t.fill_px_usd,label:t.side==='sell'?'Realised':'Fill',spent:t.side==='buy'?t.sol:null})}
+function mintFlows(mint){let invested=0,sold=0;for(const t of (PB.acct&&PB.acct.trades)||[]){if(t.mint!==mint)continue;if(t.side==='buy')invested+=+t.sol||0;else if(t.side==='sell')sold+=+t.sol||0}return{invested,sold}}
+function sharePosition(mint){const p=posOf(mint),r=rowOf(mint);if(!p)return;const f=mintFlows(mint);
+  openShare({symbol:p.symbol,pnlPct:r&&r.upnl_pct,pnlSol:r&&r.upnl_sol,invested:f.invested,sold:f.sold,entry:p.avg_px_usd,mark:r&&r.mark_px,label:'Unrealised'})}
+function shareTrade(id){const t=((PB.acct&&PB.acct.trades)||[]).find(x=>x.id===id);if(!t)return;const f=mintFlows(t.mint);
+  openShare({symbol:t.symbol,pnlPct:t.pnl_pct,pnlSol:t.realized_sol,invested:f.invested,sold:f.sold,entry:t.avg_px_usd,mark:t.fill_px_usd,label:t.side==='sell'?'Realised':'Fill',spent:t.side==='buy'?t.sol:null})}
 
 let estT=0;
 function scheduleEst(){clearTimeout(estT);estT=setTimeout(()=>{runEst().catch(()=>{})},280)}
@@ -485,6 +530,8 @@ function scheduleEst(){clearTimeout(estT);estT=setTimeout(()=>{runEst().catch(()
 async function onClick(e){
   const t=e.target.closest('button');if(!t)return;
   if(t.id==='paperBar'||t.id==='dockPaper'||t.id==='toMyPaper'||t.id==='pbOpenBook'){e.preventDefault();if(window.show)window.show('book');return}
+  if(t.id==='bkWallet'){e.preventDefault();const box=document.getElementById('bkWalletBox');if(box)box.classList.toggle('hidden');return}
+  if(t.dataset.bktab){e.preventDefault();const hist=t.dataset.bktab==='hist';const pc=document.getElementById('bkPosCard'),hc=document.getElementById('bkHistCard');if(pc)pc.classList.toggle('hidden',hist);if(hc)hc.classList.toggle('hidden',!hist);document.querySelectorAll('[data-bktab]').forEach(b=>b.classList.toggle('on',b===t));return}
   if(t.dataset.dep){const scope=t.closest('.pb,.card')||document;const input=scope.querySelector('[data-depinput]');if(input){input.value=t.dataset.dep;input.focus()}return}
   if(t.dataset.sol){const input=document.getElementById('pbSol');if(input){input.value=t.dataset.sol;scheduleEst()}return}
   if(t.dataset.pbt){if(PB.tab==='limit'||PB._mode==='limit'){PB.tab='limit';PB.limSide=t.dataset.pbt;PB._mode='limit'}else{PB.tab=t.dataset.pbt;PB._mode='market'}const host=document.getElementById('tkPaper');if(host)host.dataset.tab='';paintForm();updatePanelFigures();scheduleEst();return}
@@ -520,32 +567,53 @@ function snapTime(ts,candles){if(!candles||!candles.length)return null;let best=
 function paintChart(){
   if(typeof CH==='undefined'||!CH.cs||!CH.coin||!PB.acct)return;
   const mint=CH.coin.mint;if(!PB.candles||PB.chartMint!==mint)return;
-  const grouped=new Map();
-  for(const t of PB.acct.trades||[]){if(t.mint!==mint||(t.side!=='buy'&&t.side!=='sell'))continue;const tm=snapTime(t.ts,PB.candles);if(tm==null)continue;
-    const g=grouped.get(tm)||{time:tm,buy:0,sell:0};g[t.side]++;grouped.set(tm,g)}
-  const markers=[...grouped.values()].sort((a,b)=>a.time-b.time).map(g=>{
-    const both=g.buy&&g.sell;
-    return {time:g.time,position:both?'inBar':g.buy?'belowBar':'aboveBar',color:both?'#e6c35c':g.buy?'#00f5a0':'#ff3b7a',size:2,
-      shape:both?'circle':g.buy?'arrowUp':'arrowDown',
-      text:(g.buy?('B'+(g.buy>1?'×'+g.buy:'')):'')+(both?' · ':'')+(g.sell?('S'+(g.sell>1?'×'+g.sell:'')):'')}})
   const series=CH.style==='line'?(CH.area||CH.cs):CH.cs;
-  try{if(CH.cs)CH.cs.setMarkers(CH.style==='line'?[]:markers)}catch(e){}
-  try{if(CH.area&&CH.style==='line')CH.area.setMarkers(markers)}catch(e){}
+  try{if(CH.cs)CH.cs.setMarkers([])}catch(e){}
+  try{if(CH.area)CH.area.setMarkers([])}catch(e){}
   try{if(PB.entryLine){ (PB.entryHost||CH.cs).removePriceLine(PB.entryLine) }}catch(e){}
   PB.entryLine=null;PB.entryHost=null;
   const pos=posOf(mint);
   if(pos&&pos.avg_px_usd>0&&series){
-    const row=rowOf(mint);
     const scaled=(CH.unit==='mcap'&&typeof validSupply==='function'&&validSupply(CH.supply))||(CH.unit==='mcap'&&CH.supply);
     const px=scaled?pos.avg_px_usd*CH.supply:pos.avg_px_usd;
-    const live=livePx(mint);
-    let upnl=row&&row.upnl_sol, upct=row&&row.upnl_pct;
-    if(live>0&&PB.sol>0&&pos.qty){upnl=(pos.qty*live/PB.sol)-(pos.cost_sol||0);upct=pos.cost_sol?upnl/pos.cost_sol*100:null}
-    const up=!(upnl<0);
-    const pnl=upnl!=null?solTxt(upnl,true):'';
-    const pc=upct!=null?((upct>=0?'+':'')+upct.toFixed(1)+'%'):'';
-    const title='Avg'+(pnl?(' · '+pnl):'')+(pc?(' '+pc):'');
-    try{PB.entryLine=series.createPriceLine({price:px,color:up?'#00f5a0':'#ff3b7a',lineWidth:1,lineStyle:2,axisLabelVisible:true,title});PB.entryHost=series}catch(e){}}}
+    try{PB.entryLine=series.createPriceLine({price:px,color:'#37d6bd',lineWidth:1,lineStyle:2,axisLabelVisible:true,title:'Entry'});PB.entryHost=series}catch(e){}}
+  try{if(PB.exitLine&&series){(PB.exitHost||series).removePriceLine(PB.exitLine)}}catch(e){}
+  PB.exitLine=null;
+  const sells=((PB.acct&&PB.acct.trades)||[]).filter(t=>t.mint===mint&&t.side==='sell'&&t.fill_px_usd>0);
+  if(sells.length&&series){
+    const avg=sells.reduce((s,t)=>s+(+t.fill_px_usd),0)/sells.length;
+    const scaled=(CH.unit==='mcap'&&CH.supply);
+    const ep=scaled?avg*CH.supply:avg;
+    try{PB.exitLine=series.createPriceLine({price:ep,color:'#f04b92',lineWidth:1,lineStyle:2,axisLabelVisible:true,title:'Exit'});PB.exitHost=series}catch(e){}}
+  const lims=((PB.acct&&PB.acct.orders)||[]).filter(o=>o.mint===mint&&o.limit_px>0);
+  try{if(PB.limLines)PB.limLines.forEach(ln=>{try{series.removePriceLine(ln)}catch(e){}})}catch(e){}
+  PB.limLines=[];
+  lims.forEach(o=>{const scaled=(CH.unit==='mcap'&&CH.supply);const lp=scaled?o.limit_px*CH.supply:o.limit_px;
+    try{PB.limLines.push(series.createPriceLine({price:lp,color:'#e6b35c',lineWidth:1,lineStyle:2,axisLabelVisible:true,title:'Limit'}))}catch(e){}})
+  paintBadges(mint,series);
+}
+function paintBadges(mint,series){
+  const parent=document.getElementById('chNative');
+  if(!parent||typeof CH==='undefined'||!CH.chart||!series)return;
+  let layer=document.getElementById('pbBadges');
+  if(!layer){layer=document.createElement('div');layer.id='pbBadges';parent.appendChild(layer);
+    if(!PB._badgeHook){PB._badgeHook=true;try{CH.chart.timeScale().subscribeVisibleLogicalRangeChange(()=>{if(CH.coin)paintBadges(CH.coin.mint,CH.style==='line'?(CH.area||CH.cs):CH.cs)})}catch(e){}}}
+  const bits=[];
+  for(const t of (PB.acct&&PB.acct.trades)||[]){
+    if(t.mint!==mint||(t.side!=='buy'&&t.side!=='sell'))continue;
+    const tm=snapTime(t.ts,PB.candles);if(tm==null)continue;
+    const candle=(PB.candles||[]).find(k=>k.t===tm);
+    const raw=candle?candle.c:(t.fill_px_usd||0);
+    const py=typeof scalePx==='function'?scalePx(raw):raw;
+    let x=null,y=null;
+    try{x=CH.chart.timeScale().timeToCoordinate(tm);y=series.priceToCoordinate(py)}catch(e){}
+    if(x==null||y==null)continue;
+    const buy=t.side==='buy';
+    const top=buy?y+8:y-28;
+    bits.push(`<i class="pb-badge ${buy?'b':'s'}" style="left:${Math.round(x-10)}px;top:${Math.round(top)}px">${buy?'B':'S'}</i>`);
+  }
+  layer.innerHTML=bits.join('');
+}
 
 let lastMark=0;
 async function maybeMark(force){
@@ -583,7 +651,7 @@ const IT={
   open:false,tab:'P1',speed:0,editing:false,snap:null,bound:false,
 };
 function itLoad(){
-  try{IT.open=localStorage.getItem('xs_instant_open_v1')==='1'}catch(e){IT.open=false}
+  try{const v=localStorage.getItem('xs_instant_open_v1');IT.open=v==null?true:v==='1'}catch(e){IT.open=true}
   try{IT.tab=localStorage.getItem('xs_instant_preset_tab_v1')||'P1'}catch(e){}
   if(!DEF_PRESETS[IT.tab])IT.tab='P1';
   try{const s=localStorage.getItem('xs_instant_speed_v1');IT.speed=s==null?0:(+s||0)}catch(e){IT.speed=0}
@@ -615,46 +683,56 @@ function itMintStats(mint){
   return {bought,sold,holdQty,holdSol,holdUsd,pnl,pos,row};
 }
 function itCardHTML(){
-  const sm=typeof solMark==='function'?solMark():'';
   const am=itAmounts();
   const st=settings();
+  const cash=PB.acct?solTxt(PB.acct.cash_sol):'0';
+  const mark=typeof solMark==='function'?solMark():'';
+  const more=[2,3,5,10].filter(v=>am.indexOf(v)<0);
   return `<div class="it-head" data-itdrag="1">
-      <div class="it-tabs" role="tablist" aria-label="Instant presets">${['P1','P2','P3'].map(k=>`<button type="button" data-ittab="${k}" class="${k===IT.tab?'on':''}">${k}</button>`).join('')}</div>
-      <span class="pb-tag">PAPER</span>
-      <button type="button" class="it-ico" id="itEdit" title="Edit presets" aria-label="Edit presets">✎</button>
-      <button type="button" class="it-ico" id="itClose" title="Close Instant card" aria-label="Close">×</button>
+      <span class="it-brand">xScanner</span>
+      <span class="it-bal" id="itBal">${mark}<b>${cash}</b></span>
+      <button type="button" class="it-ico" id="itLim" title="Limit orders" aria-label="Limit orders">⇄</button>
+      <span class="it-gear"><button type="button" class="it-ico" id="itGear" title="Settings" aria-label="Settings">⚙</button>
+        <div class="it-gearbox hidden" id="itGearBox">
+          <label>Slip %<input id="itSlip" type="number" min="0" max="30" step="0.1" value="${st.slippage_bps/100}"></label>
+          <label>Priority<input id="itPri" type="number" min="0" step="0.0001" value="${st.priority_fee_sol}"></label>
+          <label>Delay ms<input id="itDelay" type="number" min="0" step="50" value="${IT.speed}"></label>
+          <button type="button" class="ghost" id="itSetSave">Save</button>
+          <button type="button" class="ghost" id="itEdit">Edit amounts</button>
+        </div></span>
+      <button type="button" class="it-ico" id="itClose" title="Close" aria-label="Close">×</button>
     </div>
+    <div class="it-tabs" role="tablist">${['P1','P2','P3'].map(k=>`<button type="button" data-ittab="${k}" class="${k===IT.tab?'on':''}">${k}</button>`).join('')}</div>
     <div class="it-edit ${IT.editing?'':'hidden'}" id="itEditBox">
-      <p class="muted">Custom ${IT.tab} buy amounts (paper SOL). Saved in this browser.</p>
       <div class="it-edit-row">${[0,1,2,3].map(i=>`<input data-itedit="${i}" type="number" min="0" step="any" value="${am[i]}">`).join('')}</div>
       <button type="button" class="ghost" id="itEditSave">Save ${IT.tab}</button>
     </div>
     <div class="it-buy">
-      <div class="it-rowlab"><b>Buy</b>${sm}</div>
-      <div class="it-presets it-buy-presets">${am.map(v=>`<button type="button" data-itbuy="${v}">${sm}<span>${v}</span></button>`).join('')}</div>
-      <div class="it-meta"><span>${(st.slippage_bps/100)}% · ${st.priority_fee_sol} SOL · ${(st.platform_fee_bps/100)}%</span>
-        <div class="it-speed" role="group" aria-label="Simulated fill speed">
-          <button type="button" data-itspeed="0" class="${IT.speed===0?'on':''}">0ms</button>
-          <button type="button" data-itspeed="700" class="${IT.speed===700?'on':''}">700ms</button>
-        </div>
-      </div>
+      <div class="it-rowlab"><b>Buy (SOL)</b><span class="it-mc" id="itEntry">Entry MC —</span></div>
+      <div class="it-presets it-buy-presets">${am.map(v=>`<button type="button" data-itbuy="${v}">${v}</button>`).join('')}</div>
+      <div class="it-more it-presets it-buy-presets">${more.map(v=>`<button type="button" data-itbuy="${v}">${v}</button>`).join('')}</div>
+      <div class="it-meta"><span>${(st.slippage_bps/100)}% slip · ${st.priority_fee_sol} SOL</span></div>
     </div>
     <div class="it-sell">
-      <div class="it-rowlab"><b>Sell</b><span id="itHold" class="it-hold">0.00 TOKEN · $0.00</span></div>
-      <div class="it-presets it-sell-presets">${[10,25,50,100].map(p=>`<button type="button" data-itsell="${p}">${p}%</button>`).join('')}
-        <button type="button" class="it-init hidden" id="itSellInit" data-itsellinit="1">Sell Init</button>
-      </div>
+      <div class="it-rowlab"><b>Sell (%)</b><span id="itHold" class="it-hold">0</span></div>
+      <div class="it-presets it-sell-presets">${[10,25,50,100].map(p=>`<button type="button" data-itsell="${p}">${p}%</button>`).join('')}</div>
+      <div class="it-meta"><button type="button" class="it-init hidden" id="itSellInit" data-itsellinit="1">Sell Init.</button><span class="it-mc" id="itExit">Exit MC —</span></div>
     </div>
     <div class="it-foot">
       <div class="it-kpis">
-        <div class="it-kpi"><span>Bought</span><b id="itBought">—</b></div>
-        <div class="it-kpi"><span>Sold</span><b id="itSold">—</b></div>
+        <div class="it-kpi"><span>Bought</span><b id="itBought" class="buy">—</b></div>
+        <div class="it-kpi"><span>Sold</span><b id="itSold" class="sell">—</b></div>
         <div class="it-kpi"><span>Holding</span><b id="itHolding">—</b></div>
         <div class="it-kpi"><span>PnL</span><b id="itPnl">—</b></div>
       </div>
-      <div class="it-foot-l"><small>PAPER · Simulation</small><button type="button" class="linkbtn hidden" id="itDepGo">+ Deposit</button></div>
-      <div class="it-dep hidden" id="itDepBox"><span class="sol-amt">${sm}<input id="itDep" type="number" min="0" step="any" placeholder="10" inputmode="decimal" aria-label="Paper SOL to deposit"></span>
-        <button type="button" class="ghost" id="itDepOk">Deposit</button></div>
+      <div class="it-dep hidden" id="itDepBox"><input id="itDep" type="number" min="0" step="any" placeholder="10" aria-label="Paper SOL to deposit"><button type="button" class="ghost" id="itDepOk">Deposit</button><button type="button" class="linkbtn hidden" id="itDepGo">+ Deposit</button></div>
+    </div>
+    <div class="it-lim hidden" id="itLimBox">
+      <h4>LIMIT ORDERS</h4>
+      <div class="it-tabs"><button type="button" data-limside="buy" class="on">Buy</button><button type="button" data-limside="sell">Sell</button></div>
+      <div class="it-presets it-buy-presets">${[10,25,50,100].map(p=>`<button type="button" data-limp="${p}">${p}%</button>`).join('')}</div>
+      <input id="itLimPx" type="number" min="0" step="any" placeholder="Target MC" aria-label="Target market cap">
+      <button type="button" class="it-place" id="itLimGo">Place Sell Order</button>
     </div>`;
 }
 function ensureInstant(){
@@ -676,6 +754,14 @@ function bindInstant(el){
   el.addEventListener('click',e=>{
     const t=e.target.closest('button, [data-itbuy], [data-itsell]');if(!t)return;
     if(t.id==='itClose'){e.preventDefault();setInstantOpen(false);return}
+    if(t.id==='itGear'){e.preventDefault();const box=document.getElementById('itGearBox');if(box)box.classList.toggle('hidden');return}
+    if(t.id==='itLim'){e.preventDefault();const box=document.getElementById('itLimBox');if(box)box.classList.toggle('hidden');return}
+    if(t.id==='itSetSave'){e.preventDefault();const slip=document.getElementById('itSlip'),pri=document.getElementById('itPri'),del=document.getElementById('itDelay');
+      const cur=Object.assign({},settings());if(slip)cur.slippage_bps=Math.round((+slip.value||0)*100);if(pri)cur.priority_fee_sol=+pri.value||0;if(del){IT.speed=+del.value||0;itSave('xs_instant_speed_v1',String(IT.speed));cur.exec_delay_ms=IT.speed}
+      act({action:'settings',settings:cur}).then(()=>rebuildInstant()).catch(()=>{});return}
+    if(t.id==='itLimGo'){e.preventDefault();placeLimitFromCard();return}
+    if(t.dataset.limside){PB.limSide=t.dataset.limside;el.querySelectorAll('[data-limside]').forEach(b=>b.classList.toggle('on',b.dataset.limside===PB.limSide));const go=document.getElementById('itLimGo');if(go){go.textContent=PB.limSide==='buy'?'Place Buy Order':'Place Sell Order';go.classList.toggle('buy',PB.limSide==='buy')}return}
+    if(t.dataset.limp){IT.limp=+t.dataset.limp;return}
     if(t.id==='itEdit'){e.preventDefault();IT.editing=!IT.editing;const box=document.getElementById('itEditBox');if(box)box.classList.toggle('hidden',!IT.editing);return}
     if(t.id==='itEditSave'){e.preventDefault();const next=[0,1,2,3].map(i=>{const inp=el.querySelector('[data-itedit="'+i+'"]');return +(inp&&inp.value)});if(next.some(v=>!(v>0))){toast('Preset amounts must be greater than 0 SOL.','dn');return}IT.presets[IT.tab]=next;itSave('xs_instant_presets_v1',IT.presets);IT.editing=false;rebuildInstant();return}
     if(t.dataset.ittab){IT.tab=t.dataset.ittab;itSave('xs_instant_preset_tab_v1',IT.tab);IT.editing=false;rebuildInstant();return}
@@ -697,6 +783,7 @@ function bindInstant(el){
   });
   el.addEventListener('pointermove',e=>{
     if(!IT.drag||(IT.drag.pid!=null&&e.pointerId!==IT.drag.pid))return;
+    el.classList.add('it-drag');
     const x=Math.max(8,Math.min(window.innerWidth-el.offsetWidth-8,e.clientX-IT.drag.dx));
     const y=Math.max(8,Math.min(window.innerHeight-el.offsetHeight-8,e.clientY-IT.drag.dy));
     el.style.left=x+'px';el.style.top=y+'px';el.style.right='auto';el.style.bottom='auto';
@@ -704,7 +791,8 @@ function bindInstant(el){
   const end=e=>{
     if(!IT.drag)return;
     if(IT.drag.pid!=null&&e.pointerId!==IT.drag.pid&&e.type==='pointerup')return;
-    try{itSave('xs_instant_pos_v1',{left:el.style.left,top:el.style.top})}catch(err){}
+    el.classList.remove('it-drag');
+    try{itSave('xs_instant_pos_v1',{left:el.style.left,top:el.style.top,width:el.style.width})}catch(err){}
     IT.drag=null;
   };
   el.addEventListener('pointerup',end);
@@ -715,33 +803,43 @@ function rebuildInstant(){
   el.innerHTML=itCardHTML();
   IT.bound=false;bindInstant(el);paintInstant();
 }
+function onTokenPage(){if(PB.nav&&PB.nav!=='token')return false;return /^\/token\//.test(location.pathname)||document.documentElement.dataset.view==='token'}
 function defaultInstantPos(el){
+  if(window.matchMedia('(max-width:700px)').matches){el.style.left='';el.style.top='';el.style.right='';el.style.bottom='';el.style.width='';return}
   try{
     const pos=JSON.parse(localStorage.getItem('xs_instant_pos_v1')||'null');
-    if(pos&&pos.left&&pos.top){el.style.left=pos.left;el.style.top=pos.top;el.style.right='auto';el.style.bottom='auto';return}
+    if(pos&&pos.left&&pos.top){el.style.left=pos.left;el.style.top=pos.top;if(pos.width)el.style.width=pos.width;el.style.right='auto';el.style.bottom='auto'}
   }catch(e){}
-  // Float over the chart, left of the ~320px trade panel when present.
-  const side=document.querySelector('#tokBody .tk-side');
-  const chart=document.querySelector('.chartcard')||document.querySelector('#chWrap');
-  const w=el.offsetWidth||320,h=el.offsetHeight||280;
-  let left,top;
-  if(chart){
-    const r=chart.getBoundingClientRect();
-    left=Math.max(16,r.right-w-16);
-    top=Math.max(64,r.top+48);
-  }else{left=Math.max(16,window.innerWidth-w-360);top=120}
-  if(side){
-    const sr=side.getBoundingClientRect();
-    if(left+w>sr.left-8)left=Math.max(16,sr.left-w-12);
+  if(!el.style.left){
+    const chart=document.querySelector('.chartcard')||document.querySelector('#chWrap');
+    const w=290;
+    let left=16,top=72;
+    if(chart){const r=chart.getBoundingClientRect();left=Math.max(16,r.left+12);top=Math.max(64,r.top+12)}
+    el.style.left=left+'px';el.style.top=top+'px';el.style.width=w+'px';el.style.right='auto';el.style.bottom='auto';
   }
-  el.style.left=left+'px';el.style.top=top+'px';el.style.right='auto';el.style.bottom='auto';
+  const w=el.offsetWidth||290,h=el.offsetHeight||320;
+  const left=Math.max(8,Math.min(window.innerWidth-w-8,parseFloat(el.style.left)||16));
+  const top=Math.max(8,Math.min(window.innerHeight-h-8,parseFloat(el.style.top)||72));
+  el.style.left=left+'px';el.style.top=top+'px';
+}
+async function placeLimitFromCard(){
+  const t=itTarget();if(!t||!t.mint){toast('Open a token first.','dn');return}
+  const raw=+(document.getElementById('itLimPx')||{}).value;
+  if(!(raw>0)){toast('Enter a target price.','dn');return}
+  let px=raw;
+  const mkt=PB.token&&PB.token.market;
+  if(raw>1000&&mkt&&mkt.px>0&&mkt.mc>0)px=mkt.px*(raw/mkt.mc);
+  const side=PB.limSide||'sell';
+  const body={action:'limit',side,mint:t.mint,limit_px:px,symbol:t.symbol||'',name:t.name||'',pool:t.pool||'',px_usd:livePx(t.mint),sol_usd:PB.sol};
+  if(side==='buy')body.sol=itAmounts()[0]||0.1;else body.pct=IT.limp||100;
+  await act(body);
 }
 function setInstantOpen(on){
   IT.open=!!on;itSave('xs_instant_open_v1',IT.open?'1':'0');
   const el=ensureInstant();
-  el.classList.toggle('hidden',!IT.open);
+  el.classList.toggle('hidden',!(IT.open&&onTokenPage()));
   el.setAttribute('aria-hidden',IT.open?'false':'true');
-  if(IT.open){if(!el.style.left)defaultInstantPos(el);paintInstant()}
+  if(IT.open&&onTokenPage()){defaultInstantPos(el);paintInstant()}
   document.querySelectorAll('#itToggle,#dockInstant').forEach(b=>{
     if(!b)return;b.classList.toggle('on',IT.open);b.setAttribute('aria-pressed',IT.open?'true':'false');
   });
@@ -752,7 +850,7 @@ function paintInstant(){
   });
   const el=document.getElementById('itCard');
   if(!el)return;
-  el.classList.toggle('hidden',!IT.open);
+  el.classList.toggle('hidden',!(IT.open&&onTokenPage()));
   if(!IT.open)return;
   const mint=itMint(),sym=itSym(),st=itMintStats(mint);
   const hold=document.getElementById('itHold');
@@ -767,9 +865,16 @@ function paintInstant(){
   set('itSold',mint?solCompact(st.sold):'—','sell');
   set('itHolding',st.holdSol!=null?solCompact(st.holdSol):(st.holdUsd!=null?usdCompact(st.holdUsd):'—'),'hold');
   set('itPnl',st.pnl==null?'—':solCompact(st.pnl,true),clsPn(st.pnl));
+  const bal=document.getElementById('itBal');
+  if(bal)bal.innerHTML=(typeof solMark==='function'?solMark():'')+'<b>'+solTxt(PB.acct?PB.acct.cash_sol:0)+'</b>';
+  const mc=PB.token&&PB.token.market&&PB.token.market.mc;
+  const entry=document.getElementById('itEntry');if(entry)entry.textContent='Entry MC '+(mc?mcTxt(mc):'—');
+  const exitMc=document.getElementById('itExit');if(exitMc)exitMc.textContent='Exit MC '+(mc?mcTxt(mc):'—');
+  if(!el.style.left&&onTokenPage())defaultInstantPos(el);
   const cash=PB.acct?+(PB.acct.cash_sol||0):0;
   const dep=document.getElementById('itDepGo');
   if(dep){dep.classList.toggle('hidden',cash>0);if(cash<=0)dep.textContent='+ Deposit paper SOL'}
+  const box=document.getElementById('itDepBox');if(box)box.classList.toggle('hidden',cash>0);
   el.classList.toggle('it-empty',!mint);
 }
 async function instantBuy(sol){
@@ -791,10 +896,10 @@ async function instantSell(pct){
   if(!(px>0)){toast('Live price is still loading. Try again in a second.','dn');return}
   try{await market(Object.assign({action:'sell',mint:t.mint,pct,px_usd:px},{symbol:t.symbol||t.s||'',name:t.name||'',pool:t.pool||''}),{delay:IT.speed})}catch(e){/* toast already shown */}
 }
-function instantSellInit(){
+async function instantSellInit(){
   const t=itTarget();if(!t||!t.mint)return;
   const pos=posOf(t.mint);if(!pos||!(pos.qty>0)){toast('No paper position to sell.','dn');return}
-  const px=livePx(t.mint),sol=PB.sol,st=settings(),cost=+(pos.cost_sol||0),qty=+(pos.qty||0);
+  const px=await ensurePx(t.mint),sol=PB.sol,st=settings(),cost=+(pos.cost_sol||0),qty=+(pos.qty||0);
   if(!(px>0)||!(sol>0)||!(qty>0)){toast('Need a live price to compute Sell Init.','dn');return}
   const slip=1-((st.slippage_bps||0)/10000);
   const feeBps=(st.platform_fee_bps||0)/10000;
@@ -846,7 +951,7 @@ function bindInstantChrome(){
 
 
 window.paperPosition=function(mint){if(!mint||!PB.acct)return null;return{pos:(PB.acct.positions||{})[mint]||null,row:((PB.summary&&PB.summary.positions)||[]).find(r=>r.mint===mint)||null}};
-window.paperOnToken=function(d){if(!d||!d.mint)return;PB.token=d;
+window.paperOnToken=function(d){if(!d||!d.mint)return;PB.nav='token';PB.token=d;
   IT.snap={mint:d.mint,symbol:d.symbol||'',name:d.name||'',pool:d.pool||'',px:d.market&&d.market.px};
   if(d.market&&d.market.px)PB.quotes[d.mint]={px:+d.market.px,t:Date.now()/1000};
   const el=ensurePanel();if(!el)return;
@@ -860,8 +965,13 @@ function ensureLocalBook(){
   if(used(loc)&&!used(PB.acct)){PB.acct=loc;try{paintBar();paintInstant();if(bookVisible())fillBook()}catch(e){}}
 }
 window.paperOnNavigate=function(v){
+  if(v)PB.nav=v;
   try{if(typeof setCalOpen==='function')setCalOpen(false)}catch(e){}
   ensureLocalBook();
+  const el=document.getElementById('itCard');
+  if(el)el.classList.toggle('hidden',!(IT.open&&onTokenPage()));
+  const pnl=document.getElementById('pnlCard');
+  if(pnl)pnl.classList.toggle('hidden',!onTokenPage());
 };
 window.paperEnsureCsrf=function(){return PB.csrf?Promise.resolve(PB.csrf):(PB.csrfReady=refreshCsrf())};
 window.paperLeaveToken=function(){try{if(typeof setCalOpen==='function')setCalOpen(false)}catch(e){}PB.token=null;PB.entryLine=null;paintInstant()};
